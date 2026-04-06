@@ -1,0 +1,28 @@
+{
+  "name": "backup-worker",
+  "version": "1.0.0",
+  "description": "Periodic backup worker that copies Supabase messages into MongoDB",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "keywords": [
+    "backup",
+    "supabase",
+    "mongodb",
+    "cron",
+    "worker"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.8",
+    "dotenv": "^16.4.5",
+    "mongodb": "^6.16.0",
+    "node-cron": "^4.0.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
