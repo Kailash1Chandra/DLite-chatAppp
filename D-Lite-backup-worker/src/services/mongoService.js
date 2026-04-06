@@ -9,6 +9,10 @@ export const connectToMongo = async () => {
     return db
   }
 
+  if (!env.mongoUri) {
+    throw new Error('MONGODB_URI is not configured')
+  }
+
   client = new MongoClient(env.mongoUri)
   await client.connect()
   db = client.db(env.mongoDbName)

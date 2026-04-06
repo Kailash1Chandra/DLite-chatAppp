@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase.js'
+import { isSupabaseConfigured, supabase } from '../utils/supabase.js'
 
 const formatAuthResponse = (authData) => ({
   accessToken: authData.session?.access_token || null,
@@ -10,6 +10,13 @@ const formatAuthResponse = (authData) => ({
 
 export const signup = async (req, res, next) => {
   try {
+    if (!isSupabaseConfigured() || !supabase) {
+      return res.status(503).json({
+        success: false,
+        message: 'Auth service is not configured (missing SUPABASE_URL / SUPABASE_ANON_KEY)',
+      })
+    }
+
     const { email, password } = req.body
 
     // Supabase creates the user and returns the authenticated session when allowed.
@@ -35,6 +42,13 @@ export const signup = async (req, res, next) => {
 
 export const login = async (req, res, next) => {
   try {
+    if (!isSupabaseConfigured() || !supabase) {
+      return res.status(503).json({
+        success: false,
+        message: 'Auth service is not configured (missing SUPABASE_URL / SUPABASE_ANON_KEY)',
+      })
+    }
+
     const { email, password } = req.body
 
     const { data, error } = await supabase.auth.signInWithPassword({

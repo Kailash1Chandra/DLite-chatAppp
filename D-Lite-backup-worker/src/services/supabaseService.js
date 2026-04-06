@@ -1,9 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import env from '../config/env.js'
 
-const supabase = createClient(env.supabaseUrl, env.supabaseKey)
+const supabase = env.supabaseUrl && env.supabaseKey ? createClient(env.supabaseUrl, env.supabaseKey) : null
 
 export const fetchMessages = async (lastSyncedAt) => {
+  if (!supabase) {
+    return []
+  }
+
   let query = supabase
     .from('messages')
     .select('id, chat_id, sender_id, content, type, created_at')

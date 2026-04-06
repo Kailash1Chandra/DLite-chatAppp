@@ -1,7 +1,14 @@
-import { supabase } from '../utils/supabase.js'
+import { isSupabaseConfigured, supabase } from '../utils/supabase.js'
 
 export const requireAuth = async (req, res, next) => {
   try {
+    if (!isSupabaseConfigured() || !supabase) {
+      return res.status(503).json({
+        success: false,
+        message: 'Auth service is not configured (missing SUPABASE_URL / SUPABASE_ANON_KEY)',
+      })
+    }
+
     const authHeader = req.headers.authorization || ''
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
 

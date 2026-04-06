@@ -1,8 +1,12 @@
-import { supabase } from '../config/supabase.js'
+import { isSupabaseConfigured, supabase } from '../config/supabase.js'
 
 const TABLE_NAME = 'messages'
 
 export const saveMessage = async ({ chatId, senderId, content, type = 'text' }) => {
+  if (!isSupabaseConfigured() || !supabase) {
+    throw new Error('Chat storage is not configured (missing SUPABASE_URL / SUPABASE key)')
+  }
+
   const { data, error } = await supabase
     .from(TABLE_NAME)
     .insert({
@@ -22,6 +26,10 @@ export const saveMessage = async ({ chatId, senderId, content, type = 'text' }) 
 }
 
 export const getMessagesByChatId = async (chatId) => {
+  if (!isSupabaseConfigured() || !supabase) {
+    throw new Error('Chat storage is not configured (missing SUPABASE_URL / SUPABASE key)')
+  }
+
   const { data, error } = await supabase
     .from(TABLE_NAME)
     .select('id, chat_id, sender_id, content, type, created_at')
