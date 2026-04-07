@@ -25,7 +25,7 @@ services:
     build:
       context: ./D-Lite-api-gateway
       network: host
-    env_file: ./.env
+    env_file: ./D-Lite-api-gateway/.env
     environment:
       GATEWAY_PORT: ${GATEWAY_PORT:-4000}
       AUTH_SERVICE_URL: http://auth-service:${AUTH_PORT:-4001}
@@ -46,7 +46,7 @@ services:
     build:
       context: ./D-Lite-auth-service
       network: host
-    env_file: ./.env
+    env_file: ./D-Lite-auth-service/.env
     environment:
       PORT: ${AUTH_PORT:-4001}
       NODE_ENV: ${NODE_ENV:-production}
@@ -59,7 +59,7 @@ services:
     build:
       context: ./D-Lite-chat-service
       network: host
-    env_file: ./.env
+    env_file: ./D-Lite-chat-service/.env
     environment:
       PORT: ${CHAT_PORT:-4002}
       NODE_ENV: ${NODE_ENV:-production}
@@ -72,7 +72,7 @@ services:
     build:
       context: ./D-Lite-call-service
       network: host
-    env_file: ./.env
+    env_file: ./D-Lite-call-service/.env
     environment:
       PORT: ${CALL_PORT:-4003}
       NODE_ENV: ${NODE_ENV:-production}
@@ -101,7 +101,7 @@ services:
     build:
       context: ./D-Lite-media-service
       network: host
-    env_file: ./.env
+    env_file: ./D-Lite-media-service/.env
     environment:
       PORT: ${MEDIA_PORT:-4004}
       NODE_ENV: ${NODE_ENV:-production}
@@ -116,7 +116,7 @@ services:
     build:
       context: ./D-Lite-backup-worker
       network: host
-    env_file: ./.env
+    env_file: ./D-Lite-backup-worker/.env
     environment:
       NODE_ENV: ${NODE_ENV:-production}
     depends_on:
@@ -142,7 +142,7 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
         NEXT_PUBLIC_ICE_SERVERS_JSON: ${NEXT_PUBLIC_ICE_SERVERS_JSON:-[{"urls":["stun:stun.l.google.com:19302"]}]}
-    env_file: ./.env
+    env_file: ./frontend-service/.env
     environment:
       NODE_ENV: ${NODE_ENV:-production}
     ports:

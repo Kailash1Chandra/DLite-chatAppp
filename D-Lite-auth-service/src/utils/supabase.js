@@ -7,7 +7,12 @@ const looksLikePlaceholder = (value) => {
   if (!value) return true
   const v = String(value).trim()
   if (!v) return true
-  return v.includes('your-project-id') || v.includes('your-supabase-anon-key')
+  if (v.includes('your-project-id') || v.includes('your-supabase-anon-key')) return true
+  // Common placeholders people paste while testing.
+  if (v.includes('xxxx.supabase.co') || v.includes('example.supabase.co')) return true
+  // Truncated keys like "eyJ......"
+  if (/\.\.\./.test(v) || /\.{5,}/.test(v)) return true
+  return false
 }
 
 export const isSupabaseConfigured = () => Boolean(!looksLikePlaceholder(supabaseUrl) && !looksLikePlaceholder(supabaseAnonKey))
