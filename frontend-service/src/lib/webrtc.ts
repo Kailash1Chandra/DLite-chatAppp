@@ -1,8 +1,22 @@
 import { IceCandidatePayload } from "@/types/call";
 
-export const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-];
+function readIceServersFromEnv(): RTCIceServer[] | null {
+  // Accept JSON to support TURN credentials without complex parsing.
+  // Example:
+  // NEXT_PUBLIC_ICE_SERVERS_JSON='[{"urls":["stun:stun.l.google.com:19302"]},{"urls":["turn:turn.example.com:3478"],"username":"u","credential":"p"}]'
+  const raw = process.env.NEXT_PUBLIC_ICE_SERVERS_JSON;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed as RTCIceServer[];
+  } catch {
+    return null;
+  }
+}
+
+export const DEFAULT_ICE_SERVERS: RTCIceServer[] =
+  readIceServersFromEnv() ?? [{ urls: "stun:stun.l.google.com:19302" }];
 
 interface CreatePeerConnectionArgs {
   onIceCandidate?: (candidate: IceCandidatePayload) => void;

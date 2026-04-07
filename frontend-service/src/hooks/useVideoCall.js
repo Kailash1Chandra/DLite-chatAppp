@@ -9,13 +9,7 @@ import {
   subscribeToRoomPresence,
   subscribeToVideoSignals
 } from '../services/videoClient';
-
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' }, 
-    { urls: 'stun:stun1.l.google.com:19302' }
-  ]
-};
+import { DEFAULT_ICE_SERVERS } from '@/lib/webrtc';
 
 export function useVideoCall({ userId, roomId }) {
   const pcRef = useRef(null);
@@ -102,7 +96,7 @@ export function useVideoCall({ userId, roomId }) {
   const buildPeerConnection = useCallback(() => {
     pendingIceCandidatesRef.current = [];
     remoteDescriptionSetRef.current = false;
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc = new RTCPeerConnection({ iceServers: DEFAULT_ICE_SERVERS });
     pcRef.current = pc;
 
     pc.ontrack = (ev) => {

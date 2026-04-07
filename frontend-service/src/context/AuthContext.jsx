@@ -6,6 +6,8 @@ import {
   loginWithGoogle as loginWithGoogleAuth,
   loginWithAuth,
   logoutFromAuth,
+  requestLoginOtp,
+  verifyLoginOtp,
   registerWithAuth,
   subscribeToAuthState
 } from '../services/authClient';
@@ -54,9 +56,8 @@ export function AuthProvider({ children }) {
   };
 
   const loginWithGoogle = async () => {
-    const snapshot = await loginWithGoogleAuth();
-    setToken(snapshot.token);
-    setUser(snapshot.user);
+    // OAuth redirects away; snapshot may be null at this moment.
+    await loginWithGoogleAuth();
   };
 
   const register = async (username, email, password) => {
@@ -71,6 +72,16 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const requestOtp = async (email) => {
+    await requestLoginOtp(email);
+  };
+
+  const verifyOtp = async (email, code) => {
+    const snapshot = await verifyLoginOtp({ email, token: code });
+    setToken(snapshot.token);
+    setUser(snapshot.user);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -78,6 +89,8 @@ export function AuthProvider({ children }) {
         user,
         login,
         loginWithGoogle,
+        requestOtp,
+        verifyOtp,
         register,
         logout,
         isAuthenticated: !!token,

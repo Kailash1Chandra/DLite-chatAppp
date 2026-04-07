@@ -1,4 +1,23 @@
 services:
+  turn:
+    image: coturn/coturn:4.6
+    command:
+      - -n
+      - --log-file=stdout
+      - --min-port=49160
+      - --max-port=49200
+      - --realm=${TURN_REALM:-dlite}
+      - --external-ip=${TURN_EXTERNAL_IP:-}
+      - --user=${TURN_USER:-dlite}:${TURN_PASSWORD:-dlite}
+      - --fingerprint
+      - --no-multicast-peers
+      - --no-cli
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-49200:49160-49200/udp"
+    restart: unless-stopped
+
   api-gateway:
     build:
       context: ./D-Lite-api-gateway
@@ -110,6 +129,9 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://api-gateway:4000}
         NEXT_PUBLIC_CHAT_SOCKET_URL: ${NEXT_PUBLIC_CHAT_SOCKET_URL:-http://chat-service:4002}
         NEXT_PUBLIC_CALL_SOCKET_URL: ${NEXT_PUBLIC_CALL_SOCKET_URL:-http://call-service:4003}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+        NEXT_PUBLIC_ICE_SERVERS_JSON: ${NEXT_PUBLIC_ICE_SERVERS_JSON:-[{"urls":["stun:stun.l.google.com:19302"]}]}
     ports:
       - "3000:3000"
     depends_on:

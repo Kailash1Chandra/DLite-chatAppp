@@ -13,11 +13,14 @@ import { AuthPageBackground } from '@/components/AuthPageBackground';
 import { toAuthErrorMessage } from '@/lib/authErrors';
 
 export default function LoginPage() {
-  const { login, loginWithGoogle, isAuthenticated, user, loading: authLoading, logout } = useAuth();
+  const { login, loginWithGoogle, requestOtp, verifyOtp, isAuthenticated, user, loading: authLoading, logout } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [otpSubmitting, setOtpSubmitting] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
 
@@ -40,11 +43,36 @@ export default function LoginPage() {
     setError('');
     try {
       await loginWithGoogle();
-      router.push('/dashboard');
     } catch (err) {
       setError(toAuthErrorMessage(err, 'google'));
     } finally {
       setGoogleSubmitting(false);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    setOtpSubmitting(true);
+    setError('');
+    try {
+      await requestOtp(email);
+      setOtpSent(true);
+    } catch (err) {
+      setError(toAuthErrorMessage(err, 'login'));
+    } finally {
+      setOtpSubmitting(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    setOtpSubmitting(true);
+    setError('');
+    try {
+      await verifyOtp(email, otpCode);
+      router.push('/dashboard');
+    } catch (err) {
+      setError(toAuthErrorMessage(err, 'login'));
+    } finally {
+      setOtpSubmitting(false);
     }
   };
 
@@ -147,6 +175,25 @@ export default function LoginPage() {
             <LogIn className="mr-2 h-4 w-4" />
             {submitting ? 'Logging in…' : 'Login'}
           </Button>
+
+          <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-3 text-xs text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+            <div className="font-semibold text-slate-700 dark:text-slate-200">Login with email code (OTP)</div>
+            <p className="mt-1">We will send a one-time code to your email. Enter it below to sign in.</p>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="secondary" className="sm:flex-1" disabled={!email || otpSubmitting} onClick={handleSendOtp}>
+                {otpSubmitting ? 'Sending…' : otpSent ? 'Resend code' : 'Send code'}
+              </Button>
+              <input
+                className="input sm:flex-1"
+                placeholder="Enter code"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value)}
+              />
+              <Button type="button" className="sm:flex-1" disabled={!otpCode || !email || otpSubmitting} onClick={handleVerifyOtp}>
+                {otpSubmitting ? 'Verifying…' : 'Verify'}
+              </Button>
+            </div>
+          </div>
 
           <div className="flex items-center gap-2 py-1">
             <div className="h-px flex-1 bg-slate-200 dark:bg-white/10" />

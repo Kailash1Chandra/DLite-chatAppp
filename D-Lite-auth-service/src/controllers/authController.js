@@ -17,12 +17,19 @@ export const signup = async (req, res, next) => {
       })
     }
 
-    const { email, password } = req.body
+    const { email, password, username } = req.body
 
     // Supabase creates the user and returns the authenticated session when allowed.
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: username
+        ? {
+            data: {
+              username: String(username).trim(),
+            },
+          }
+        : undefined,
     })
 
     if (error) {
@@ -79,4 +86,77 @@ export const getCurrentUser = async (req, res) => {
       user: req.user,
     },
   })
+}
+
+export const requestEmailOtp = async (req, res, next) => {
+  try {
+    if (!isSupabaseConfigured() || !supabase) {
+      return res.status(503).json({
+        success: false,
+        message: 'Auth service is not configured (missing SUPABASE_URL / SUPABASE_ANON_KEY)',
+      })
+    }
+
+    const email = String(req.body?.email || '').trim()
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'email is required' })
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        // Optional: use SUPABASE_SITE_URL in Supabase dashboard too
+        emailRedirectTo: req.body?.redirectTo || undefined,
+      },
+    })
+
+    if (error) {
+      error.status = 400
+      throw error
+    }
+
+    return res.json({
+      success: true,
+      message: 'OTP sent to your email',
+      data: { ok: true },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const verifyEmailOtp = async (req, res, next) => {
+  try {
+    if (!isSupabaseConfigured() || !supabase) {
+      return res.status(503).json({
+        success: false,
+        message: 'Auth service is not configured (missing SUPABASE_URL / SUPABASE_ANON_KEY)',
+      })
+    }
+
+    const email = String(req.body?.email || '').trim()
+    const token = String(req.body?.token || '').trim()
+    if (!email || !token) {
+      return res.status(400).json({ success: false, message: 'email and token are required' })
+    }
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'email',
+    })
+
+    if (error) {
+      error.status = 401
+      throw error
+    }
+
+    return res.json({
+      success: true,
+      message: 'OTP verified',
+      data: formatAuthResponse(data),
+    })
+  } catch (error) {
+    next(error)
+  }
 }

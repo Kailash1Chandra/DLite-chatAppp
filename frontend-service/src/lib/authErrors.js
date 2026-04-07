@@ -62,6 +62,10 @@ export function toAuthErrorMessage(error, mode = 'generic') {
     return 'This username is already taken.'
   }
 
+  if (code === 'auth/email-required') {
+    return 'Email is required.'
+  }
+
   if (mode === 'google') return 'Google sign-in failed. Please try again.'
   if (mode === 'register') return 'Registration failed. Please try again.'
   if (mode === 'login') return 'Login failed. Please try again.'

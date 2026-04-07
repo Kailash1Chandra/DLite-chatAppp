@@ -1,3 +1,4 @@
+import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient'
 const GATEWAY_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000'
 
 function sanitizeUsername(value) {
@@ -53,8 +54,6 @@ async function requestJson(path, { method = 'GET', body, token } = {}) {
   return payload?.data ?? payload
 }
 
-// Username uniqueness is enforced in Supabase by storing it in user_metadata.
-// If you want strict global uniqueness, enforce it with a unique table/constraint in Supabase.
 export async function registerWithAuth({ username, email, password }) {
   const { raw, lower } = sanitizeUsername(username)
   if (!lower) {
@@ -85,21 +84,62 @@ export async function loginWithAuth({ email, password }) {
 }
 
 export async function loginWithGoogle() {
-  const error = new Error('Google sign-in via backend is not implemented yet.')
-  error.code = 'auth/operation-not-allowed'
-  throw error
+  if (!isSupabaseConfigured() || !supabase) {
+    const error = new Error('Google sign-in is not configured.')
+    error.code = 'auth/not-configured'
+    throw error
+  }
+
+  const redirectTo = `${window.location.origin}/auth/callback`
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo },
+  })
+  if (error) throw error
+  // Redirect happens automatically in browser; return a noop snapshot.
+  return { token: null, user: null, url: data?.url }
 }
 
 export async function logoutFromAuth() {
-  return
+  if (supabase) {
+    await supabase.auth.signOut().catch(() => undefined)
+  }
 }
 
 export async function getCurrentAuthSnapshot() {
-  return { token: null, user: null }
+  if (!supabase) return { token: null, user: null }
+  const { data } = await supabase.auth.getSession()
+  const session = data?.session
+  if (!session) return { token: null, user: null }
+  return parseAuthResponse({ accessToken: session.access_token, user: session.user })
 }
 
 export function subscribeToAuthState(handler) {
-  handler(null)
-  return () => undefined
+  if (!supabase) {
+    handler(null)
+    return () => undefined
+  }
+  // Emit initial
+  supabase.auth.getSession().then(({ data }) => handler(data?.session?.user || null)).catch(() => handler(null))
+  const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    handler(session?.user || null)
+  })
+  return () => sub?.subscription?.unsubscribe?.()
+}
+
+export async function requestLoginOtp(email) {
+  const e = String(email || '').trim()
+  if (!e) {
+    const error = new Error('Email is required.')
+    error.code = 'auth/email-required'
+    throw error
+  }
+  await requestJson('/auth/otp/request', { method: 'POST', body: { email: e, redirectTo: `${window.location.origin}/auth/callback` } })
+  return { ok: true }
+}
+
+export async function verifyLoginOtp({ email, token }) {
+  const data = await requestJson('/auth/otp/verify', { method: 'POST', body: { email, token } })
+  return parseAuthResponse(data)
 }
 
