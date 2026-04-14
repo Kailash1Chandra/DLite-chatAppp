@@ -2,22 +2,10 @@ services:
   core-backend:
     build:
       context: ./core-backend
+    env_file:
+      - ./core-backend/.env
     environment:
       PORT: ${CORE_PORT:-4000}
-      NODE_ENV: ${NODE_ENV:-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      # Shared DB/auth config
-      SUPABASE_URL: ${SUPABASE_URL:-}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
-      JWT_SECRET: ${JWT_SECRET:-}
-      # Media
-      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-50}
-      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
-      CLOUDINARY_FOLDER: ${CLOUDINARY_FOLDER:-d-lite/media}
     ports:
       - "${CORE_PORT:-4000}:4000"
     restart: unless-stopped
@@ -39,14 +27,10 @@ services:
   realtime-service:
     build:
       context: ./realtime-service
+    env_file:
+      - ./realtime-service/.env
     environment:
       PORT: ${REALTIME_PORT:-4003}
-      NODE_ENV: ${NODE_ENV:-production}
-      SUPABASE_URL: ${SUPABASE_URL:-}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
-      JWT_SECRET: ${JWT_SECRET:-}
     ports:
       - "${REALTIME_PORT:-4003}:4003"
     restart: unless-stopped
@@ -68,12 +52,9 @@ services:
   worker-service:
     build:
       context: ./worker-service
+    env_file:
+      - ./worker-service/.env
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
-      SUPABASE_URL: ${SUPABASE_URL:-}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
-      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-300}
-      BACKUP_BATCH_SIZE: ${BACKUP_BATCH_SIZE:-500}
       BACKUP_OUTPUT_DIR: /data
     volumes:
       - worker_data:/data
@@ -92,6 +73,8 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
         NEXT_PUBLIC_ICE_SERVERS_JSON: ${NEXT_PUBLIC_ICE_SERVERS_JSON:-[{"urls":["stun:stun.l.google.com:19302"]}]}
+    env_file:
+      - ./frontend-service/.env
     environment:
       NODE_ENV: ${NODE_ENV:-production}
     ports:

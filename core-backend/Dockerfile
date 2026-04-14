@@ -18,6 +18,6 @@ USER app
 ENV PORT=4000
 ENV UVICORN_WORKERS=2
 ENV UVICORN_LOG_LEVEL=info
-EXPOSE 4000
+EXPOSE 10000
 
-CMD ["sh", "-lc", "uvicorn app.main:app --host 0.0.0.0 --port 4000 --workers ${UVICORN_WORKERS} --proxy-headers --forwarded-allow-ips='*' --log-level ${UVICORN_LOG_LEVEL}"]
+CMD ["sh", "-lc", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --workers ${UVICORN_WORKERS} --proxy-headers --forwarded-allow-ips='*' --log-level ${UVICORN_LOG_LEVEL}"]

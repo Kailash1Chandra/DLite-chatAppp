@@ -18,6 +18,6 @@ USER app
 ENV PORT=4003
 ENV UVICORN_WORKERS=1
 ENV UVICORN_LOG_LEVEL=info
-EXPOSE 4003
+EXPOSE 10000
 
-CMD ["sh", "-lc", "uvicorn app.main:asgi_app --host 0.0.0.0 --port 4003 --workers ${UVICORN_WORKERS} --proxy-headers --forwarded-allow-ips='*' --log-level ${UVICORN_LOG_LEVEL}"]
+CMD ["sh", "-lc", "uvicorn app.main:asgi_app --host 0.0.0.0 --port ${PORT:-10000} --workers ${UVICORN_WORKERS} --proxy-headers --forwarded-allow-ips='*' --log-level ${UVICORN_LOG_LEVEL}"]
