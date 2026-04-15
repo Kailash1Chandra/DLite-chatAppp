@@ -62,6 +62,22 @@ services:
     networks:
       - public
 
+  # Optional local MongoDB for Next.js message backup API routes.
+  # In production, prefer MongoDB Atlas and set MONGODB_URI on `frontend-service`.
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - public
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "mongodb://localhost:27017/admin", "--eval", "db.runCommand({ ping: 1 })"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   frontend-service:
     build:
       context: ./frontend-service
@@ -81,6 +97,9 @@ services:
       # (Render/Railway inject PORT=10000-style values; that's handled by the platform, not compose).
       PORT: 3000
       HOSTNAME: 0.0.0.0
+      # Optional MongoDB (used by Next.js API routes like /api/message-backup)
+      MONGODB_URI: ${MONGODB_URI:-}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-}
     ports:
       - "3000:3000"
     depends_on:
@@ -88,12 +107,15 @@ services:
         condition: service_healthy
       realtime-service:
         condition: service_healthy
+      mongo:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - public
 
 volumes:
   worker_data:
+  mongo_data:
 
 networks:
   public:

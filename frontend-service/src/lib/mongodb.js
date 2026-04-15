@@ -6,20 +6,37 @@ const uri = process.env.MONGODB_URI || process.env.NEXT_PUBLIC_MONGODB_URI;
 const dbName = process.env.MONGODB_DB_NAME || process.env.NEXT_PUBLIC_MONGODB_DB_NAME || 'd_lite_backup';
 
 let client;
-let clientPromise;
+let clientPromise; // may be reset on transient failures
 let indexesPromise;
 
-if (uri) {
+function _connect() {
+  client = new MongoClient(uri);
+  return client.connect();
+}
+
+function _getClientPromise() {
+  if (!uri) return null;
+
+  // In dev, reuse across HMR reloads.
   if (process.env.NODE_ENV === 'development') {
     if (!global._mongoClientPromise) {
-      client = new MongoClient(uri);
-      global._mongoClientPromise = client.connect();
+      global._mongoClientPromise = _connect().catch((e) => {
+        // Allow a later retry if e.g. DNS/boot ordering failed.
+        global._mongoClientPromise = undefined;
+        throw e;
+      });
     }
-    clientPromise = global._mongoClientPromise;
-  } else {
-    client = new MongoClient(uri);
-    clientPromise = client.connect();
+    return global._mongoClientPromise;
   }
+
+  if (!clientPromise) {
+    clientPromise = _connect().catch((e) => {
+      // Reset so the next request can retry.
+      clientPromise = undefined;
+      throw e;
+    });
+  }
+  return clientPromise;
 }
 
 export function isMongoBackupConfigured() {
@@ -27,15 +44,16 @@ export function isMongoBackupConfigured() {
 }
 
 export async function getMongoDb() {
-  if (!clientPromise) {
+  const p = _getClientPromise();
+  if (!p) {
     throw new Error('MongoDB backup is not configured.');
   }
-  const connectedClient = await clientPromise;
+  const connectedClient = await p;
   return connectedClient.db(dbName);
 }
 
 export async function ensureMessageBackupIndexes() {
-  if (!clientPromise) return;
+  if (!_getClientPromise()) return;
   if (!indexesPromise) {
     indexesPromise = (async () => {
       const db = await getMongoDb();
