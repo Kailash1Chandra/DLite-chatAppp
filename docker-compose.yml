@@ -100,7 +100,7 @@ services:
       # Optional MongoDB (used by Next.js API routes like /api/message-backup)
       MONGODB_URI: ${MONGODB_URI:-}
       MONGODB_DB_NAME: ${MONGODB_DB_NAME:-}
-    ports:
+    ports:MONGODB_URI = mongodb+srv://USER:PASS@cluster0.xxxx.mongodb.net/?retryWrites=true&w=majority
       - "3000:3000"
     depends_on:
       core-backend:
