@@ -36,3 +36,19 @@ This project is configured to use **Supabase Auth** (no local-auth fallback).
 - **`NEXT_PUBLIC_SUPABASE_URL`**
 - **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**
 
+## `worker-service` (backups)
+
+This service periodically exports messages from Supabase and writes them to disk (JSON files).
+
+### Required
+- **`SUPABASE_URL`**
+- **`SUPABASE_SERVICE_ROLE_KEY`** (required)
+
+### Worker settings
+- **`PORT`**: default `10000` (only for the status server)
+- **`WORKER_HTTP_ENABLED`**: `1` to expose `/health` + `/status` (default `1`)
+- **`BACKUP_INTERVAL_SECONDS`**: default `300`
+- **`BACKUP_BATCH_SIZE`**: default `500`
+- **`BACKUP_OUTPUT_DIR`**: default `/data`
+- **`BACKUP_STATE_FILE`**: default `/data/state.json`
+
