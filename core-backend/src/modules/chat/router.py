@@ -13,7 +13,9 @@ router = APIRouter()
 
 
 def _sb_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    key = sb_key()
+    # Prefer service role for server-side reads to avoid RLS blocking lookups
+    # (endpoint access is still gated by auth token validation).
+    key = sb_service_role_key() or sb_key()
     headers = {
         "apikey": key,
         "authorization": f"Bearer {key}",

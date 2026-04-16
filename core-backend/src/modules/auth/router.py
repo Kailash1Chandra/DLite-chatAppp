@@ -136,6 +136,34 @@ async def _ensure_user_profile_row(*, user_id: str, email: str, username: Option
         await client.post(url, headers=_supabase_db_headers({"prefer": "resolution=merge-duplicates,return=minimal"}), json=payload)
 
 
+def _extract_user_identity(auth_json: Dict[str, Any]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Extract (user_id, email, username) from Supabase auth payloads.
+
+    Supabase responses vary (signup returns {user, session?}; login returns tokens).
+    For login we may need a follow-up /auth/v1/user call, so this helper only extracts
+    what is already present.
+    """
+    data = auth_json or {}
+    user = data.get("user") or {}
+    user_id = user.get("id")
+    email = user.get("email")
+    meta = user.get("user_metadata") or {}
+    username = meta.get("username")
+    return user_id, email, username
+
+
+async def _fetch_supabase_user(*, access_token: str) -> Optional[Dict[str, Any]]:
+    if not access_token or looks_placeholder(SUPABASE_URL) or looks_placeholder(SUPABASE_ANON_KEY):
+        return None
+    url = f"{SUPABASE_URL.rstrip('/')}/auth/v1/user"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(url, headers=_supabase_headers({"authorization": f"Bearer {access_token}"}))
+    if r.status_code >= 400:
+        return None
+    return r.json() or None
+
+
 @router.post("/signup")
 async def signup(req: Request):
     body = await req.json()
@@ -239,6 +267,15 @@ async def signup(req: Request):
 
         return JSONResponse(status_code=400, content={"success": False, "message": msg_text})
 
+    # Ensure the profile row exists so chat user-search works.
+    try:
+        auth_json = r.json() or {}
+        user_id, sb_email, sb_username = _extract_user_identity(auth_json)
+        # Prefer explicit signup username (if provided).
+        await _ensure_user_profile_row(user_id=user_id or "", email=(sb_email or email), username=(username_norm or sb_username))
+    except Exception:
+        pass
+
     return JSONResponse(
         status_code=201,
         content={"success": True, "message": "Signup successful", "data": _format_auth_response(r.json())},
@@ -299,6 +336,20 @@ async def login(req: Request):
                 )
 
         return JSONResponse(status_code=401, content={"success": False, "message": msg_text})
+
+    # Ensure the profile row exists so chat user-search works (covers existing accounts too).
+    try:
+        auth_json = r.json() or {}
+        access_token = (auth_json.get("access_token") or (auth_json.get("session") or {}).get("access_token") or "").strip()
+        sb_user = await _fetch_supabase_user(access_token=access_token)
+        if sb_user:
+            user_id = sb_user.get("id") or ""
+            sb_email = sb_user.get("email") or ""
+            sb_username = ((sb_user.get("user_metadata") or {}).get("username") or "").strip() or None
+            if user_id and sb_email and sb_username:
+                await _ensure_user_profile_row(user_id=user_id, email=sb_email, username=sb_username)
+    except Exception:
+        pass
 
     return JSONResponse(
         status_code=200,
