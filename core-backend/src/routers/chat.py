@@ -58,7 +58,16 @@ async def search_users(username: str = "", exclude: str = "", authorization: Opt
     async with httpx.AsyncClient(timeout=15.0) as client:
         r = await client.get(url, headers=headers, params=params)
     if r.status_code >= 400:
-        return JSONResponse(status_code=503, content={"success": False, "message": "User search is unavailable"})
+        # Surface a safe upstream hint to make configuration issues debuggable.
+        upstream_text = (r.text or "").strip()
+        if len(upstream_text) > 300:
+            upstream_text = upstream_text[:300] + "…"
+        hint = f"Supabase error ({r.status_code})"
+        if upstream_text:
+            hint = f"{hint}: {upstream_text}"
+        if not SUPABASE_SERVICE_ROLE_KEY:
+            hint = f"{hint} (note: SUPABASE_SERVICE_ROLE_KEY is not set on core-backend)"
+        return JSONResponse(status_code=503, content={"success": False, "message": hint})
     return {"success": True, "users": await safe_json_list(r)}
 
 
