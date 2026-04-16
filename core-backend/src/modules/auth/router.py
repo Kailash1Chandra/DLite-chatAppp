@@ -224,12 +224,19 @@ async def signup(req: Request):
             )
 
     if r.status_code >= 400:
-        msg = None
+        err_json: Dict[str, Any] = {}
         if r.headers.get("content-type", "").startswith("application/json"):
-            msg = (r.json() or {}).get("msg")
+            err_json = r.json() or {}
+        msg = (
+            err_json.get("msg")
+            or err_json.get("error_description")
+            or err_json.get("error")
+            or err_json.get("message")
+        )
         msg_text = (msg or r.text or "Signup failed") or "Signup failed"
 
-        return JSONResponse(status_code=r.status_code if r.status_code in (400, 401, 403, 409, 422, 429) else 400, content={"success": False, "message": msg_text})
+        status_code = r.status_code if r.status_code in (400, 401, 403, 409, 422, 429) else 400
+        return JSONResponse(status_code=status_code, content={"success": False, "message": msg_text})
 
     # Ensure the profile row exists so chat user-search works.
     try:
