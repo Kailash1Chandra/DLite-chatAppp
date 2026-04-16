@@ -215,23 +215,12 @@ async def signup(req: Request):
         try:
             r = await client.post(url, headers=_supabase_headers(), json=payload)
         except httpx.HTTPError:
-            user = LocalUser(
-                id=str(uuid.uuid4()),
-                email=email,
-                username=username_norm,
-                password_hash=_hash_password(password),
-            )
-            _local_users_by_email[email] = user
-            if username_norm:
-                _local_users_by_username[username_norm.lower()] = user
-            try:
-                await _ensure_user_profile_row(user_id=user.id, email=user.email, username=user.username)
-            except Exception:
-                pass
-            auth_data = _issue_local_tokens(user)
+            # Do not fall back to local signup when Supabase mode is enabled.
+            # Otherwise users can end up in public.users without auth.users entry,
+            # causing "signup works but login fails" in production.
             return JSONResponse(
-                status_code=201,
-                content={"success": True, "message": "Signup successful", "data": _format_auth_response(auth_data)},
+                status_code=503,
+                content={"success": False, "message": "Auth provider is unreachable. Please try again."},
             )
 
     if r.status_code >= 400:
@@ -240,32 +229,7 @@ async def signup(req: Request):
             msg = (r.json() or {}).get("msg")
         msg_text = (msg or r.text or "Signup failed") or "Signup failed"
 
-        # Some auth providers validate email with a stricter-than-RFC regex (e.g. reject underscores).
-        # To avoid blocking the whole app, fall back to local auth for provider-side validation/limits.
-        lowered = msg_text.lower()
-        if ("email" in lowered and "invalid" in lowered) or ("rate limit" in lowered):
-            if email in _local_users_by_email:
-                return JSONResponse(status_code=409, content={"success": False, "message": "User already registered"})
-            user = LocalUser(
-                id=str(uuid.uuid4()),
-                email=email,
-                username=username_norm,
-                password_hash=_hash_password(password),
-            )
-            _local_users_by_email[email] = user
-            if username_norm:
-                _local_users_by_username[username_norm.lower()] = user
-            try:
-                await _ensure_user_profile_row(user_id=user.id, email=user.email, username=user.username)
-            except Exception:
-                pass
-            auth_data = _issue_local_tokens(user)
-            return JSONResponse(
-                status_code=201,
-                content={"success": True, "message": "Signup successful", "data": _format_auth_response(auth_data)},
-            )
-
-        return JSONResponse(status_code=400, content={"success": False, "message": msg_text})
+        return JSONResponse(status_code=r.status_code if r.status_code in (400, 401, 403, 409, 422, 429) else 400, content={"success": False, "message": msg_text})
 
     # Ensure the profile row exists so chat user-search works.
     try:
@@ -309,13 +273,9 @@ async def login(req: Request):
         try:
             r = await client.post(url, headers=_supabase_headers(), json={"email": email, "password": password})
         except httpx.HTTPError:
-            user = _local_users_by_email.get(email)
-            if not user or not _verify_password(password, user.password_hash):
-                return JSONResponse(status_code=401, content={"success": False, "message": "Invalid email or password"})
-            auth_data = _issue_local_tokens(user)
             return JSONResponse(
-                status_code=200,
-                content={"success": True, "message": "Login successful", "data": _format_auth_response(auth_data)},
+                status_code=503,
+                content={"success": False, "message": "Auth provider is unreachable. Please try again."},
             )
 
     if r.status_code >= 400:
@@ -329,17 +289,6 @@ async def login(req: Request):
             or err_json.get("message")
         )
         msg_text = (msg or r.text or "Invalid email or password") or "Invalid email or password"
-
-        # Same fallback as signup: avoid strict email regex blocking logins for locally-created users.
-        lowered = msg_text.lower()
-        if ("email" in lowered and "invalid" in lowered) or ("rate limit" in lowered):
-            user = _local_users_by_email.get(email)
-            if user and _verify_password(password, user.password_hash):
-                auth_data = _issue_local_tokens(user)
-                return JSONResponse(
-                    status_code=200,
-                    content={"success": True, "message": "Login successful", "data": _format_auth_response(auth_data)},
-                )
 
         # Preserve provider status/message so frontend can show exact reason
         # (e.g. email not confirmed vs invalid credentials).
