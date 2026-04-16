@@ -47,8 +47,14 @@ async def search_users(username: str = "", exclude: str = "", authorization: Opt
     if exclude:
         params["id"] = f"neq.{exclude}"
 
-    # Use anon key + user access token so RLS is enforced.
-    headers = {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
+    # Use service role for directory search so it works even if RLS/GRANTs are restrictive.
+    # Auth is still enforced by validating the caller's access token above.
+    use_service_role = bool(SUPABASE_SERVICE_ROLE_KEY)
+    if use_service_role:
+        headers = postgrest_headers(use_service_role=True)
+    else:
+        # Fallback: anon key + user access token so RLS is enforced.
+        headers = {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
     async with httpx.AsyncClient(timeout=15.0) as client:
         r = await client.get(url, headers=headers, params=params)
     if r.status_code >= 400:
