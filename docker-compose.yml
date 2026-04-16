@@ -3,7 +3,7 @@ services:
     build:
       context: ./core-backend
     env_file:
-      - ./core-backend/.env
+      - ./.env
     environment:
       PORT: ${CORE_PORT:-4000}
     ports:
@@ -28,7 +28,7 @@ services:
     build:
       context: ./realtime-service
     env_file:
-      - ./realtime-service/.env
+      - ./.env
     environment:
       PORT: ${REALTIME_PORT:-4003}
     ports:
@@ -53,7 +53,7 @@ services:
     build:
       context: ./worker-service
     env_file:
-      - ./worker-service/.env
+      - ./.env
     environment:
       BACKUP_OUTPUT_DIR: /data
       # Make worker run as an HTTP web service (useful for status endpoints).
@@ -101,13 +101,20 @@ services:
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
         NEXT_PUBLIC_ICE_SERVERS_JSON: ${NEXT_PUBLIC_ICE_SERVERS_JSON:-[{"urls":["stun:stun.l.google.com:19302"]}]}
     env_file:
-      - ./frontend-service/.env
+      - ./.env
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       # In local docker-compose we publish 3000:3000, so force the container to listen on 3000
       # (Render/Railway inject PORT=10000-style values; that's handled by the platform, not compose).
       PORT: 3000
       HOSTNAME: 0.0.0.0
+      # Next.js (server/runtime). Build-time values are set via build args above, but keeping these
+      # here makes local `docker compose up` behavior predictable if you rebuild without cache.
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://core-backend:4000}
+      NEXT_PUBLIC_CHAT_SOCKET_URL: ${NEXT_PUBLIC_CHAT_SOCKET_URL:-http://realtime-service:4003}
+      NEXT_PUBLIC_CALL_SOCKET_URL: ${NEXT_PUBLIC_CALL_SOCKET_URL:-http://realtime-service:4003}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
       # Optional MongoDB (used by Next.js API routes like /api/message-backup)
       MONGODB_URI: ${MONGODB_URI:-}
       MONGODB_DB_NAME: ${MONGODB_DB_NAME:-}

@@ -319,9 +319,15 @@ async def login(req: Request):
             )
 
     if r.status_code >= 400:
-        msg = None
+        err_json: Dict[str, Any] = {}
         if r.headers.get("content-type", "").startswith("application/json"):
-            msg = (r.json() or {}).get("msg")
+            err_json = r.json() or {}
+        msg = (
+            err_json.get("msg")
+            or err_json.get("error_description")
+            or err_json.get("error")
+            or err_json.get("message")
+        )
         msg_text = (msg or r.text or "Invalid email or password") or "Invalid email or password"
 
         # Same fallback as signup: avoid strict email regex blocking logins for locally-created users.
@@ -335,7 +341,10 @@ async def login(req: Request):
                     content={"success": True, "message": "Login successful", "data": _format_auth_response(auth_data)},
                 )
 
-        return JSONResponse(status_code=401, content={"success": False, "message": msg_text})
+        # Preserve provider status/message so frontend can show exact reason
+        # (e.g. email not confirmed vs invalid credentials).
+        status_code = r.status_code if r.status_code in (400, 401, 403, 429) else 401
+        return JSONResponse(status_code=status_code, content={"success": False, "message": msg_text})
 
     # Ensure the profile row exists so chat user-search works (covers existing accounts too).
     try:

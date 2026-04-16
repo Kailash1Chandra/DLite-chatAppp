@@ -65,6 +65,8 @@ docker-compose.yml        # Full stack (Docker)
 
 Configuration is now unified via root `.env` (see `.env.example`).
 
+For **production deployments where each service is hosted separately**, see `docs/ENVIRONMENT_VARIABLES.md`.
+
 ### Required for full functionality
 
 - **Supabase (auth/chat storage/backups)**

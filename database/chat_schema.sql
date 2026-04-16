@@ -46,6 +46,31 @@ create table if not exists public.messages (
   created_at timestamptz not null default now()
 );
 
+-- Message read receipts (per-user per-message)
+create table if not exists public.message_reads (
+  message_id uuid not null references public.messages(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  read_at timestamptz default now(),
+  primary key (message_id, user_id)
+);
+
+-- Presence (one row per user)
+create table if not exists public.presence (
+  user_id uuid not null references public.users(id) on delete cascade,
+  status text default 'offline' check (status in ('online', 'offline')),
+  last_seen timestamptz default now(),
+  primary key (user_id)
+);
+
+-- Typing indicator (per-user per-chat)
+create table if not exists public.typing_status (
+  user_id uuid not null references public.users(id) on delete cascade,
+  chat_id uuid not null references public.chats(id) on delete cascade,
+  is_typing boolean default false,
+  updated_at timestamptz default now(),
+  primary key (user_id, chat_id)
+);
+
 -- ============================================================================
 -- Indexes
 -- ============================================================================
@@ -61,3 +86,12 @@ create index if not exists idx_messages_chat_id_created_at
 
 create index if not exists idx_messages_sender_id on public.messages(sender_id);
 create index if not exists idx_messages_created_at on public.messages(created_at desc);
+
+create index if not exists idx_message_reads_user_id on public.message_reads(user_id);
+create index if not exists idx_message_reads_read_at on public.message_reads(read_at desc);
+
+create index if not exists idx_presence_status on public.presence(status);
+create index if not exists idx_presence_last_seen on public.presence(last_seen desc);
+
+create index if not exists idx_typing_status_chat_id on public.typing_status(chat_id);
+create index if not exists idx_typing_status_updated_at on public.typing_status(updated_at desc);
