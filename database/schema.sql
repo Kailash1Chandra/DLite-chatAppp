@@ -1,0 +1,318 @@
+-- ============================================================================
+-- D-Lite (Supabase) canonical schema + RLS
+-- ============================================================================
+-- Assumptions:
+-- - Authentication is handled by Supabase Auth (`auth.users`)
+-- - `public.users` is a profile table keyed by `auth.users.id`
+-- - Server-side operations use `service_role` key via PostgREST
+-- - Clients use their Supabase access token + anon key and are protected by RLS
+-- ============================================================================
+
+create extension if not exists "pgcrypto";
+
+-- =========================================
+-- USERS (profile table linked to auth.users)
+-- =========================================
+create table if not exists public.users (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null unique,
+  -- Username may be set at signup (metadata) or later; allow null initially.
+  username text unique,
+  avatar_url text,
+  created_at timestamptz not null default now()
+);
+
+-- =========================================
+-- CHATS
+-- =========================================
+create table if not exists public.chats (
+  id uuid primary key default gen_random_uuid(),
+  type text not null check (type in ('direct','group')),
+  name text,
+  created_by uuid references public.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+-- =========================================
+-- GROUP MEMBERS
+-- =========================================
+create table if not exists public.group_members (
+  chat_id uuid not null references public.chats(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  role text not null default 'member' check (role in ('owner','admin','member')),
+  joined_at timestamptz not null default now(),
+  primary key (chat_id, user_id)
+);
+
+-- =========================================
+-- MESSAGES
+-- =========================================
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  chat_id uuid not null references public.chats(id) on delete cascade,
+  sender_id uuid not null references public.users(id) on delete cascade,
+  content text not null,
+  type text not null default 'text' check (type in ('text','image','video','file','audio')),
+  created_at timestamptz not null default now()
+);
+
+-- =========================================
+-- MESSAGE READS
+-- =========================================
+create table if not exists public.message_reads (
+  message_id uuid not null references public.messages(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  read_at timestamptz default now(),
+  primary key (message_id, user_id)
+);
+
+-- =========================================
+-- TYPING STATUS
+-- =========================================
+create table if not exists public.typing_status (
+  user_id uuid not null references public.users(id) on delete cascade,
+  chat_id uuid not null references public.chats(id) on delete cascade,
+  is_typing boolean not null default false,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, chat_id)
+);
+
+-- =========================================
+-- PRESENCE
+-- =========================================
+create table if not exists public.presence (
+  user_id uuid primary key references public.users(id) on delete cascade,
+  status text not null default 'offline' check (status in ('online','offline')),
+  last_seen timestamptz not null default now()
+);
+
+-- =========================================
+-- INDEXES
+-- =========================================
+create index if not exists idx_group_members_user_id on public.group_members(user_id);
+create index if not exists idx_group_members_chat_id on public.group_members(chat_id);
+
+create index if not exists idx_messages_chat_id_created_at on public.messages(chat_id, created_at desc);
+create index if not exists idx_messages_sender_id on public.messages(sender_id);
+
+create index if not exists idx_reads_user_id on public.message_reads(user_id);
+create index if not exists idx_reads_read_at on public.message_reads(read_at desc);
+
+create index if not exists idx_typing_chat_id on public.typing_status(chat_id);
+create index if not exists idx_typing_updated_at on public.typing_status(updated_at desc);
+
+create index if not exists idx_presence_status on public.presence(status);
+create index if not exists idx_presence_last_seen on public.presence(last_seen desc);
+
+-- =========================================
+-- AUTO CREATE USER PROFILE ON SIGNUP
+-- =========================================
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  insert into public.users (id, email, username, avatar_url)
+  values (
+    new.id,
+    new.email,
+    nullif(new.raw_user_meta_data->>'username',''),
+    nullif(new.raw_user_meta_data->>'avatar_url','')
+  )
+  on conflict (id) do update
+    set email = excluded.email;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute procedure public.handle_new_user();
+
+-- =========================================
+-- ENABLE RLS
+-- =========================================
+alter table public.users enable row level security;
+alter table public.chats enable row level security;
+alter table public.group_members enable row level security;
+alter table public.messages enable row level security;
+alter table public.message_reads enable row level security;
+alter table public.typing_status enable row level security;
+alter table public.presence enable row level security;
+
+-- =========================================
+-- COLUMN PRIVILEGES (avoid leaking email)
+-- =========================================
+revoke all on table public.users from anon, authenticated;
+grant select (id, username, avatar_url, created_at) on table public.users to authenticated;
+
+-- =========================================
+-- USERS POLICIES
+-- =========================================
+create policy "Users can view own profile"
+on public.users
+for select
+to authenticated
+using (auth.uid() = id);
+
+create policy "Users can update own profile"
+on public.users
+for update
+to authenticated
+using (auth.uid() = id)
+with check (auth.uid() = id);
+
+create policy "Users can search directory"
+on public.users
+for select
+to authenticated
+using (true);
+
+-- =========================================
+-- CHATS POLICIES
+-- =========================================
+create policy "Users can view chats"
+on public.chats
+for select
+to authenticated
+using (
+  created_by = auth.uid()
+  or exists (
+    select 1 from public.group_members gm
+    where gm.chat_id = chats.id
+      and gm.user_id = auth.uid()
+  )
+);
+
+create policy "Users can create chats"
+on public.chats
+for insert
+to authenticated
+with check (created_by = auth.uid());
+
+-- =========================================
+-- GROUP MEMBERS POLICIES
+-- =========================================
+create policy "Users can view members"
+on public.group_members
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.group_members gm
+    where gm.chat_id = group_members.chat_id
+      and gm.user_id = auth.uid()
+  )
+);
+
+create policy "Creator can add members"
+on public.group_members
+for insert
+to authenticated
+with check (
+  exists (
+    select 1 from public.chats c
+    where c.id = chat_id
+      and c.created_by = auth.uid()
+  )
+);
+
+-- =========================================
+-- MESSAGES POLICIES
+-- =========================================
+create policy "Insert messages"
+on public.messages
+for insert
+to authenticated
+with check (auth.uid() = sender_id);
+
+create policy "Read messages"
+on public.messages
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.group_members gm
+    where gm.chat_id = messages.chat_id
+      and gm.user_id = auth.uid()
+  )
+);
+
+create policy "Delete own messages"
+on public.messages
+for delete
+to authenticated
+using (auth.uid() = sender_id);
+
+-- =========================================
+-- MESSAGE READS POLICIES
+-- =========================================
+create policy "Insert reads"
+on public.message_reads
+for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+create policy "Read receipts"
+on public.message_reads
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.messages m
+    join public.group_members gm on gm.chat_id = m.chat_id
+    where m.id = message_reads.message_id
+      and gm.user_id = auth.uid()
+  )
+);
+
+-- =========================================
+-- TYPING STATUS POLICIES
+-- =========================================
+create policy "Typing update"
+on public.typing_status
+for all
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "Typing read"
+on public.typing_status
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.group_members gm
+    where gm.chat_id = typing_status.chat_id
+      and gm.user_id = auth.uid()
+  )
+);
+
+-- =========================================
+-- PRESENCE POLICIES
+-- =========================================
+create policy "Presence update"
+on public.presence
+for all
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "Presence read"
+on public.presence
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.group_members gm1
+    join public.group_members gm2 on gm1.chat_id = gm2.chat_id
+    where gm1.user_id = auth.uid()
+      and gm2.user_id = presence.user_id
+  )
+);
+
