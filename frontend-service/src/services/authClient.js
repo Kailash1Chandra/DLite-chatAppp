@@ -46,7 +46,7 @@ async function requestJson(path, { method = 'GET', body, token } = {}) {
   })
   const payload = await res.json().catch(() => ({}))
   if (!res.ok || payload?.success === false) {
-    const msg = payload?.message || payload?.error || `Request failed (${res.status})`
+    const msg = payload?.message || payload?.error || payload?.detail || `Request failed (${res.status})`
     const err = new Error(msg)
     err.code = `http/${res.status}`
     throw err
