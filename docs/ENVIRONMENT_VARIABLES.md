@@ -36,6 +36,14 @@ This project is configured to use **Supabase Auth** (no local-auth fallback).
 - **`NEXT_PUBLIC_SUPABASE_URL`**
 - **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**
 
+### Vercel deployment
+- Use `frontend-service` as the project root in Vercel.
+- Set the public env vars above in Vercel's Environment Variables.
+- If your frontend is hosted at `https://app.vercel.app`, set:
+  - `NEXT_PUBLIC_API_BASE_URL=https://<core-backend-render-url>`
+  - `NEXT_PUBLIC_CHAT_SOCKET_URL=https://<realtime-service-render-url>`
+  - `NEXT_PUBLIC_CALL_SOCKET_URL=https://<realtime-service-render-url>`
+
 ## `worker-service` (backups)
 
 This service periodically exports messages from Supabase and writes them to disk (JSON files).

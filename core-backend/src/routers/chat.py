@@ -187,13 +187,13 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
             if not chat_id:
                 return JSONResponse(status_code=503, content={"success": False, "message": "Could not open group"})
 
-        r_member = await client.post(
+            r_member = await client.post(
                 gm_url,
                 headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
                 json={"chat_id": chat_id, "user_id": uid, "role": "owner"},
             )
-        # Some PostgREST setups return 200 for inserts depending on Prefer headers.
-        if r_member.status_code not in (200, 201, 204, 409):
+            # Some PostgREST setups return 200 for inserts depending on Prefer headers.
+            if r_member.status_code not in (200, 201, 204, 409):
                 return JSONResponse(status_code=_status_map(r_member.status_code), content={"success": False, "message": _supabase_hint(r_member)})
     except Exception as e:
         return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
