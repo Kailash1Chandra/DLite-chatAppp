@@ -67,25 +67,6 @@ Configuration is now unified via root `.env` (see `.env.example`).
 
 For **production deployments where each service is hosted separately**, see `docs/ENVIRONMENT_VARIABLES.md`.
 
-### Deploying frontend to Vercel
-
-- Set the project root to `frontend-service` when creating the Vercel app.
-- Add these environment variables in Vercel:
-  - `NEXT_PUBLIC_API_BASE_URL=https://<your-core-backend-render-url>`
-  - `NEXT_PUBLIC_CHAT_SOCKET_URL=https://<your-realtime-service-render-url>`
-  - `NEXT_PUBLIC_CALL_SOCKET_URL=https://<your-realtime-service-render-url>`
-  - `NEXT_PUBLIC_SUPABASE_URL=https://<your-supabase-project>.supabase.co`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>`
-
-### Deploying backend services to Render
-
-- Deploy `core-backend` and `realtime-service` as separate Render services using their `Dockerfile`s.
-- Set these environment variables in Render for both services:
-  - `SUPABASE_URL`, `SUPABASE_ANON_KEY`
-- Set these service-specific env vars:
-  - `core-backend`: `SUPABASE_SERVICE_ROLE_KEY`, `CORS_ORIGINS=https://<your-vercel-domain>`
-  - `realtime-service`: `SOCKET_IO_CORS_ORIGINS=https://<your-vercel-domain>`
-
 ### Required for full functionality
 
 - **Supabase (auth/chat storage/backups)**

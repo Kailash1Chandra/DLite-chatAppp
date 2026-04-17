@@ -43,18 +43,19 @@ This app provides:
 
 Create `.env.local` in the project root.
 
-### Required for app functionality (Supabase)
+### Required for app functionality (Firebase)
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=https://<your-core-backend-url>
-NEXT_PUBLIC_CHAT_SOCKET_URL=https://<your-realtime-service-url>
-NEXT_PUBLIC_CALL_SOCKET_URL=https://<your-realtime-service-url>
-NEXT_PUBLIC_SUPABASE_URL=https://<your-supabase-project>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
-NEXT_PUBLIC_ICE_SERVERS_JSON='[{"urls":["stun:stun.l.google.com:19302"]}]'
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+NEXT_PUBLIC_FIREBASE_DATABASE_URL=
 ```
 
-> Minimum required by runtime checks: `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_CHAT_SOCKET_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+> Minimum required by runtime checks: `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`.
 
 ### Optional (Mongo backup)
 
