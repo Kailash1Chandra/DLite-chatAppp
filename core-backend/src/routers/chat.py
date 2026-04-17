@@ -26,6 +26,13 @@ def _status_map(code: int) -> int:
     return code if code in (400, 401, 403, 404, 406, 409) else 503
 
 
+def _net_err_hint(err: Exception) -> str:
+    msg = f"{type(err).__name__}: {err}".strip()
+    if len(msg) > 300:
+        msg = msg[:300] + "…"
+    return f"Upstream network error: {msg}"
+
+
 def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     if not authorization or not authorization.lower().startswith("bearer "):
         return None
@@ -74,8 +81,11 @@ async def search_users(username: str = "", exclude: str = "", authorization: Opt
     else:
         # Fallback: anon key + user access token so RLS is enforced.
         headers = {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.get(url, headers=headers, params=params)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get(url, headers=headers, params=params)
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
     if r.status_code >= 400:
         # Surface a safe upstream hint to make configuration issues debuggable.
         upstream_text = (r.text or "").strip()
@@ -109,8 +119,11 @@ async def list_my_groups(authorization: Optional[str] = Header(default=None)):
         "limit": "100",
     }
     headers = {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        r = await client.get(url, headers=headers, params=params)
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r = await client.get(url, headers=headers, params=params)
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
     if r.status_code >= 400:
         return JSONResponse(status_code=503, content={"success": False, "message": "Groups are unavailable"})
 
@@ -146,40 +159,43 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
     chats_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        # Find existing group chat
-        r_find = await client.get(
-            chats_url,
-            headers=postgrest_headers(use_service_role=True),
-            params={"select": "id,name,type", "type": "eq.group", "name": f"eq.{group_key}", "limit": "1"},
-        )
-        if r_find.status_code >= 400:
-            return JSONResponse(status_code=_status_map(r_find.status_code), content={"success": False, "message": _supabase_hint(r_find)})
-        items = await safe_json_list(r_find)
-        chat = items[0] if items else None
-
-        if not chat:
-            r_create = await client.post(
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            # Find existing group chat
+            r_find = await client.get(
                 chats_url,
-                headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
-                json={"type": "group", "name": group_key, "created_by": uid},
+                headers=postgrest_headers(use_service_role=True),
+                params={"select": "id,name,type", "type": "eq.group", "name": f"eq.{group_key}", "limit": "1"},
             )
-            if r_create.status_code >= 400:
-                return JSONResponse(status_code=_status_map(r_create.status_code), content={"success": False, "message": _supabase_hint(r_create)})
-            created = await safe_json_list(r_create)
-            chat = created[0] if created else None
+            if r_find.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_find.status_code), content={"success": False, "message": _supabase_hint(r_find)})
+            items = await safe_json_list(r_find)
+            chat = items[0] if items else None
 
-        chat_id = (chat or {}).get("id")
-        if not chat_id:
-            return JSONResponse(status_code=503, content={"success": False, "message": "Could not open group"})
+            if not chat:
+                r_create = await client.post(
+                    chats_url,
+                    headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
+                    json={"type": "group", "name": group_key, "created_by": uid},
+                )
+                if r_create.status_code >= 400:
+                    return JSONResponse(status_code=_status_map(r_create.status_code), content={"success": False, "message": _supabase_hint(r_create)})
+                created = await safe_json_list(r_create)
+                chat = created[0] if created else None
 
-        r_member = await client.post(
-            gm_url,
-            headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
-            json={"chat_id": chat_id, "user_id": uid, "role": "owner"},
-        )
-        if r_member.status_code not in (201, 204, 409):
-            return JSONResponse(status_code=_status_map(r_member.status_code), content={"success": False, "message": _supabase_hint(r_member)})
+            chat_id = (chat or {}).get("id")
+            if not chat_id:
+                return JSONResponse(status_code=503, content={"success": False, "message": "Could not open group"})
+
+            r_member = await client.post(
+                gm_url,
+                headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
+                json={"chat_id": chat_id, "user_id": uid, "role": "owner"},
+            )
+            if r_member.status_code not in (201, 204, 409):
+                return JSONResponse(status_code=_status_map(r_member.status_code), content={"success": False, "message": _supabase_hint(r_member)})
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
 
     return {"success": True, "group": {"id": chat_id, "name": (chat or {}).get("name") or group_key}}
 
@@ -209,47 +225,50 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
     chats_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        r_find = await client.get(
-            chats_url,
-            headers=postgrest_headers(use_service_role=True),
-            params={"select": "id,name,type", "type": "eq.direct", "name": f"eq.{dm_key}", "limit": "1"},
-        )
-        if r_find.status_code >= 400:
-            return JSONResponse(status_code=_status_map(r_find.status_code), content={"success": False, "message": _supabase_hint(r_find)})
-        items = await safe_json_list(r_find)
-        chat = items[0] if items else None
-
-        if not chat:
-            r_create = await client.post(
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r_find = await client.get(
                 chats_url,
-                headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
-                json={"type": "direct", "name": dm_key, "created_by": uid},
+                headers=postgrest_headers(use_service_role=True),
+                params={"select": "id,name,type", "type": "eq.direct", "name": f"eq.{dm_key}", "limit": "1"},
             )
-            if r_create.status_code >= 400:
-                return JSONResponse(status_code=_status_map(r_create.status_code), content={"success": False, "message": _supabase_hint(r_create)})
-            created = await safe_json_list(r_create)
-            chat = created[0] if created else None
+            if r_find.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_find.status_code), content={"success": False, "message": _supabase_hint(r_find)})
+            items = await safe_json_list(r_find)
+            chat = items[0] if items else None
 
-        chat_id = (chat or {}).get("id")
-        if not chat_id:
-            return JSONResponse(status_code=503, content={"success": False, "message": "Could not open DM chat"})
+            if not chat:
+                r_create = await client.post(
+                    chats_url,
+                    headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
+                    json={"type": "direct", "name": dm_key, "created_by": uid},
+                )
+                if r_create.status_code >= 400:
+                    return JSONResponse(status_code=_status_map(r_create.status_code), content={"success": False, "message": _supabase_hint(r_create)})
+                created = await safe_json_list(r_create)
+                chat = created[0] if created else None
 
-        # Ensure both users are members (we reuse group_members for *all* chat types).
-        r_m1 = await client.post(
-            gm_url,
-            headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
-            json={"chat_id": chat_id, "user_id": uid, "role": "member"},
-        )
-        if r_m1.status_code not in (201, 204, 409):
-            return JSONResponse(status_code=_status_map(r_m1.status_code), content={"success": False, "message": _supabase_hint(r_m1)})
-        r_m2 = await client.post(
-            gm_url,
-            headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
-            json={"chat_id": chat_id, "user_id": peer_id, "role": "member"},
-        )
-        if r_m2.status_code not in (201, 204, 409):
-            return JSONResponse(status_code=_status_map(r_m2.status_code), content={"success": False, "message": _supabase_hint(r_m2)})
+            chat_id = (chat or {}).get("id")
+            if not chat_id:
+                return JSONResponse(status_code=503, content={"success": False, "message": "Could not open DM chat"})
+
+            # Ensure both users are members (we reuse group_members for *all* chat types).
+            r_m1 = await client.post(
+                gm_url,
+                headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
+                json={"chat_id": chat_id, "user_id": uid, "role": "member"},
+            )
+            if r_m1.status_code not in (201, 204, 409):
+                return JSONResponse(status_code=_status_map(r_m1.status_code), content={"success": False, "message": _supabase_hint(r_m1)})
+            r_m2 = await client.post(
+                gm_url,
+                headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
+                json={"chat_id": chat_id, "user_id": peer_id, "role": "member"},
+            )
+            if r_m2.status_code not in (201, 204, 409):
+                return JSONResponse(status_code=_status_map(r_m2.status_code), content={"success": False, "message": _supabase_hint(r_m2)})
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
 
     return {"success": True, "chatId": chat_id}
 
@@ -278,8 +297,11 @@ async def list_group_members(group_id: str, authorization: Optional[str] = Heade
         "limit": "200",
     }
     headers = {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        r = await client.get(url, headers=headers, params=params)
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r = await client.get(url, headers=headers, params=params)
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
     if r.status_code >= 400:
         return JSONResponse(status_code=_status_map(r.status_code), content={"success": False, "message": _supabase_hint(r)})
 
@@ -390,27 +412,30 @@ async def send_message(req: Request, authorization: Optional[str] = Header(defau
     gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
     msg_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/messages"
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        r_mem = await client.get(
-            gm_url,
-            headers=postgrest_headers(use_service_role=True),
-            params={"select": "chat_id,user_id", "chat_id": f"eq.{chat_id}", "user_id": f"eq.{uid}", "limit": "1"},
-        )
-        if r_mem.status_code >= 400:
-            return JSONResponse(status_code=503, content={"success": False, "message": "Chat membership check failed"})
-        rows = await safe_json_list(r_mem)
-        if not rows:
-            return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this chat"})
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r_mem = await client.get(
+                gm_url,
+                headers=postgrest_headers(use_service_role=True),
+                params={"select": "chat_id,user_id", "chat_id": f"eq.{chat_id}", "user_id": f"eq.{uid}", "limit": "1"},
+            )
+            if r_mem.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_mem.status_code), content={"success": False, "message": _supabase_hint(r_mem)})
+            rows = await safe_json_list(r_mem)
+            if not rows:
+                return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this chat"})
 
-        r_ins = await client.post(
-            msg_url,
-            headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
-            json={"chat_id": chat_id, "sender_id": uid, "content": content, "type": msg_type},
-        )
-        if r_ins.status_code >= 400:
-            return JSONResponse(status_code=503, content={"success": False, "message": "Could not save message"})
-        created = await safe_json_list(r_ins)
-        msg = created[0] if created else None
+            r_ins = await client.post(
+                msg_url,
+                headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
+                json={"chat_id": chat_id, "sender_id": uid, "content": content, "type": msg_type},
+            )
+            if r_ins.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_ins.status_code), content={"success": False, "message": _supabase_hint(r_ins)})
+            created = await safe_json_list(r_ins)
+            msg = created[0] if created else None
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
 
     if not msg:
         return JSONResponse(status_code=503, content={"success": False, "message": "Could not save message"})
@@ -432,8 +457,11 @@ async def get_messages(chat_id: str, authorization: Optional[str] = Header(defau
         "limit": "200",
     }
     headers = {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        r = await client.get(url, headers=headers, params=params)
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r = await client.get(url, headers=headers, params=params)
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
     if r.status_code >= 400:
         upstream_text = (r.text or "").strip()
         if len(upstream_text) > 300:
