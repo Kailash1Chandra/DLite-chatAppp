@@ -182,12 +182,14 @@ export default function ChatDashboardPage() {
   }, [user?.id, searchOpen, searchQuery]);
 
   const pickPeer = (id, username) => {
-    setActiveUserId(id);
+    setActiveUserId(String(id || '').trim());
     setPeerUsername(username);
     setActionError('');
     setSearchOpen(false);
     setSearchQuery('');
   };
+
+  const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
   const clearPeer = () => {
     if (user?.id && activeUserId.trim()) {
@@ -353,6 +355,10 @@ export default function ChatDashboardPage() {
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!user?.id || !activeUserId || !input.trim()) return;
+    if (!isUuid(activeUserId.trim())) {
+      setActionError('Select a user from search (peerId must be a UUID).');
+      return;
+    }
     setSendingMessage(true);
     setActionError('');
     try {
@@ -373,6 +379,10 @@ export default function ChatDashboardPage() {
     if (!user?.id || !activeUserId?.trim()) return;
     const text = String(content || '').trim();
     if (!text) return;
+    if (!isUuid(activeUserId.trim())) {
+      setActionError('Select a user from search (peerId must be a UUID).');
+      return;
+    }
     setSendingMessage(true);
     setActionError('');
     try {
@@ -393,6 +403,10 @@ export default function ChatDashboardPage() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !user?.id || !activeUserId.trim()) return;
+    if (!isUuid(activeUserId.trim())) {
+      setActionError('Select a user from search (peerId must be a UUID).');
+      return;
+    }
 
     setSendingMessage(true);
     setActionError('');
