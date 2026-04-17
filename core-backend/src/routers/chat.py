@@ -12,6 +12,20 @@ from src.supabase import postgrest_headers, safe_json_list, validate_access_toke
 router = APIRouter()
 
 
+def _supabase_hint(r: httpx.Response) -> str:
+    upstream_text = (r.text or "").strip()
+    if len(upstream_text) > 300:
+        upstream_text = upstream_text[:300] + "…"
+    hint = f"Supabase error ({r.status_code})"
+    if upstream_text:
+        hint = f"{hint}: {upstream_text}"
+    return hint
+
+
+def _status_map(code: int) -> int:
+    return code if code in (400, 401, 403, 404, 406, 409) else 503
+
+
 def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     if not authorization or not authorization.lower().startswith("bearer "):
         return None
@@ -140,7 +154,7 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
             params={"select": "id,name,type", "type": "eq.group", "name": f"eq.{group_key}", "limit": "1"},
         )
         if r_find.status_code >= 400:
-            return JSONResponse(status_code=503, content={"success": False, "message": "Chat storage is unavailable"})
+            return JSONResponse(status_code=_status_map(r_find.status_code), content={"success": False, "message": _supabase_hint(r_find)})
         items = await safe_json_list(r_find)
         chat = items[0] if items else None
 
@@ -151,7 +165,7 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
                 json={"type": "group", "name": group_key, "created_by": uid},
             )
             if r_create.status_code >= 400:
-                return JSONResponse(status_code=503, content={"success": False, "message": "Could not create group"})
+                return JSONResponse(status_code=_status_map(r_create.status_code), content={"success": False, "message": _supabase_hint(r_create)})
             created = await safe_json_list(r_create)
             chat = created[0] if created else None
 
@@ -165,7 +179,7 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
             json={"chat_id": chat_id, "user_id": uid, "role": "owner"},
         )
         if r_member.status_code not in (201, 204, 409):
-            return JSONResponse(status_code=503, content={"success": False, "message": "Could not join group"})
+            return JSONResponse(status_code=_status_map(r_member.status_code), content={"success": False, "message": _supabase_hint(r_member)})
 
     return {"success": True, "group": {"id": chat_id, "name": (chat or {}).get("name") or group_key}}
 
@@ -202,7 +216,7 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
             params={"select": "id,name,type", "type": "eq.direct", "name": f"eq.{dm_key}", "limit": "1"},
         )
         if r_find.status_code >= 400:
-            return JSONResponse(status_code=503, content={"success": False, "message": "Chat storage is unavailable"})
+            return JSONResponse(status_code=_status_map(r_find.status_code), content={"success": False, "message": _supabase_hint(r_find)})
         items = await safe_json_list(r_find)
         chat = items[0] if items else None
 
@@ -213,7 +227,7 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
                 json={"type": "direct", "name": dm_key, "created_by": uid},
             )
             if r_create.status_code >= 400:
-                return JSONResponse(status_code=503, content={"success": False, "message": "Could not create DM chat"})
+                return JSONResponse(status_code=_status_map(r_create.status_code), content={"success": False, "message": _supabase_hint(r_create)})
             created = await safe_json_list(r_create)
             chat = created[0] if created else None
 
@@ -228,16 +242,128 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
             json={"chat_id": chat_id, "user_id": uid, "role": "member"},
         )
         if r_m1.status_code not in (201, 204, 409):
-            return JSONResponse(status_code=503, content={"success": False, "message": "Could not join DM"})
+            return JSONResponse(status_code=_status_map(r_m1.status_code), content={"success": False, "message": _supabase_hint(r_m1)})
         r_m2 = await client.post(
             gm_url,
             headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
             json={"chat_id": chat_id, "user_id": peer_id, "role": "member"},
         )
         if r_m2.status_code not in (201, 204, 409):
-            return JSONResponse(status_code=503, content={"success": False, "message": "Could not open DM"})
+            return JSONResponse(status_code=_status_map(r_m2.status_code), content={"success": False, "message": _supabase_hint(r_m2)})
 
     return {"success": True, "chatId": chat_id}
+
+
+@router.get("/groups/{group_id}/members")
+async def list_group_members(group_id: str, authorization: Optional[str] = Header(default=None)):
+    require_supabase()
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    uid = str(user.get("id") or "").strip()
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    gid = str(group_id or "").strip()
+    if not gid:
+        return JSONResponse(status_code=400, content={"success": False, "message": "groupId is required"})
+
+    # We list using the caller token (RLS enforced). If their RLS is broken, they'll see a proper hint.
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+    params = {
+        "select": "user_id,role,users(id,username,avatar_url,created_at)",
+        "chat_id": f"eq.{gid}",
+        "order": "created_at.asc",
+        "limit": "200",
+    }
+    headers = {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        r = await client.get(url, headers=headers, params=params)
+    if r.status_code >= 400:
+        return JSONResponse(status_code=_status_map(r.status_code), content={"success": False, "message": _supabase_hint(r)})
+
+    rows = await safe_json_list(r)
+    members = []
+    for row in rows:
+        u = (row or {}).get("users") or {}
+        members.append(
+            {
+                "userId": row.get("user_id"),
+                "role": row.get("role") or "member",
+                "user": {"id": u.get("id"), "username": u.get("username"), "avatar_url": u.get("avatar_url"), "created_at": u.get("created_at")},
+            }
+        )
+    return {"success": True, "groupId": gid, "members": members}
+
+
+@router.post("/groups/{group_id}/members/add-by-username")
+async def add_group_member_by_username(group_id: str, req: Request, authorization: Optional[str] = Header(default=None)):
+    require_supabase()
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    uid = str(user.get("id") or "").strip()
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    gid = str(group_id or "").strip()
+    if not gid:
+        return JSONResponse(status_code=400, content={"success": False, "message": "groupId is required"})
+
+    body = await req.json()
+    username = str((body or {}).get("username") or "").strip()
+    if not username:
+        return JSONResponse(status_code=400, content={"success": False, "message": "username is required"})
+
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required for member writes"},
+        )
+
+    users_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/users"
+    gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        # 1) Ensure caller is already a member (prevent arbitrary adds)
+        r_mem = await client.get(
+            gm_url,
+            headers=postgrest_headers(use_service_role=True),
+            params={"select": "chat_id,user_id,role", "chat_id": f"eq.{gid}", "user_id": f"eq.{uid}", "limit": "1"},
+        )
+        if r_mem.status_code >= 400:
+            return JSONResponse(status_code=_status_map(r_mem.status_code), content={"success": False, "message": _supabase_hint(r_mem)})
+        mem_rows = await safe_json_list(r_mem)
+        if not mem_rows:
+            return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this group"})
+
+        # 2) Lookup user by username
+        r_user = await client.get(
+            users_url,
+            headers=postgrest_headers(use_service_role=True),
+            params={"select": "id,username,avatar_url,created_at", "username": f"eq.{username}", "limit": "1"},
+        )
+        if r_user.status_code >= 400:
+            return JSONResponse(status_code=_status_map(r_user.status_code), content={"success": False, "message": _supabase_hint(r_user)})
+        found = await safe_json_list(r_user)
+        target = found[0] if found else None
+        if not target or not target.get("id"):
+            return JSONResponse(status_code=404, content={"success": False, "message": "User not found"})
+
+        target_id = str(target.get("id")).strip()
+
+        # 3) Insert membership (idempotent)
+        r_add = await client.post(
+            gm_url,
+            headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
+            json={"chat_id": gid, "user_id": target_id, "role": "member"},
+        )
+        if r_add.status_code not in (201, 204, 409):
+            return JSONResponse(status_code=_status_map(r_add.status_code), content={"success": False, "message": _supabase_hint(r_add)})
+
+    return {"success": True, "member": {"userId": target_id, "role": "member", "user": target}}
 
 
 @router.post("/messages/send")
