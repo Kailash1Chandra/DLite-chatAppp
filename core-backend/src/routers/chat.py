@@ -26,6 +26,11 @@ async def _require_user(authorization: Optional[str]) -> tuple[Optional[dict], O
     return user, token
 
 
+def _dm_key(a: str, b: str) -> str:
+    x, y = sorted([str(a or "").strip(), str(b or "").strip()])
+    return f"dm:{x}:{y}"
+
+
 @router.get("/users/search")
 async def search_users(username: str = "", exclude: str = "", authorization: Optional[str] = Header(default=None)):
     require_supabase()
@@ -164,6 +169,127 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
 
     return {"success": True, "group": {"id": chat_id, "name": (chat or {}).get("name") or group_key}}
 
+
+@router.post("/dm/ensure")
+async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=None)):
+    require_supabase()
+    user, _access_token = await _require_user(authorization)
+    if not user:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    uid = str(user.get("id") or "").strip()
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    body = await req.json()
+    peer_id = str((body or {}).get("peerId") or (body or {}).get("receiverId") or (body or {}).get("userId") or "").strip()
+    if not peer_id:
+        return JSONResponse(status_code=400, content={"success": False, "message": "peerId is required"})
+    if peer_id == uid:
+        return JSONResponse(status_code=400, content={"success": False, "message": "Cannot DM yourself"})
+
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required for DM writes"})
+
+    dm_key = _dm_key(uid, peer_id)
+    chats_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+    gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        r_find = await client.get(
+            chats_url,
+            headers=postgrest_headers(use_service_role=True),
+            params={"select": "id,name,type", "type": "eq.direct", "name": f"eq.{dm_key}", "limit": "1"},
+        )
+        if r_find.status_code >= 400:
+            return JSONResponse(status_code=503, content={"success": False, "message": "Chat storage is unavailable"})
+        items = await safe_json_list(r_find)
+        chat = items[0] if items else None
+
+        if not chat:
+            r_create = await client.post(
+                chats_url,
+                headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
+                json={"type": "direct", "name": dm_key, "created_by": uid},
+            )
+            if r_create.status_code >= 400:
+                return JSONResponse(status_code=503, content={"success": False, "message": "Could not create DM chat"})
+            created = await safe_json_list(r_create)
+            chat = created[0] if created else None
+
+        chat_id = (chat or {}).get("id")
+        if not chat_id:
+            return JSONResponse(status_code=503, content={"success": False, "message": "Could not open DM chat"})
+
+        # Ensure both users are members (we reuse group_members for *all* chat types).
+        r_m1 = await client.post(
+            gm_url,
+            headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
+            json={"chat_id": chat_id, "user_id": uid, "role": "member"},
+        )
+        if r_m1.status_code not in (201, 204, 409):
+            return JSONResponse(status_code=503, content={"success": False, "message": "Could not join DM"})
+        r_m2 = await client.post(
+            gm_url,
+            headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
+            json={"chat_id": chat_id, "user_id": peer_id, "role": "member"},
+        )
+        if r_m2.status_code not in (201, 204, 409):
+            return JSONResponse(status_code=503, content={"success": False, "message": "Could not open DM"})
+
+    return {"success": True, "chatId": chat_id}
+
+
+@router.post("/messages/send")
+async def send_message(req: Request, authorization: Optional[str] = Header(default=None)):
+    require_supabase()
+    user, _access_token = await _require_user(authorization)
+    if not user:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    uid = str(user.get("id") or "").strip()
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    body = await req.json()
+    chat_id = str((body or {}).get("chatId") or "").strip()
+    content = str((body or {}).get("content") or "").strip()
+    msg_type = str((body or {}).get("type") or "text").strip() or "text"
+    if not chat_id or not content:
+        return JSONResponse(status_code=400, content={"success": False, "message": "chatId and content are required"})
+
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required for message writes"})
+
+    gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+    msg_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/messages"
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        r_mem = await client.get(
+            gm_url,
+            headers=postgrest_headers(use_service_role=True),
+            params={"select": "chat_id,user_id", "chat_id": f"eq.{chat_id}", "user_id": f"eq.{uid}", "limit": "1"},
+        )
+        if r_mem.status_code >= 400:
+            return JSONResponse(status_code=503, content={"success": False, "message": "Chat membership check failed"})
+        rows = await safe_json_list(r_mem)
+        if not rows:
+            return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this chat"})
+
+        r_ins = await client.post(
+            msg_url,
+            headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
+            json={"chat_id": chat_id, "sender_id": uid, "content": content, "type": msg_type},
+        )
+        if r_ins.status_code >= 400:
+            return JSONResponse(status_code=503, content={"success": False, "message": "Could not save message"})
+        created = await safe_json_list(r_ins)
+        msg = created[0] if created else None
+
+    if not msg:
+        return JSONResponse(status_code=503, content={"success": False, "message": "Could not save message"})
+
+    return {"success": True, "message": msg}
 
 @router.get("/messages/{chat_id}")
 async def get_messages(chat_id: str, authorization: Optional[str] = Header(default=None)):

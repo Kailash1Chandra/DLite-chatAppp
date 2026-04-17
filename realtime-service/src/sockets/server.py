@@ -111,6 +111,8 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
         sender_id = str((data or {}).get("senderId") or user_id or "").strip()
         content = str((data or {}).get("content") or "").strip()
         msg_type = str((data or {}).get("type") or "text").strip()
+        message_id = (data or {}).get("_id") or (data or {}).get("id")
+        created_at = (data or {}).get("createdAt") or (data or {}).get("created_at")
 
         if not chat_id or not sender_id or not content:
             await sio.emit("socket_error", {"message": "chatId, senderId, and content are required"}, to=sid)
@@ -119,7 +121,14 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
         # Realtime service doesn't write to DB; core-backend does that.
         await sio.emit(
             "receive_message",
-            {"chatId": chat_id, "senderId": sender_id, "content": content, "type": msg_type},
+            {
+                "chatId": chat_id,
+                "senderId": sender_id,
+                "content": content,
+                "type": msg_type,
+                "_id": str(message_id) if message_id else None,
+                "createdAt": created_at,
+            },
             room=chat_room(chat_id),
         )
 
