@@ -292,7 +292,9 @@ async def list_group_members(group_id: str, authorization: Optional[str] = Heade
     # We list using the caller token (RLS enforced). If their RLS is broken, they'll see a proper hint.
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
     params = {
-        "select": "user_id,role,users(id,username,avatar_url,created_at)",
+        # Use explicit FK join name to avoid PostgREST "Could not find relationship" 400s.
+        # Default constraint name is typically `group_members_user_id_fkey`.
+        "select": "user_id,role,users:users!group_members_user_id_fkey(id,username,avatar_url,created_at)",
         "chat_id": f"eq.{gid}",
         "order": "created_at.asc",
         "limit": "200",
