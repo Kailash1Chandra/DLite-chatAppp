@@ -179,15 +179,33 @@ export async function sendDirectMessage({ chatId, senderId, content }) {
 }
 
 export async function sendDirectMedia() {
-  const error = new Error('Media messages are disabled.')
-  error.code = 'feature/disabled'
-  throw error
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const senderId = String(arguments?.[0]?.senderId || '').trim()
+  const receiverId = String(arguments?.[0]?.receiverId || '').trim()
+  const file = arguments?.[0]?.file
+  if (!senderId || !receiverId || !file) throw new Error('senderId, receiverId, and file are required')
+
+  // Minimal implementation: store as a "text" message containing a local object URL.
+  // For production-grade media, wire Supabase Storage and send the public URL instead.
+  const url = URL.createObjectURL(file)
+  await sendDirectMessage({ senderId, receiverId, content: url })
 }
 
 export async function editDirectMessage() {
-  const error = new Error('Editing messages is disabled.')
-  error.code = 'feature/disabled'
-  throw error
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const messageId = String(arguments?.[0]?.messageId || '').trim()
+  const newContent = String(arguments?.[0]?.newContent || '').trim()
+  if (!messageId || !newContent) throw new Error('messageId and newContent are required')
+  const res = await fetch(`${API_BASE_URL}/chat/messages/${encodeURIComponent(messageId)}/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+    body: JSON.stringify({ content: newContent }),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not edit message')
+  return json?.message
 }
 
 export async function deleteDirectMessage() {
@@ -205,7 +223,14 @@ export async function deleteDirectMessage() {
 }
 
 export async function hideDirectMessageForMe() {
-  return
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) return
+  const messageId = String(arguments?.[0]?.messageId || arguments?.[0] || '').trim()
+  if (!messageId) return
+  await fetch(`${API_BASE_URL}/chat/messages/${encodeURIComponent(messageId)}/hide`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${snapshot.token}` },
+  }).catch(() => undefined)
 }
 
 export async function markDirectThreadRead() {
@@ -213,15 +238,49 @@ export async function markDirectThreadRead() {
 }
 
 export async function exportDirectChatHistory() {
-  const error = new Error('Export is disabled.')
-  error.code = 'feature/disabled'
-  throw error
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const peerId = String(arguments?.[0]?.peerId || '').trim()
+  const limit = Number(arguments?.[0]?.limit || 200)
+  if (!peerId) throw new Error('peerId is required')
+  const r = await fetch(`${API_BASE_URL}/chat/dm/ensure`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+    body: JSON.stringify({ peerId }),
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok || j?.success === false) throw new Error(j?.message || 'Could not open chat')
+  const chatId = String(j?.chatId || '').trim()
+  const msgs = await getMessagesByChatId({ chatId, token: snapshot.token })
+  const clipped = msgs.slice(Math.max(0, msgs.length - limit))
+  return { type: 'direct', threadId: chatId, peerId, exportedAt: Date.now(), messages: clipped }
 }
 
 export async function importDirectChatHistory() {
-  const error = new Error('Import is disabled.')
-  error.code = 'feature/disabled'
-  throw error
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const peerId = String(arguments?.[0]?.peerId || '').trim()
+  const payload = arguments?.[0]?.payload
+  if (!peerId || !payload?.messages) throw new Error('peerId and payload.messages are required')
+  const r = await fetch(`${API_BASE_URL}/chat/dm/ensure`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+    body: JSON.stringify({ peerId }),
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok || j?.success === false) throw new Error(j?.message || 'Could not open chat')
+  const chatId = String(j?.chatId || '').trim()
+
+  for (const m of payload.messages) {
+    const content = String(m?.content || '').trim()
+    if (!content) continue
+    await fetch(`${API_BASE_URL}/chat/messages/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+      body: JSON.stringify({ chatId, content, type: 'text' }),
+    }).catch(() => undefined)
+  }
+  return { ok: true }
 }
 
 export async function getMessagesByChatId({ chatId, token }) {
@@ -371,10 +430,66 @@ export async function toggleDmReaction() {
   return json
 }
 export async function setDmTyping() {
-  return
+  const peerId = String(arguments?.[0]?.peerId || '').trim()
+  const isTyping = Boolean(arguments?.[0]?.isTyping)
+  const snapshot = await getCurrentAuthSnapshot().catch(() => null)
+  const uid = String(snapshot?.user?.id || '').trim()
+  if (!uid || !peerId) return
+  const s = await getSocket({ userId: uid })
+  // We reuse peerId as "chatId" in legacy UI; server expects actual chatId.
+  const r = await fetch(`${API_BASE_URL}/chat/dm/ensure`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+    body: JSON.stringify({ peerId }),
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok || j?.success === false) return
+  const chatId = String(j?.chatId || '').trim()
+  if (!chatId) return
+  s.emit(isTyping ? 'typing' : 'stop_typing', { chatId, senderId: uid })
 }
 export function subscribeDmTyping() {
-  return () => undefined
+  const peerId = String(arguments?.[1] || '').trim()
+  const cb = typeof arguments?.[2] === 'function' ? arguments?.[2] : () => undefined
+  let disposed = false
+
+  ;(async () => {
+    const snapshot = await getCurrentAuthSnapshot().catch(() => null)
+    const uid = String(snapshot?.user?.id || '').trim()
+    if (!snapshot?.token || !uid || !peerId) return
+    const s = await getSocket({ userId: uid })
+    const r = await fetch(`${API_BASE_URL}/chat/dm/ensure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+      body: JSON.stringify({ peerId }),
+    })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok || j?.success === false) return
+    const chatId = String(j?.chatId || '').trim()
+    if (!chatId) return
+    s.emit('join_chat', { chatId })
+
+    const onTyping = (p) => {
+      if (disposed) return
+      if (String(p?.chatId || '').trim() !== chatId) return
+      cb({ senderId: p?.senderId, isTyping: true })
+    }
+    const onStop = (p) => {
+      if (disposed) return
+      if (String(p?.chatId || '').trim() !== chatId) return
+      cb({ senderId: p?.senderId, isTyping: false })
+    }
+    s.on('typing', onTyping)
+    s.on('stop_typing', onStop)
+    return () => {
+      s.off('typing', onTyping)
+      s.off('stop_typing', onStop)
+    }
+  })()
+
+  return () => {
+    disposed = true
+  }
 }
 export async function pinDmMessage() {
   const snapshot = await getCurrentAuthSnapshot()

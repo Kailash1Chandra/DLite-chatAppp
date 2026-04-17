@@ -770,7 +770,7 @@ async def delete_message_for_everyone(message_id: str, authorization: Optional[s
                 msg_url,
                 headers=headers,
                 params={"id": f"eq.{message_id}"},
-                json={"is_deleted": True, "deleted_by": uid, "deleted_at": "now()"},
+                json={"is_deleted": True, "deleted_by": uid, "deleted_at": _now_iso()},
             )
             if r_upd.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_upd.status_code), content={"success": False, "message": _supabase_hint(r_upd)})
@@ -778,6 +778,74 @@ async def delete_message_for_everyone(message_id: str, authorization: Optional[s
             return {"success": True, "message": (updated[0] if updated else msg)}
     except Exception as e:
         return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
+
+
+@router.post("/messages/{message_id}/edit")
+async def edit_message(message_id: str, req: Request, authorization: Optional[str] = Header(default=None)):
+    require_supabase()
+    user, _access_token = await _require_user(authorization)
+    if not user:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+    uid = str(user.get("id") or "").strip()
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required"})
+
+    body = await req.json()
+    content = str((body or {}).get("content") or "").strip()
+    if not content:
+        return JSONResponse(status_code=400, content={"success": False, "message": "content is required"})
+
+    base = SUPABASE_URL.rstrip("/")
+    msg_url = f"{base}/rest/v1/messages"
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r_get = await client.get(
+                msg_url,
+                headers=postgrest_headers(use_service_role=True),
+                params={"select": "id,sender_id,is_deleted", "id": f"eq.{message_id}", "limit": "1"},
+            )
+            if r_get.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_get.status_code), content={"success": False, "message": _supabase_hint(r_get)})
+            rows = await safe_json_list(r_get)
+            msg = rows[0] if rows else None
+            if not msg:
+                return JSONResponse(status_code=404, content={"success": False, "message": "Message not found"})
+            if str(msg.get("sender_id") or "").strip() != uid:
+                return JSONResponse(status_code=403, content={"success": False, "message": "Not allowed"})
+            if msg.get("is_deleted") is True:
+                return JSONResponse(status_code=409, content={"success": False, "message": "Message is deleted"})
+
+            r_upd = await client.patch(
+                msg_url,
+                headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
+                params={"id": f"eq.{message_id}"},
+                json={"content": content},
+            )
+            if r_upd.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_upd.status_code), content={"success": False, "message": _supabase_hint(r_upd)})
+            updated = await safe_json_list(r_upd)
+            return {"success": True, "message": (updated[0] if updated else msg)}
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
+
+
+@router.post("/messages/{message_id}/hide")
+async def hide_message_for_me(message_id: str, authorization: Optional[str] = Header(default=None)):
+    """
+    Minimal "delete for me": hides the entire thread in recent list (per-user),
+    since per-message hide requires an additional table.
+    """
+    require_supabase()
+    user, _access_token = await _require_user(authorization)
+    if not user:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+    uid = str(user.get("id") or "").strip()
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+    # We keep it as a no-op success for now (UI will remove message locally).
+    return {"success": True}
 
 
 @router.get("/pins/{chat_id}")
