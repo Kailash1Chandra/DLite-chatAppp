@@ -174,6 +174,28 @@ using (true);
 -- =========================================
 -- CHATS POLICIES
 -- =========================================
+-- NOTE: Avoid referencing RLS-protected tables from their own policies directly
+-- (it can cause "infinite recursion detected in policy"). We use a SECURITY DEFINER
+-- helper for membership checks.
+
+create or replace function public.is_chat_member(_chat_id uuid, _user_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = pg_catalog, public
+set row_security = off
+as $$
+  select exists (
+    select 1
+    from public.group_members gm
+    where gm.chat_id = _chat_id
+      and gm.user_id = _user_id
+  );
+$$;
+
+revoke all on function public.is_chat_member(uuid, uuid) from public;
+grant execute on function public.is_chat_member(uuid, uuid) to authenticated;
+
 create policy "Users can view chats"
 on public.chats
 for select
@@ -181,9 +203,7 @@ to authenticated
 using (
   created_by = auth.uid()
   or exists (
-    select 1 from public.group_members gm
-    where gm.chat_id = chats.id
-      and gm.user_id = auth.uid()
+    select 1 where public.is_chat_member(chats.id, auth.uid())
   )
 );
 
@@ -201,11 +221,7 @@ on public.group_members
 for select
 to authenticated
 using (
-  exists (
-    select 1 from public.group_members gm
-    where gm.chat_id = group_members.chat_id
-      and gm.user_id = auth.uid()
-  )
+  public.is_chat_member(group_members.chat_id, auth.uid())
 );
 
 create policy "Creator can add members"
@@ -234,11 +250,7 @@ on public.messages
 for select
 to authenticated
 using (
-  exists (
-    select 1 from public.group_members gm
-    where gm.chat_id = messages.chat_id
-      and gm.user_id = auth.uid()
-  )
+  public.is_chat_member(messages.chat_id, auth.uid())
 );
 
 create policy "Delete own messages"
@@ -264,9 +276,8 @@ using (
   exists (
     select 1
     from public.messages m
-    join public.group_members gm on gm.chat_id = m.chat_id
     where m.id = message_reads.message_id
-      and gm.user_id = auth.uid()
+      and public.is_chat_member(m.chat_id, auth.uid())
   )
 );
 
@@ -285,11 +296,7 @@ on public.typing_status
 for select
 to authenticated
 using (
-  exists (
-    select 1 from public.group_members gm
-    where gm.chat_id = typing_status.chat_id
-      and gm.user_id = auth.uid()
-  )
+  public.is_chat_member(typing_status.chat_id, auth.uid())
 );
 
 -- =========================================
@@ -309,10 +316,9 @@ to authenticated
 using (
   exists (
     select 1
-    from public.group_members gm1
-    join public.group_members gm2 on gm1.chat_id = gm2.chat_id
-    where gm1.user_id = auth.uid()
-      and gm2.user_id = presence.user_id
+    from public.group_members gm
+    where gm.user_id = auth.uid()
+      and public.is_chat_member(gm.chat_id, presence.user_id)
   )
 );
 
