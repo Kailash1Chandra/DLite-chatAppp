@@ -107,6 +107,53 @@ async def search_users(username: str = "", exclude: str = "", authorization: Opt
     return {"success": True, "users": await safe_json_list(r)}
 
 
+@router.get("/presence/{user_id}")
+async def get_presence(user_id: str, authorization: Optional[str] = Header(default=None)):
+    """
+    Returns a presence snapshot for a target user.
+    RLS should enforce who can read presence rows (e.g., only chat members).
+    """
+    require_supabase()
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    target = str(user_id or "").strip()
+    if not target:
+        return JSONResponse(status_code=400, content={"success": False, "message": "user_id is required"})
+
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/presence"
+    params: Dict[str, str] = {
+        "select": "user_id,status,last_seen",
+        "user_id": f"eq.{target}",
+        "limit": "1",
+    }
+    # Use anon key + user access token so RLS is enforced.
+    headers = {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get(url, headers=headers, params=params)
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
+    if r.status_code >= 400:
+        return JSONResponse(status_code=_status_map(r.status_code), content={"success": False, "message": _supabase_hint(r)})
+
+    rows = await safe_json_list(r)
+    row = rows[0] if rows else None
+    if not row:
+        return {"success": True, "presence": {"userId": target, "status": "offline", "last_seen": None}}
+
+    return {
+        "success": True,
+        "presence": {
+            "userId": row.get("user_id") or target,
+            "status": row.get("status") or "offline",
+            "last_seen": row.get("last_seen"),
+        },
+    }
+
+
 @router.get("/groups/my")
 async def list_my_groups(authorization: Optional[str] = Header(default=None)):
     require_supabase()
