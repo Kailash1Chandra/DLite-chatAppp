@@ -136,6 +136,9 @@ create index if not exists idx_messages_chat_id_created_at on public.messages(ch
 create index if not exists idx_messages_sender_id on public.messages(sender_id);
 create index if not exists idx_messages_not_deleted on public.messages(chat_id, created_at desc) where is_deleted = false;
 
+-- Unread-style filters: chat_id + sender_id + created_at (neq sender scans)
+create index if not exists idx_messages_chat_sender_created_at on public.messages(chat_id, sender_id, created_at desc);
+
 create index if not exists idx_reactions_message_id on public.message_reactions(message_id);
 create index if not exists idx_pins_chat_id on public.pinned_messages(chat_id);
 create index if not exists idx_chat_settings_user_id on public.chat_settings(user_id);

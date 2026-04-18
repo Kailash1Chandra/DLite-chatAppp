@@ -637,6 +637,8 @@ export function subscribeRecentDirectChats(_userId, callback) {
   const cb = typeof callback === 'function' ? callback : () => undefined
   let disposed = false
   let timer = null
+  const INTERVAL_MS = 8000
+  const INTERVAL_BACKGROUND_MS = 45000
 
   const load = async () => {
     const snapshot = await getCurrentAuthSnapshot().catch(() => null)
@@ -648,15 +650,37 @@ export function subscribeRecentDirectChats(_userId, callback) {
     cb(json?.chats || [])
   }
 
+  const schedule = () => {
+    if (timer) clearInterval(timer)
+    if (disposed) return
+    const ms =
+      typeof document !== 'undefined' && document.hidden ? INTERVAL_BACKGROUND_MS : INTERVAL_MS
+    timer = setInterval(load, ms)
+  }
+
+  const onVisibility = () => {
+    if (disposed) return
+    if (typeof document !== 'undefined' && !document.hidden) {
+      load().catch(() => undefined)
+    }
+    schedule()
+  }
+
   ;(async () => {
     await load()
     if (disposed) return
-    timer = setInterval(load, 8000)
+    schedule()
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibility)
+    }
   })()
 
   return () => {
     disposed = true
     if (timer) clearInterval(timer)
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }
 }
 export function subscribeUserPresence(_userId, callback) {

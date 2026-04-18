@@ -1,7 +1,13 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { AppMainHeader } from '@/components/AppMainHeader';
-import CallUI from '@/components/CallUI';
+
+const CallUI = dynamic(() => import('@/components/CallUI'), {
+  loading: () => (
+    <div className="flex flex-1 items-center justify-center p-8 text-sm text-slate-500 dark:text-slate-400">Loading call…</div>
+  ),
+});
 
 export default function CallScreenPage() {
   return (

@@ -406,27 +406,34 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
                     peer_by_chat[cid] = peer
                     peer_ids.append(peer)
 
-            # 4) Fetch peer profiles (username) + settings (archived/locked/hidden/last_read_at)
+            # 4) Peer profiles + chat settings in parallel (independent PostgREST calls).
             profiles_by_id: dict[str, dict] = {}
-            if peer_ids:
-                r_users = await client.get(
+            settings_by_chat: dict[str, dict] = {}
+
+            async def _fetch_peer_profiles() -> Optional[httpx.Response]:
+                if not peer_ids:
+                    return None
+                return await client.get(
                     users_url,
                     headers=postgrest_headers(use_service_role=True),
                     params={"select": "id,username,avatar_url", "id": f"in.({','.join(sorted(set(peer_ids)))})", "limit": "200"},
                 )
+
+            async def _fetch_chat_settings() -> httpx.Response:
+                return await client.get(
+                    settings_url,
+                    headers=postgrest_headers(use_service_role=True),
+                    params={"select": "chat_id,archived,locked,hidden,last_read_at", "user_id": f"eq.{uid}", "chat_id": f"in.({','.join(direct_ids)})", "limit": "200"},
+                )
+
+            r_users, r_set = await asyncio.gather(_fetch_peer_profiles(), _fetch_chat_settings())
+            if r_users is not None:
                 if r_users.status_code >= 400:
                     return JSONResponse(status_code=_status_map(r_users.status_code), content={"success": False, "message": _supabase_hint(r_users)})
                 for u in await safe_json_list(r_users):
                     pid = str((u or {}).get("id") or "").strip()
                     if pid:
                         profiles_by_id[pid] = u or {}
-
-            r_set = await client.get(
-                settings_url,
-                headers=postgrest_headers(use_service_role=True),
-                params={"select": "chat_id,archived,locked,hidden,last_read_at", "user_id": f"eq.{uid}", "chat_id": f"in.({','.join(direct_ids)})", "limit": "200"},
-            )
-            settings_by_chat: dict[str, dict] = {}
             if r_set.status_code < 400:
                 for s in await safe_json_list(r_set):
                     cid = str((s or {}).get("chat_id") or "").strip()
@@ -434,7 +441,7 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
                         settings_by_chat[cid] = s or {}
 
             # 5) Last message + unread per chat (parallel: was 2 sequential HTTP calls × N chats).
-            sem = asyncio.Semaphore(16)
+            sem = asyncio.Semaphore(20)
 
             async def fetch_recent_row(cid: str) -> Optional[dict]:
                 peer = peer_by_chat.get(cid, "")
