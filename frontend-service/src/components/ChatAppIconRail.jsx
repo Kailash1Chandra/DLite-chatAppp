@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Mail, MessageCircle, Phone, Users } from 'lucide-react';
+import { Mail, Phone, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AppHeaderMenu } from '@/components/AppHeaderMenu';
 import { ProfileMenu } from '@/components/ProfileMenu';
@@ -16,19 +16,6 @@ export function ChatAppIconRail({ active: activeNav = 'dm', dmUnreadCount = 0, m
   return (
     <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200/80 px-3 py-2.5 dark:border-slate-800">
       <div className="flex items-center gap-0.5 sm:gap-1">
-        <Link
-          href="/dashboard"
-          className={cn('relative', activeNav === 'dm' ? linkActive : linkInactive)}
-          title="Chats"
-          aria-current={activeNav === 'dm' ? 'page' : undefined}
-        >
-          <MessageCircle className="h-5 w-5" />
-          {dmUnreadCount > 0 ? (
-            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-              {dmUnreadCount > 9 ? '9+' : dmUnreadCount}
-            </span>
-          ) : null}
-        </Link>
         <Link
           href="/call"
           className={activeNav === 'call' ? linkActive : linkInactive}
@@ -54,7 +41,11 @@ export function ChatAppIconRail({ active: activeNav = 'dm', dmUnreadCount = 0, m
         </Link>
       </div>
       <div className="flex items-center gap-0.5">
-        <AppHeaderMenu menuLinks={menuLinks} />
+        <AppHeaderMenu
+          collapseActionsInMenu
+          chatsUnreadCount={dmUnreadCount}
+          menuLinks={menuLinks}
+        />
         <ProfileMenu />
       </div>
     </div>
