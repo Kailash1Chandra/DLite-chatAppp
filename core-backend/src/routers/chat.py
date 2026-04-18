@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, Optional
 
 import httpx
@@ -432,61 +433,62 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
                     if cid:
                         settings_by_chat[cid] = s or {}
 
-            # 5) Fetch last message per chat (cheap: query newest per chat separately)
-            items = []
-            for cid in direct_ids:
+            # 5) Last message + unread per chat (parallel: was 2 sequential HTTP calls × N chats).
+            sem = asyncio.Semaphore(16)
+
+            async def fetch_recent_row(cid: str) -> Optional[dict]:
                 peer = peer_by_chat.get(cid, "")
                 prof = profiles_by_id.get(peer, {}) if peer else {}
                 s = settings_by_chat.get(cid, {}) or {}
                 if s.get("hidden") is True:
-                    continue
-
-                r_last = await client.get(
-                    msgs_url,
-                    headers=postgrest_headers(use_service_role=True),
-                    params={
-                        "select": "id,content,sender_id,created_at,is_deleted",
-                        "chat_id": f"eq.{cid}",
-                        "order": "created_at.desc",
-                        "limit": "1",
-                    },
-                )
+                    return None
+                last_read = s.get("last_read_at") or "1970-01-01T00:00:00Z"
+                async with sem:
+                    r_last, r_unread = await asyncio.gather(
+                        client.get(
+                            msgs_url,
+                            headers=postgrest_headers(use_service_role=True),
+                            params={
+                                "select": "id,content,sender_id,created_at,is_deleted",
+                                "chat_id": f"eq.{cid}",
+                                "order": "created_at.desc",
+                                "limit": "1",
+                            },
+                        ),
+                        client.get(
+                            msgs_url,
+                            headers=postgrest_headers(use_service_role=True),
+                            params={
+                                "select": "id",
+                                "chat_id": f"eq.{cid}",
+                                "sender_id": f"neq.{uid}",
+                                "created_at": f"gt.{last_read}",
+                                "limit": "200",
+                            },
+                        ),
+                    )
                 if r_last.status_code >= 400:
-                    continue
+                    return None
                 last_rows = await safe_json_list(r_last)
                 last = last_rows[0] if last_rows else {}
                 last_msg = "" if not last else ("" if last.get("is_deleted") else (last.get("content") or ""))
                 last_at = last.get("created_at") or None
-
-                # unread count: count messages after last_read_at, not sent by uid
-                last_read = s.get("last_read_at") or "1970-01-01T00:00:00Z"
-                r_unread = await client.get(
-                    msgs_url,
-                    headers=postgrest_headers(use_service_role=True),
-                    params={
-                        "select": "id",
-                        "chat_id": f"eq.{cid}",
-                        "sender_id": f"neq.{uid}",
-                        "created_at": f"gt.{last_read}",
-                        "limit": "200",
-                    },
-                )
                 unread = 0
                 if r_unread.status_code < 400:
                     unread = len(await safe_json_list(r_unread))
+                return {
+                    "threadId": cid,
+                    "peerId": peer,
+                    "peerUsername": prof.get("username") or (peer[:6] + "…" if peer else ""),
+                    "lastMessage": last_msg,
+                    "lastAt": last_at,
+                    "unreadCount": unread,
+                    "archived": bool(s.get("archived")),
+                    "locked": bool(s.get("locked")),
+                }
 
-                items.append(
-                    {
-                        "threadId": cid,
-                        "peerId": peer,
-                        "peerUsername": prof.get("username") or (peer[:6] + "…" if peer else ""),
-                        "lastMessage": last_msg,
-                        "lastAt": last_at,
-                        "unreadCount": unread,
-                        "archived": bool(s.get("archived")),
-                        "locked": bool(s.get("locked")),
-                    }
-                )
+            row_results = await asyncio.gather(*(fetch_recent_row(cid) for cid in direct_ids))
+            items = [row for row in row_results if row is not None]
 
             # Sort by lastAt desc, fallback stable
             items.sort(key=lambda x: (x.get("lastAt") or ""), reverse=True)
