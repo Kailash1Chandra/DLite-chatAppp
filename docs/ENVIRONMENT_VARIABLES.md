@@ -38,10 +38,10 @@ This project is configured to use **Supabase Auth** (no local-auth fallback).
 
 ### WebRTC / calls (public)
 
-- **`NEXT_PUBLIC_ICE_SERVERS_JSON`**: JSON array passed to `RTCPeerConnection` (`iceServers`). Default in code is Google STUN only.
+- **`NEXT_PUBLIC_ICE_SERVERS_JSON`**: JSON array passed to `RTCPeerConnection` (`iceServers`). Default in code is Google STUN only. **Restart `next dev` / rebuild after changing this** (Next inlines `NEXT_PUBLIC_*` at build time).
   - **LAN / quick tests**: `[{"urls":["stun:stun.l.google.com:19302"]}]` (same as root `.env.example`).
-  - **Many mobile or strict NAT networks**: add a **TURN** server (e.g. coturn, Twilio, Cloudflare) so media can relay when UDP peer-to-peer fails. Example shape:
-    - `[{"urls":["stun:stun.l.google.com:19302"]},{"urls":"turn:turn.example.com:3478","username":"your-user","credential":"your-secret"}]`
+  - **Many mobile or strict NAT networks**: add a **TURN** server (e.g. coturn, Twilio, Cloudflare) so media can relay when UDP peer-to-peer fails. If the browser shows *ICE failed, add a TURN server*, you are in this case. Example shape (UDP + TLS; match ports to your coturn config):
+    - `[{"urls":["stun:stun.l.google.com:19302"]},{"urls":["turn:turn.example.com:3478","turns:turn.example.com:5349"],"username":"your-user","credential":"your-secret"}]`
   - Keep secrets out of git; set in deployment env or `.env.local`.
 
 ## `worker-service` (backups)

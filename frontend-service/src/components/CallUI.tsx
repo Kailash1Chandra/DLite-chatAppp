@@ -42,6 +42,8 @@ import {
   createAnswer,
   createOffer,
   createPeerConnection,
+  DEFAULT_ICE_SERVERS,
+  iceConfigHasRelayServer,
   setRemoteDescription,
 } from "@/lib/webrtc";
 import { CallMode, ConnectionStatus, OfferPayload } from "@/types/call";
@@ -364,7 +366,12 @@ export default function CallUI({
           setError(null);
         } else if (nextState === "failed") {
           setStatus("failed");
-          setError("Connection failed.");
+          const hasTurn = iceConfigHasRelayServer(DEFAULT_ICE_SERVERS);
+          setError(
+            hasTurn
+              ? "Connection failed (ICE). Check TURN credentials, firewall, or try another network. See about:webrtc in Firefox for details."
+              : "Connection failed — this network usually needs a TURN relay. Add NEXT_PUBLIC_ICE_SERVERS_JSON with STUN + TURN (see docs/ENVIRONMENT_VARIABLES.md), restart the app, then try again.",
+          );
         } else if (nextState === "disconnected" || nextState === "closed") {
           setStatus("ended");
         }

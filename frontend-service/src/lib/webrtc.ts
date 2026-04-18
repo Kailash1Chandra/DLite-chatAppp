@@ -18,6 +18,17 @@ function readIceServersFromEnv(): RTCIceServer[] | null {
 export const DEFAULT_ICE_SERVERS: RTCIceServer[] =
   readIceServersFromEnv() ?? [{ urls: "stun:stun.l.google.com:19302" }];
 
+/** True if at least one entry uses TURN/TURNS (relay). STUN-only often fails across strict NATs. */
+export function iceConfigHasRelayServer(servers: RTCIceServer[]): boolean {
+  for (const s of servers) {
+    const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+    for (const url of urls) {
+      if (typeof url === "string" && /^(turn|turns):/i.test(url)) return true;
+    }
+  }
+  return false;
+}
+
 interface CreatePeerConnectionArgs {
   onIceCandidate?: (candidate: IceCandidatePayload) => void;
   onTrack?: (event: RTCTrackEvent) => void;
