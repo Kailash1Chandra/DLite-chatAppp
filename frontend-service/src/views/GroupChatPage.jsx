@@ -1016,7 +1016,14 @@ export default function GroupChatPage() {
                           )}
                         </div>
                       </div>
-                      <div className={cn('mt-1', mine ? 'text-emerald-950 dark:text-slate-50' : 'text-amber-950 dark:text-slate-50')}>{m.message}</div>
+                      <div
+                        className={cn(
+                          'mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
+                          mine ? 'text-emerald-950 dark:text-slate-50' : 'text-amber-950 dark:text-slate-50'
+                        )}
+                      >
+                        {m.message}
+                      </div>
                     </div>
                   </div>
 

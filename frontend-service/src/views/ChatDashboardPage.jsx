@@ -1267,7 +1267,7 @@ export default function ChatDashboardPage() {
                         {(m.content || m.isDeleted) ? (
                           <p
                             className={cn(
-                              'mt-1 leading-relaxed',
+                              'mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed',
                               m.isDeleted ? 'italic opacity-80' : mine ? 'text-emerald-950 dark:text-slate-50' : 'text-amber-950 dark:text-slate-50'
                             )}
                           >
