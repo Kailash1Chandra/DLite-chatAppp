@@ -38,7 +38,7 @@ export function AppHeaderMenu({ showHomeButton = true, menuLinks = [], showLogou
           asChild
           variant="ghost"
           size="icon"
-          className="rounded-full p-0 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-amber-500/55 dark:focus-visible:ring-sky-400/45"
+          className="rounded-full p-0 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-violet-500/50 dark:focus-visible:ring-sky-400/45"
           title="Home"
           aria-label="Home"
         >
@@ -64,14 +64,14 @@ export function AppHeaderMenu({ showHomeButton = true, menuLinks = [], showLogou
           {menuOpen && (
             <div
               role="menu"
-              className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[200px] overflow-hidden rounded-2xl border border-amber-200/90 bg-white py-1.5 shadow-xl shadow-amber-900/10 dark:border-navy-700/60 dark:bg-navy-950 dark:shadow-black/40"
+              className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[200px] overflow-hidden rounded-2xl border border-slate-200/90 bg-white py-1.5 shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-950 dark:shadow-black/40"
             >
               {menuLinks.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href + label}
                   href={href}
                   role="menuitem"
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-amber-950 no-underline transition-colors duration-150 hover:bg-amber-100 dark:text-slate-50 dark:hover:bg-navy-800/60"
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-900 no-underline transition-colors duration-150 hover:bg-violet-50 dark:text-slate-50 dark:hover:bg-slate-800"
                   onClick={() => setMenuOpen(false)}
                 >
                   {Icon && <Icon className="h-4 w-4 shrink-0 opacity-80" />}

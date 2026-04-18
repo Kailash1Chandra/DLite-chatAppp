@@ -17,8 +17,7 @@ export function ThemeToggle({ className = '' }) {
   };
 
   const Icon = resolved === 'dark' ? Moon : Sun;
-  const label =
-    resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme (navy blue)';
+  const label = resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
 
   return (
     <Button

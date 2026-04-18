@@ -1,5 +1,12 @@
 import '@/styles/globals.css';
 import { Providers } from './providers';
+import { Inter } from 'next/font/google';
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
 
 export const metadata = {
   title: 'D-Lite',
@@ -14,11 +21,11 @@ const themeScript = `(function(){try{var k='d-lite-theme';var m=localStorage.get
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="min-h-screen antialiased">
+      <body className={`min-h-screen font-sans antialiased ${inter.className}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -20,7 +20,7 @@ export function AuthPageBackground() {
     <>
       {/* Theme tint behind the photo (fills any edge if asset is extreme aspect) */}
       <div
-        className="pointer-events-none fixed inset-0 -z-10 min-h-[100dvh] w-full bg-gradient-to-br from-amber-50 via-amber-100 to-yellow-50 dark:from-navy-950 dark:via-navy-900 dark:to-slate-950"
+        className="pointer-events-none fixed inset-0 -z-10 min-h-[100dvh] w-full bg-gradient-to-br from-slate-100 via-violet-50/40 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950"
         aria-hidden
       />
       {/* Full-screen image: cover = stretch to fill viewport (like wallpaper) */}
@@ -31,7 +31,7 @@ export function AuthPageBackground() {
       />
       {/* Thin veil so the card stays readable; kept light so yellow art stays visible */}
       <div
-        className="pointer-events-none fixed inset-0 -z-10 min-h-[100dvh] w-full bg-gradient-to-b from-amber-50/20 via-transparent to-amber-50/35 dark:from-navy-950/30 dark:via-transparent dark:to-navy-950/50"
+        className="pointer-events-none fixed inset-0 -z-10 min-h-[100dvh] w-full bg-gradient-to-b from-white/30 via-transparent to-violet-50/20 dark:from-slate-950/40 dark:via-transparent dark:to-slate-950/60"
         aria-hidden
       />
     </>

@@ -26,7 +26,7 @@ function Modal({ title, titleId = 'profile-modal-title', children, onClose, clas
       <div className="flex min-h-[100dvh] w-full items-center justify-center px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
         <div
           className={cn(
-            'card relative my-auto w-full max-w-md border-amber-200/90 p-5 shadow-2xl dark:border-navy-700/60 sm:p-6',
+            'card relative my-auto w-full max-w-md border-slate-200/90 p-5 shadow-2xl dark:border-slate-700 sm:p-6',
             'max-h-[min(90dvh,calc(100dvh-2rem))] overflow-y-auto overscroll-contain',
             'animate-in fade-in zoom-in-95 slide-in-from-bottom-6 duration-300',
             className
@@ -34,7 +34,7 @@ function Modal({ title, titleId = 'profile-modal-title', children, onClose, clas
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mb-4 flex items-start justify-between gap-3">
-            <h2 id={titleId} className="text-lg font-bold text-amber-950 dark:text-slate-50">
+            <h2 id={titleId} className="text-lg font-bold text-slate-900 dark:text-slate-50">
               {title}
             </h2>
             <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose} aria-label="Close">
@@ -220,7 +220,7 @@ export function ProfileMenu() {
         <button
           ref={anchorRef}
           type="button"
-          className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-lg font-bold text-white shadow-lg shadow-amber-600/30 outline-none ring-amber-400/50 transition hover:opacity-95 focus-visible:ring-2"
+          className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 to-violet-700 text-lg font-bold text-white shadow-lg shadow-violet-600/25 outline-none ring-violet-400/50 transition hover:opacity-95 focus-visible:ring-2"
           aria-expanded={menuOpen}
           aria-haspopup="menu"
           aria-label="Account menu"
@@ -232,7 +232,7 @@ export function ProfileMenu() {
             initial
           )}
         </button>
-        <p className="max-w-[9rem] truncate text-center text-sm font-semibold leading-tight text-amber-950 dark:text-slate-100">
+        <p className="max-w-[9rem] truncate text-center text-sm font-semibold leading-tight text-slate-900 dark:text-slate-100">
           {user?.username || 'Guest'}
         </p>
 
@@ -247,12 +247,12 @@ export function ProfileMenu() {
               zIndex: 70,
               maxHeight: menuStyle.maxHeight
             }}
-            className="min-w-[220px] overflow-y-auto overscroll-contain rounded-2xl border border-amber-200/90 bg-white py-1.5 shadow-xl shadow-amber-900/10 dark:border-navy-700/60 dark:bg-navy-950 dark:shadow-black/40"
+            className="min-w-[220px] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200/90 bg-white py-1.5 shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-950 dark:shadow-black/40"
           >
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-amber-950 hover:bg-amber-100 dark:text-slate-50 dark:hover:bg-navy-800/60"
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 hover:bg-violet-50 dark:text-slate-50 dark:hover:bg-slate-800"
               onClick={() => {
                 setMenuOpen(false);
                 setEditOpen(true);
@@ -265,7 +265,7 @@ export function ProfileMenu() {
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-amber-950 hover:bg-amber-100 dark:text-slate-50 dark:hover:bg-navy-800/60"
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 hover:bg-violet-50 dark:text-slate-50 dark:hover:bg-slate-800"
               onClick={() => {
                 setMenuOpen(false);
                 setPwdOpen(true);
@@ -283,7 +283,7 @@ export function ProfileMenu() {
         <Modal title="Edit profile" titleId="edit-profile-modal-title" onClose={() => setEditOpen(false)}>
           <form onSubmit={handleEditSave} className="space-y-4">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-sky-400">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-violet-400">
                 Username
               </label>
               <input
@@ -294,13 +294,13 @@ export function ProfileMenu() {
               />
             </div>
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-sky-400">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-violet-400">
                 Email
               </label>
               <input className="input mt-1 opacity-80" value={user?.email || '—'} readOnly disabled />
             </div>
             {editMsg && (
-              <p className="rounded-xl border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-navy-600/50 dark:bg-navy-900/40 dark:text-slate-100">
+              <p className="rounded-xl border border-violet-300/60 bg-violet-50 px-3 py-2 text-xs text-slate-800 dark:border-navy-600/50 dark:bg-slate-900/60 dark:text-slate-100">
                 {editMsg}
               </p>
             )}
@@ -318,7 +318,7 @@ export function ProfileMenu() {
         <Modal title="Change password" titleId="pwd-modal-title" onClose={() => setPwdOpen(false)}>
           <form onSubmit={handlePwdSubmit} className="space-y-3">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-sky-400">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-violet-400">
                 Current password
               </label>
               <input
@@ -330,7 +330,7 @@ export function ProfileMenu() {
               />
             </div>
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-sky-400">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-violet-400">
                 New password
               </label>
               <input
@@ -342,7 +342,7 @@ export function ProfileMenu() {
               />
             </div>
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-sky-400">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-violet-400">
                 Confirm new password
               </label>
               <input
@@ -358,7 +358,7 @@ export function ProfileMenu() {
                 className={cn(
                   'rounded-xl px-3 py-2 text-xs',
                   pwdMsg.includes('requires')
-                    ? 'border border-amber-300/60 bg-amber-50 text-amber-900 dark:border-navy-600/50 dark:bg-navy-900/40 dark:text-slate-100'
+                    ? 'border border-violet-300/60 bg-violet-50 text-slate-800 dark:border-navy-600/50 dark:bg-slate-900/60 dark:text-slate-100'
                     : 'border border-red-500/40 bg-red-500/10 text-red-800 dark:text-red-200'
                 )}
               >

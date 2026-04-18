@@ -20,7 +20,7 @@ export function AppNavIcons({ className, showLabels = false }) {
   return (
     <nav
       className={cn(
-        'flex flex-shrink-0 items-center gap-1 rounded-2xl border border-amber-200/70 bg-amber-50/80 p-1 dark:border-navy-700/50 dark:bg-navy-950/50',
+        'flex flex-shrink-0 items-center gap-1 rounded-2xl border border-slate-200/80 bg-white/90 p-1 dark:border-slate-700 dark:bg-slate-900/80',
         showLabels && 'gap-0.5 border-0 bg-transparent p-0 dark:bg-transparent',
         className
       )}
@@ -39,7 +39,7 @@ export function AppNavIcons({ className, showLabels = false }) {
               showLabels
                 ? 'h-auto min-h-[3.5rem] w-[4.25rem] flex-col gap-0.5 px-1.5 py-1.5 sm:w-[4.75rem] sm:py-2'
                 : 'h-10 w-10',
-              !active && 'text-amber-800 hover:bg-amber-100/90 dark:text-slate-200 dark:hover:bg-navy-800/50'
+              !active && 'text-slate-600 hover:bg-violet-50 dark:text-slate-300 dark:hover:bg-slate-800/80'
             )}
           >
             <Link
@@ -55,8 +55,8 @@ export function AppNavIcons({ className, showLabels = false }) {
                   className={cn(
                     'max-w-full truncate text-center text-[10px] font-semibold leading-tight sm:text-[11px]',
                     active
-                      ? 'text-amber-50 dark:text-white'
-                      : 'text-amber-800 dark:text-slate-200'
+                      ? 'text-white dark:text-white'
+                      : 'text-slate-600 dark:text-slate-300'
                   )}
                 >
                   {caption}

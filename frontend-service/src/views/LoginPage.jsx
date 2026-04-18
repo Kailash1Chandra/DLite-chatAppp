@@ -101,7 +101,7 @@ export default function LoginPage() {
           className="card relative z-10 w-full max-w-md p-7 shadow-2xl"
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, ease: [0.2, 0.9, 0.2, 1] }}
+          transition={{ duration: 0.25, ease: [0.2, 0.9, 0.2, 1] }}
         >
           <AuthCardBranding className="mb-6" />
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">You&apos;re signed in</h1>
@@ -138,7 +138,7 @@ export default function LoginPage() {
         className="card anim-fade-up relative z-10 w-full max-w-md p-7 shadow-2xl backdrop-blur-sm"
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.55, ease: [0.2, 0.9, 0.2, 1] }}
+        transition={{ duration: 0.25, ease: [0.2, 0.9, 0.2, 1] }}
       >
         <div className="anim-fade-up mb-6 [animation-delay:70ms]">
           <AuthCardBranding />

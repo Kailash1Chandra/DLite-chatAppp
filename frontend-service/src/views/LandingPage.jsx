@@ -24,10 +24,10 @@ import { cn } from '@/lib/utils';
 const dashboardCtaClass = (compact) =>
   cn(
     'anim-shimmer relative overflow-hidden font-semibold tracking-wide',
-    'shadow-[0_12px_40px_-14px_rgba(217,119,6,0.5)] ring-2 ring-amber-300/45 ring-offset-2 ring-offset-amber-50/80',
-    'transition hover:brightness-[1.04] hover:shadow-[0_18px_48px_-12px_rgba(217,119,6,0.58)]',
-    'dark:shadow-[0_12px_40px_-14px_rgba(14,165,233,0.42)] dark:ring-sky-400/40 dark:ring-offset-navy-950',
-    'dark:hover:shadow-[0_18px_52px_-10px_rgba(56,189,248,0.42)]',
+    'shadow-[0_12px_40px_-14px_rgba(124,58,237,0.45)] ring-2 ring-violet-400/50 ring-offset-2 ring-offset-white',
+    'transition hover:brightness-[1.03] hover:shadow-[0_18px_48px_-12px_rgba(124,58,237,0.5)]',
+    'dark:shadow-[0_12px_40px_-14px_rgba(139,92,246,0.35)] dark:ring-violet-500/35 dark:ring-offset-slate-950',
+    'dark:hover:shadow-[0_18px_52px_-10px_rgba(167,139,250,0.35)]',
     compact ? 'px-4 py-2.5 text-sm' : 'px-7 py-3 text-base'
   );
 
@@ -42,9 +42,9 @@ const DashboardCtaContent = ({ compact = false, showArrow = true }) => (
 );
 
 const fadeUp = {
-  initial: { opacity: 0, y: 16 },
+  initial: { opacity: 0, y: 10 },
   animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.55, ease: [0.2, 0.9, 0.2, 1] }
+  transition: { duration: 0.28, ease: [0.2, 0.9, 0.2, 1] }
 };
 
 export default function LandingPage() {
@@ -54,14 +54,13 @@ export default function LandingPage() {
     <div className="app-shell min-h-screen">
       {/* Background: dots + glow */}
       <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="landing-dots absolute inset-0 opacity-90" />
-        <div className="anim-glow absolute -left-24 top-20 h-72 w-72 rounded-full bg-amber-400/30" />
-        <div className="anim-glow absolute -right-24 top-40 h-80 w-80 rounded-full bg-yellow-300/25 [animation-delay:1.5s]" />
-        <div className="anim-glow absolute left-1/3 bottom-10 h-72 w-72 rounded-full bg-orange-300/20 [animation-delay:3s]" />
+        <div className="landing-dots absolute inset-0 opacity-80" />
+        <div className="anim-glow absolute -left-24 top-20 h-72 w-72 rounded-full bg-violet-400/25 dark:bg-violet-600/20" />
+        <div className="anim-glow absolute -right-20 top-36 h-64 w-64 rounded-full bg-indigo-300/20 [animation-delay:2s] dark:bg-indigo-500/15" />
       </div>
 
       {/* Sticky glass header */}
-      <header className="sticky top-0 z-50 border-b border-amber-200/70 bg-amber-50/85 backdrop-blur-xl dark:border-navy-800/40 dark:bg-navy-950/80">
+      <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4">
           <AppBrandRow asHomeLink />
 
@@ -120,7 +119,7 @@ export default function LandingPage() {
         <div className="mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 px-4 pb-6 pt-10 md:grid-cols-2 md:gap-12 md:pt-14">
           <section>
             <motion.div {...fadeUp} className="badge mb-4 inline-flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-amber-700 dark:text-slate-300" />
+              <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" />
               Fast. Simple. Real-time.
             </motion.div>
 
@@ -130,7 +129,7 @@ export default function LandingPage() {
               transition={{ ...fadeUp.transition, delay: 0.06 }}
             >
               Messaging that feels{' '}
-              <span className="bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-500 bg-clip-text text-transparent dark:from-sky-300 dark:via-sky-200 dark:to-cyan-200">
+              <span className="bg-gradient-to-r from-violet-600 via-violet-500 to-indigo-500 bg-clip-text text-transparent dark:from-violet-300 dark:via-violet-200 dark:to-indigo-200">
                 instant
               </span>
               .
@@ -177,11 +176,11 @@ export default function LandingPage() {
               transition={{ ...fadeUp.transition, delay: 0.24 }}
             >
               <span className="badge inline-flex items-center gap-1.5">
-                <MessageCircle className="h-3.5 w-3.5 text-amber-700 dark:text-slate-300" />
+                <MessageCircle className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" />
                 DMs
               </span>
               <span className="badge inline-flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5 text-amber-800 dark:text-slate-300" />
+                <Users className="h-3.5 w-3.5 text-violet-700 dark:text-violet-300" />
                 Groups
               </span>
               <span className="badge inline-flex items-center gap-1.5">
@@ -197,9 +196,9 @@ export default function LandingPage() {
             className="card anim-fade-up relative scroll-mt-24 p-5 md:p-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.15, ease: [0.2, 0.9, 0.2, 1] }}
+            transition={{ duration: 0.32, delay: 0.06, ease: [0.2, 0.9, 0.2, 1] }}
           >
-            <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-amber-500/15 via-transparent to-yellow-400/12" />
+            <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-violet-500/10 via-transparent to-indigo-400/10" />
             <div className="relative mb-4 flex items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Live preview</p>
@@ -210,7 +209,7 @@ export default function LandingPage() {
               </span>
             </div>
             <div className="relative grid gap-3 sm:grid-cols-2">
-              <div className="anim-float rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Private Chat</div>
                 <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">Message a specific user by user ID.</div>
                 <div className="mt-4 space-y-2">
@@ -218,14 +217,14 @@ export default function LandingPage() {
                     <div className="text-[10px] text-slate-500 dark:text-slate-400">You</div>
                     Hey! quick update?
                   </div>
-                  <div className="relative ml-auto w-[86%] rounded-2xl bg-amber-500/20 px-3 py-2 text-xs text-slate-900 dark:text-slate-100">
+                  <div className="relative ml-auto w-[86%] rounded-2xl bg-violet-600/15 px-3 py-2 text-xs text-slate-900 dark:bg-violet-500/20 dark:text-slate-100">
                     <div className="text-[10px] text-slate-600 dark:text-slate-300">Teammate</div>
                     Done. Shipping now.
                   </div>
                 </div>
               </div>
 
-              <div className="anim-float rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5 [animation-delay:700ms]">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Group Chat</div>
                 <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">Broadcast to a group by group ID.</div>
                 <div className="mt-4 space-y-2">
@@ -251,10 +250,10 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 12 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-40px' }}
-            transition={{ duration: 0.5 }}
+            transition={{ duration: 0.28 }}
           >
             {[
-              { label: 'Stack', value: 'Vite + React', sub: 'Modern frontend' },
+              { label: 'Stack', value: 'Next.js + React', sub: 'Modern frontend' },
               { label: 'Realtime', value: 'Socket.io', sub: 'Low-latency events' },
               { label: 'UX', value: 'One dashboard', sub: 'Chat, groups, calls' }
             ].map((s) => (
@@ -277,7 +276,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 12 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
+            transition={{ duration: 0.28 }}
           >
             <p className="badge mb-3 inline-flex">Why D-Lite</p>
             <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-3xl">
@@ -295,19 +294,19 @@ export default function LandingPage() {
                 icon: MessageCircle,
                 title: 'Private messages',
                 desc: 'Direct userId based chat — simple API, clear UI.',
-                accent: 'from-amber-500/25 to-transparent'
+                accent: 'from-violet-500/25 to-transparent'
               },
               {
                 icon: Users,
                 title: 'Group rooms',
                 desc: 'Broadcast with a group ID — team updates stay in one thread.',
-                accent: 'from-yellow-500/25 to-transparent'
+                accent: 'from-indigo-500/25 to-transparent'
               },
               {
                 icon: Zap,
                 title: 'Realtime feel',
                 desc: 'WebSockets for instant updates — typing indicators and delivery receipts can come later.',
-                accent: 'from-amber-500/15 to-transparent'
+                accent: 'from-violet-400/15 to-transparent'
               }
             ].map((f, i) => (
               <motion.div
@@ -316,12 +315,12 @@ export default function LandingPage() {
                 initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.45, delay: i * 0.08 }}
+                transition={{ duration: 0.28, delay: i * 0.04 }}
               >
                 <div
                   className={`pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-gradient-to-br ${f.accent} opacity-80`}
                 />
-                <div className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-800 dark:border-navy-700/40 dark:bg-navy-950/40 dark:text-slate-200">
+                <div className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-violet-200/80 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/40 dark:text-violet-200">
                   <f.icon className="h-5 w-5" />
                 </div>
                 <h3 className="relative mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">{f.title}</h3>
@@ -336,7 +335,7 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: 12 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.45, delay: 0.18 }}
+              transition={{ duration: 0.28, delay: 0.08 }}
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-violet-600 dark:border-white/10 dark:bg-white/5 dark:text-violet-200">
                 <Lock className="h-5 w-5" />
@@ -359,9 +358,9 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 14 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
+            transition={{ duration: 0.28 }}
           >
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-amber-600/18 via-transparent to-yellow-500/15" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-violet-600/15 via-transparent to-indigo-500/12" />
             <div className="relative max-w-xl">
               <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50 md:text-3xl">Ready to try?</h2>
               <p className="mt-2 text-slate-600 dark:text-slate-300">
@@ -439,7 +438,7 @@ export default function LandingPage() {
             </div>
             <div className="col-span-2 sm:col-span-1">
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Build</div>
-              <p className="mt-3 text-sm text-slate-600 dark:text-slate-500">Vite · React · Tailwind · Framer Motion</p>
+              <p className="mt-3 text-sm text-slate-600 dark:text-slate-500">Next.js · React · Tailwind</p>
             </div>
           </div>
         </div>
