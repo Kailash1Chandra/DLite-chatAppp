@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/context/ThemeContext';
 
 const menuItemClass =
-  'flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 no-underline transition-colors duration-150 hover:bg-sky-50 dark:text-slate-50 dark:hover:bg-slate-800';
+  'flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-ui-fg no-underline transition-colors duration-150 hover:bg-ui-menu-hover';
 
 /**
  * Theme, Home, Log out — opens upward for use beside the Send button in the composer.
@@ -56,7 +56,7 @@ export function ComposerOverflowMenu() {
       {open ? (
         <div
           role="menu"
-          className="anim-pop absolute bottom-full right-0 z-[80] mb-1.5 min-w-[200px] overflow-hidden rounded-2xl border border-slate-200/90 bg-white py-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-950"
+          className="anim-pop absolute bottom-full right-0 z-[80] mb-1.5 min-w-[200px] overflow-hidden rounded-2xl border border-ui-border bg-ui-panel py-1.5 shadow-xl"
         >
           <button type="button" role="menuitem" className={menuItemClass} onClick={() => toggleTheme()}>
             <ThemeIcon className="h-4 w-4 shrink-0 opacity-80" />

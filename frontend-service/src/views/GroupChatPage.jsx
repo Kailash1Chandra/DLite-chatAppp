@@ -56,7 +56,7 @@ function linkifyGroupMessage(text) {
           href={part}
           target="_blank"
           rel="noreferrer"
-          className="font-medium text-sky-600 underline decoration-sky-400/70 underline-offset-2 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
+          className="font-medium text-ui-link underline decoration-ui-accent/50 underline-offset-2 hover:brightness-110"
         >
           {part}
         </a>
@@ -160,9 +160,10 @@ export default function GroupChatPage() {
         const reactionEntries = Object.entries(m.reactions || {});
         const t = formatGroupMessageTime(m.createdAt);
         const bubble = mine
-          ? 'border-sky-200/90 bg-sky-100/95 text-slate-900 shadow-sm dark:border-sky-500/35 dark:bg-sky-950/45 dark:text-slate-100'
-          : 'border-slate-200/90 bg-slate-100/95 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100';
-        const iconMine = 'text-sky-800/80 hover:bg-sky-200/60 dark:text-sky-200/90 dark:hover:bg-white/10';
+          ? 'border-ui-bubble-mine-border bg-ui-bubble-mine text-slate-900 shadow-sm dark:text-slate-100'
+          : 'border-ui-bubble-other-border bg-ui-bubble-other text-slate-900 shadow-sm dark:text-slate-100';
+        const iconMine =
+          'text-ui-accent hover:bg-ui-accent-subtle dark:text-ui-accent-text dark:hover:bg-white/10';
         const iconTheirs = 'text-slate-600 hover:bg-slate-200/80 dark:text-slate-300 dark:hover:bg-slate-700/50';
 
         return (
@@ -179,7 +180,7 @@ export default function GroupChatPage() {
                 width={32}
                 height={32}
                 unoptimized
-                className="h-8 w-8 shrink-0 self-end rounded-full border border-slate-200/80 bg-white object-cover dark:border-slate-600 dark:bg-slate-800"
+                className="h-8 w-8 shrink-0 self-end rounded-full border border-ui-border bg-ui-panel object-cover"
               />
               <div className={cn('min-w-0 flex-1', mine ? 'flex flex-col items-end' : '')}>
                 <div
@@ -192,7 +193,7 @@ export default function GroupChatPage() {
                   {t ? <span className="text-slate-400 dark:text-slate-500"> · {t}</span> : null}
                   {isPinned ? <Pin className="ml-1 inline h-3 w-3 align-middle opacity-70" /> : null}
                   {mine && memberCount > 1 ? (
-                    <span className="ml-2 text-[10px] font-medium text-sky-600/90 dark:text-sky-300/90">
+                    <span className="ml-2 text-[10px] font-medium text-ui-accent dark:text-ui-accent-text">
                       {readCount > 0 ? `Read ${readCount}/${memberCount - 1}` : 'Sent'}
                     </span>
                   ) : null}
@@ -236,15 +237,14 @@ export default function GroupChatPage() {
                     type="button"
                     data-group-reaction-picker
                     className={cn(
-                      'absolute -bottom-0.5 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/90 bg-white text-base shadow-md transition',
+                      'absolute -bottom-0.5 flex h-7 w-7 items-center justify-center rounded-full border border-ui-border bg-ui-panel text-base shadow-md transition',
                       'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100',
-                      'dark:border-slate-600 dark:bg-slate-900',
                       mine ? '-left-8' : '-right-8'
                     )}
                     onClick={() => setOpenGroupReactionPickerId((prev) => (prev === m._id ? null : m._id))}
                     title="React"
                   >
-                    <SmilePlus className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                    <SmilePlus className="h-3.5 w-3.5 text-ui-accent" />
                   </button>
                 </div>
               </div>
@@ -254,7 +254,7 @@ export default function GroupChatPage() {
               <div
                 data-group-reaction-picker
                 className={cn(
-                  'mt-1.5 flex gap-1 rounded-full border border-slate-200/80 bg-white px-2 py-1 shadow-md dark:border-slate-700 dark:bg-slate-950',
+                  'mt-1.5 flex gap-1 rounded-full border border-ui-border bg-ui-panel px-2 py-1 shadow-md',
                   mine ? 'mr-10 justify-end' : 'ml-10'
                 )}
               >
@@ -283,12 +283,12 @@ export default function GroupChatPage() {
                       type="button"
                       className={cn(
                         'flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition',
-                        reacted ? 'border-sky-400 bg-sky-50 dark:border-sky-500 dark:bg-slate-800' : 'border-slate-200/80 bg-white dark:border-slate-700 dark:bg-slate-900'
+                        reacted ? 'border-ui-accent bg-ui-accent-subtle' : 'border-ui-border bg-ui-panel'
                       )}
                       onClick={() => handleToggleGroupReaction(m._id, emoji)}
                     >
                       <span>{emoji}</span>
-                      <span className={reacted ? 'text-slate-600 dark:text-sky-400' : 'text-slate-700 dark:text-slate-300'}>{count}</span>
+                      <span className={reacted ? 'text-ui-accent dark:text-ui-accent-text' : 'text-slate-700 dark:text-slate-300'}>{count}</span>
                     </button>
                   );
                 })}
@@ -811,14 +811,14 @@ export default function GroupChatPage() {
           <ChatAppIconRail variant="vertical" active="groups" dmUnreadCount={dmUnreadTotal} />
         </nav>
 
-        <aside className="flex max-h-[42vh] min-h-0 flex-col border-b border-slate-200/80 bg-[#F7F8FA] dark:border-slate-800 dark:bg-slate-900/90 lg:max-h-none lg:border-b-0 lg:border-r">
+        <aside className="flex max-h-[42vh] min-h-0 flex-col border-b border-ui-border bg-ui-sidebar lg:max-h-none lg:border-b-0 lg:border-r">
           <div className="shrink-0 lg:hidden">
             <ChatAppIconRail active="groups" dmUnreadCount={dmUnreadTotal} />
           </div>
 
           <div
             ref={groupSearchWrapRef}
-            className="relative shrink-0 border-b border-slate-200/80 px-3 pb-3 pt-2 dark:border-slate-800"
+            className="relative shrink-0 border-b border-ui-border px-3 pb-3 pt-2"
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-slate-100">Your groups</h2>
@@ -826,7 +826,7 @@ export default function GroupChatPage() {
                 type="button"
                 variant={groupSearchOpen ? 'default' : 'secondary'}
                 size="icon"
-                className="h-9 w-9 shrink-0 rounded-full bg-sky-600 text-white shadow-md shadow-sky-600/25 hover:bg-sky-700"
+                className="h-9 w-9 shrink-0 rounded-full bg-ui-accent text-ui-on-accent shadow-md hover:bg-ui-accent-hover"
                 aria-expanded={groupSearchOpen}
                 aria-label="Open or create group"
                 onClick={() => setGroupSearchOpen((o) => !o)}
@@ -835,20 +835,20 @@ export default function GroupChatPage() {
               </Button>
             </div>
 
-            <div className="mb-3 flex rounded-full border border-slate-200/80 bg-slate-100/90 p-0.5 dark:border-slate-700 dark:bg-slate-800/80">
+            <div className="mb-3 flex rounded-full border border-ui-border bg-ui-muted p-0.5">
               <Link
                 href="/dashboard"
-                className="flex-1 rounded-full px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-slate-600 transition hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-400 sm:px-3"
+                className="flex-1 rounded-full px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-slate-600 transition hover:text-ui-accent dark:text-slate-400 sm:px-3"
               >
                 Personal
               </Link>
-              <span className="flex-1 rounded-full bg-sky-600 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-white shadow-sm shadow-sky-600/25 sm:px-3">
+              <span className="flex-1 rounded-full bg-ui-accent px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-ui-on-accent shadow-sm sm:px-3">
                 Group
               </span>
             </div>
 
             {groupSearchOpen && (
-              <div className="anim-pop absolute left-3 right-3 top-full z-[60] mt-2 overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-950">
+              <div className="anim-pop absolute left-3 right-3 top-full z-[60] mt-2 overflow-hidden rounded-2xl border border-ui-border bg-ui-panel p-3 shadow-xl">
                 <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
                   Group ID
                 </label>
@@ -895,7 +895,7 @@ export default function GroupChatPage() {
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2 pb-3 pt-1 sm:px-3">
             {groupId.trim() ? (
-              <div className="rounded-xl border border-slate-200/80 bg-slate-50/95 px-3 py-2 text-sm font-medium text-slate-900 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-100">
+              <div className="rounded-xl border border-ui-border bg-ui-muted px-3 py-2 text-sm font-medium text-slate-900 dark:text-slate-100">
                 <div>Current group</div>
                 <div className="font-mono text-xs opacity-80">{groupId.trim()}</div>
               </div>
@@ -938,8 +938,8 @@ export default function GroupChatPage() {
                       className={cn(
                         'w-full rounded-xl border px-2.5 py-2 text-left text-xs font-medium transition',
                         groupId.trim() === group.id
-                          ? 'border-sky-200 bg-sky-100 text-slate-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-50'
-                          : 'border-slate-200/80 bg-white/70 text-slate-800 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:bg-slate-800/90',
+                          ? 'border-ui-row-border bg-ui-row text-slate-900 dark:text-ui-accent-text'
+                          : 'border-ui-border bg-ui-panel/70 text-slate-800 hover:bg-ui-muted dark:text-slate-100',
                       )}
                     >
                       <div>Group {group.id}</div>
@@ -978,7 +978,7 @@ export default function GroupChatPage() {
                     <div
                       key={member.id}
                       className={cn(
-                        'rounded-lg border border-slate-200/80 bg-white/70 px-2.5 py-1.5 text-xs transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/70',
+                        'rounded-lg border border-ui-border bg-ui-panel/70 px-2.5 py-1.5 text-xs transition-colors duration-300',
                         recentlyAddedMemberId === member.id &&
                           'border-emerald-300 bg-emerald-50/80 animate-pulse dark:border-emerald-500/40 dark:bg-emerald-900/20'
                       )}
@@ -999,12 +999,12 @@ export default function GroupChatPage() {
           </div>
         </aside>
 
-        <section className="flex min-h-0 flex-1 flex-col overflow-hidden border-b border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900 lg:border-b-0">
-          <div className="shrink-0 border-b border-slate-200/80 px-4 py-3 dark:border-slate-800">
+        <section className="flex min-h-0 flex-1 flex-col overflow-hidden border-b border-ui-border bg-ui-panel lg:border-b-0">
+          <div className="shrink-0 border-b border-ui-border px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+                  <MessageSquare className="h-4 w-4 shrink-0 text-ui-accent" />
                   <h2 className="truncate text-base font-bold text-slate-900 dark:text-slate-50">
                     {groupId.trim() ? groupId.trim() : 'Group chat'}
                   </h2>
@@ -1042,7 +1042,7 @@ export default function GroupChatPage() {
                       <button
                         type="button"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 transition-colors hover:bg-sky-50 dark:text-slate-50 dark:hover:bg-slate-800"
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 transition-colors hover:bg-ui-menu-hover dark:text-slate-50"
                         disabled={!groupId.trim() || !user?.id || chatTransferBusy}
                         onClick={() => {
                           setGroupMenuOpen(false);
@@ -1055,7 +1055,7 @@ export default function GroupChatPage() {
                       <button
                         type="button"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 transition-colors hover:bg-sky-50 dark:text-slate-50 dark:hover:bg-slate-800"
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 transition-colors hover:bg-ui-menu-hover dark:text-slate-50"
                         disabled={!groupId.trim() || !user?.id || chatTransferBusy}
                         onClick={() => {
                           setGroupMenuOpen(false);
@@ -1068,7 +1068,7 @@ export default function GroupChatPage() {
                       <button
                         type="button"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 transition-colors hover:bg-sky-50 dark:text-slate-50 dark:hover:bg-slate-800"
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 transition-colors hover:bg-ui-menu-hover dark:text-slate-50"
                         onClick={handleShowMembers}
                       >
                         <Users className="h-4 w-4 shrink-0 opacity-80" />
@@ -1077,7 +1077,7 @@ export default function GroupChatPage() {
                       <button
                         type="button"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 transition-colors hover:bg-sky-50 dark:text-slate-50 dark:hover:bg-slate-800"
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-900 transition-colors hover:bg-ui-menu-hover dark:text-slate-50"
                         onClick={handleToggleMuteGroup}
                       >
                         <BellOff className="h-4 w-4 shrink-0 opacity-80" />
@@ -1101,7 +1101,7 @@ export default function GroupChatPage() {
             <div className="relative mt-3">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
-                className="w-full rounded-full border border-slate-200/90 bg-slate-50/90 py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none ring-sky-500/20 placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 dark:border-slate-600 dark:bg-slate-800/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-500"
+                className="w-full rounded-full border border-ui-border bg-ui-composer-pill py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-ui-accent focus:ring-2 focus:ring-[var(--ui-focus)] dark:text-slate-100 dark:placeholder:text-slate-500"
                 placeholder="Search message…"
                 value={groupMsgSearch}
                 onChange={(e) => setGroupMsgSearch(e.target.value)}
@@ -1113,17 +1113,17 @@ export default function GroupChatPage() {
 
           {/* Group pinned messages banner */}
           {groupPinnedMessages.length > 0 && groupId.trim() && (
-            <div className="shrink-0 border-b border-slate-200/80 bg-sky-50/70 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="shrink-0 border-b border-ui-border bg-ui-pinned">
               {groupPinnedMessages.slice(0, 1).map((pin) => (
                 <div key={pin.messageId} className="flex items-center gap-2 px-4 py-2">
-                  <Pin className="h-3.5 w-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                  <Pin className="h-3.5 w-3.5 shrink-0 text-ui-accent" />
                   <p className="min-w-0 flex-1 truncate text-xs font-medium text-slate-800 dark:text-slate-100">
                     {pin.content || 'Pinned message'}
                   </p>
                   {isGroupAdmin && (
                     <button
                       type="button"
-                      className="shrink-0 text-xs text-sky-600 hover:underline dark:text-sky-400"
+                      className="shrink-0 text-xs text-ui-accent hover:underline"
                       onClick={() => handleUnpinGroupMessage(pin.messageId)}
                     >
                       Unpin
@@ -1141,7 +1141,7 @@ export default function GroupChatPage() {
 
           <div
             ref={messagesWrapRef}
-            className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-[#eef2f7] px-4 py-4 dark:bg-slate-950/80"
+            className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-ui-thread px-4 py-4"
           >
             {messagesLoadError && (
               <div className="rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
@@ -1159,7 +1159,7 @@ export default function GroupChatPage() {
             )}
 
             {messagesLoading && (
-              <div className="rounded-xl border border-slate-200/80 bg-sky-50/60 px-3 py-2 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
+              <div className="rounded-xl border border-ui-border bg-ui-accent-subtle px-3 py-2 text-xs text-slate-700 dark:text-slate-300">
                 Loading messages…
               </div>
             )}
@@ -1201,7 +1201,7 @@ export default function GroupChatPage() {
               </div>
             )}
             {messages.length === 0 && (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+              <div className="rounded-xl border border-dashed border-ui-border bg-ui-muted px-4 py-6 text-sm text-slate-600 dark:text-slate-300">
                 No messages yet. Set a groupId and send a message.
               </div>
             )}
@@ -1217,11 +1217,11 @@ export default function GroupChatPage() {
           )}
 
           <form
-            className="shrink-0 border-t border-slate-200/80 bg-[#f0f2f5] px-2 py-2 dark:border-slate-800 dark:bg-slate-900 sm:px-3"
+            className="shrink-0 border-t border-ui-border bg-ui-composer px-2 py-2 sm:px-3"
             onSubmit={handleSendGroupMessage}
           >
             <div className="mx-auto flex max-w-4xl items-end gap-1">
-              <div className="flex min-h-[48px] min-w-0 flex-1 items-end gap-0.5 rounded-[1.35rem] border border-slate-200/90 bg-slate-100/95 px-1 py-1 shadow-sm dark:border-slate-600 dark:bg-slate-800/95">
+              <div className="flex min-h-[48px] min-w-0 flex-1 items-end gap-0.5 rounded-[1.35rem] border border-ui-border bg-ui-composer-pill px-1 py-1 shadow-sm">
                 <button
                   type="button"
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/90 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-700/80"
@@ -1244,7 +1244,7 @@ export default function GroupChatPage() {
                 <button
                   type="submit"
                   disabled={!groupId || !message.trim() || !isMember || sending}
-                  className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white shadow-md transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ui-accent text-ui-on-accent shadow-md transition hover:bg-ui-accent-hover disabled:cursor-not-allowed disabled:opacity-45"
                   aria-label="Send"
                 >
                   {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
@@ -1253,7 +1253,7 @@ export default function GroupChatPage() {
             </div>
           </form>
           {(panelError || panelSuccess) && (
-            <div className="border-t border-slate-200/80 px-4 py-2 text-xs dark:border-slate-800">
+            <div className="border-t border-ui-border px-4 py-2 text-xs">
               {panelError && <p className="text-red-700 dark:text-red-300">{panelError}</p>}
               {!panelError && panelSuccess && <p className="text-emerald-700 dark:text-emerald-300">{panelSuccess}</p>}
             </div>
@@ -1263,8 +1263,8 @@ export default function GroupChatPage() {
 
       {membersModalOpen && (
         <div className="fixed inset-0 z-[150] bg-black/55 backdrop-blur-sm">
-          <div className="mx-auto flex h-full w-full max-w-2xl flex-col bg-white dark:bg-slate-950">
-            <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-3 dark:border-slate-800">
+          <div className="mx-auto flex h-full w-full max-w-2xl flex-col bg-ui-panel">
+            <div className="flex items-center justify-between border-b border-ui-border px-4 py-3">
               <div>
                 <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">Group members</p>
                 <p className="text-xs text-slate-600/85 dark:text-slate-300/85">
@@ -1292,7 +1292,7 @@ export default function GroupChatPage() {
                 groupMembers.map((member) => (
                   <div
                     key={member.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-sky-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/50"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-ui-border bg-ui-accent-subtle px-3 py-2"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{getMemberLabel(member)}</p>
@@ -1328,7 +1328,7 @@ export default function GroupChatPage() {
               )}
             </div>
 
-            <div className="border-t border-slate-200/80 px-4 py-3 dark:border-slate-800">
+            <div className="border-t border-ui-border px-4 py-3">
               <input
                 ref={groupPhotoInputRef}
                 type="file"
@@ -1336,12 +1336,12 @@ export default function GroupChatPage() {
                 className="hidden"
                 onChange={handleGroupPhotoPick}
               />
-              <div className="mb-3 flex items-center gap-3 rounded-xl border border-slate-200/80 bg-sky-50/70 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/50">
+              <div className="mb-3 flex items-center gap-3 rounded-xl border border-ui-border bg-ui-accent-subtle px-3 py-2.5">
                 {groupPhotoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={groupPhotoUrl} alt="Group" className="h-12 w-12 rounded-xl object-cover" />
                 ) : (
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-200/80 text-sky-900 dark:bg-slate-800/80 dark:text-slate-200">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-ui-accent-subtle text-ui-accent-text dark:text-slate-200">
                     <Users className="h-5 w-5" />
                   </div>
                 )}

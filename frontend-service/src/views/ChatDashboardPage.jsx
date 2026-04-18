@@ -172,11 +172,11 @@ const ChatMessageRow = memo(function ChatMessageRow({
   const showPlainText = !isPollMessage && (m.content || m.isDeleted);
 
   const bubbleBase = mine
-    ? 'rounded-[1.25rem] rounded-tr-md border border-sky-200/90 bg-sky-100 text-slate-900 shadow-sm dark:border-sky-800/60 dark:bg-sky-950/50 dark:text-sky-50'
-    : 'rounded-[1.25rem] rounded-tl-md border border-slate-200/90 bg-slate-100 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100';
+    ? 'rounded-[1.25rem] rounded-tr-md border border-ui-bubble-mine-border bg-ui-bubble-mine text-slate-900 shadow-sm dark:text-slate-100'
+    : 'rounded-[1.25rem] rounded-tl-md border border-ui-bubble-other-border bg-ui-bubble-other text-slate-900 shadow-sm dark:text-slate-100';
 
   const iconBtnMine =
-    'text-sky-900/70 hover:bg-sky-900/10 dark:text-sky-200/80 dark:hover:bg-white/10';
+    'text-ui-accent hover:bg-ui-accent-subtle dark:text-ui-accent-text dark:hover:bg-white/10';
   const iconBtnTheirs =
     'text-slate-500 hover:bg-slate-200/80 dark:text-slate-400 dark:hover:bg-slate-700/80';
 
@@ -196,7 +196,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
           width={36}
           height={36}
           unoptimized
-          className="h-9 w-9 shrink-0 self-end rounded-full border border-slate-200/80 bg-slate-50 object-cover dark:border-slate-600 dark:bg-slate-800"
+          className="h-9 w-9 shrink-0 self-end rounded-full border border-ui-border bg-ui-muted object-cover"
         />
         <div className={cn('min-w-0 flex-1', mine ? 'flex flex-col items-end' : '')}>
           <div
@@ -216,7 +216,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
             {mine ? (
               <span
                 className={cn(
-                  'ml-2 text-[10px] font-semibold tracking-wide text-sky-800/80 dark:text-sky-200/80'
+                  'ml-2 text-[10px] font-semibold tracking-wide text-ui-accent dark:text-ui-accent-text'
                 )}
               >
                 {m.readBy?.[peerKey] ? 'Read' : m.deliveredBy?.[peerKey] ? 'Delivered' : 'Sent'}
@@ -226,16 +226,16 @@ const ChatMessageRow = memo(function ChatMessageRow({
 
           <div className="relative inline-block max-w-full">
             {isPollMessage ? (
-              <div className="max-w-[min(100%,420px)] overflow-hidden rounded-2xl border border-sky-800/30 bg-sky-800 text-white shadow-md dark:border-sky-700/50 dark:bg-sky-950">
+              <div className="max-w-[min(100%,420px)] overflow-hidden rounded-2xl border border-ui-poll bg-ui-poll text-white shadow-md">
                 <div className="border-b border-white/10 px-4 py-2.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-sky-100/90">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-ui-poll-muted">
                       Poll
                     </span>
                     <div className="flex items-center gap-0.5">
                       <button
                         type="button"
-                        className="rounded-md p-1.5 text-sky-100 transition hover:bg-white/10"
+                        className="rounded-md p-1.5 text-ui-poll-muted transition hover:bg-white/10"
                         onClick={() => setOpenReactionPickerId((prev) => (prev === m._id ? null : m._id))}
                         aria-label="React to poll"
                       >
@@ -244,7 +244,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                       <div className="relative" data-message-menu>
                         <button
                           type="button"
-                          className="rounded-md p-1.5 text-sky-100 transition hover:bg-white/10"
+                          className="rounded-md p-1.5 text-ui-poll-muted transition hover:bg-white/10"
                           onClick={() => toggleMessageMenu(m._id)}
                           aria-label="Poll actions"
                         >
@@ -253,12 +253,12 @@ const ChatMessageRow = memo(function ChatMessageRow({
                         {openMessageMenuId === m._id && (
                           <div
                             role="menu"
-                            className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[170px] overflow-hidden rounded-2xl border border-slate-200/90 bg-white py-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                            className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[170px] overflow-hidden rounded-2xl border border-ui-border bg-ui-panel py-1.5 shadow-xl"
                           >
                             <button
                               type="button"
                               role="menuitem"
-                              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-violet-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
                               onClick={
                                 isPinned
                                   ? () => {
@@ -282,7 +282,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                               <button
                                 type="button"
                                 role="menuitem"
-                                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-violet-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
                                 onClick={() => handleDeleteForMe(m._id)}
                               >
                                 <Trash2 className="h-4 w-4 shrink-0 opacity-80" />
@@ -300,19 +300,19 @@ const ChatMessageRow = memo(function ChatMessageRow({
                   <ul className="mt-3 space-y-2.5">
                     {poll.o.map((opt, i) => (
                       <li key={i}>
-                        <div className="flex items-center justify-between gap-2 text-[11px] text-sky-100/85">
+                        <div className="flex items-center justify-between gap-2 text-[11px] text-ui-poll-muted">
                           <span className="min-w-0 truncate font-medium">{opt}</span>
                         </div>
                         <div className="mt-1 h-2 overflow-hidden rounded-full bg-black/25">
                           <div
-                            className="h-full rounded-full bg-sky-300/90"
+                            className="h-full rounded-full bg-ui-poll-bar"
                             style={{ width: `${Math.max(8, Math.round(100 / poll.o.length) + (i % 3) * 6)}%` }}
                           />
                         </div>
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-3 text-[10px] text-sky-200/70">Informal poll — counts are illustrative in chat.</p>
+                  <p className="mt-3 text-[10px] opacity-80 text-ui-poll-muted">Informal poll — counts are illustrative in chat.</p>
                 </div>
               </div>
             ) : (
@@ -342,12 +342,12 @@ const ChatMessageRow = memo(function ChatMessageRow({
                       {openMessageMenuId === m._id && (
                         <div
                           role="menu"
-                          className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[170px] overflow-hidden rounded-2xl border border-slate-200/90 bg-white py-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                          className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[170px] overflow-hidden rounded-2xl border border-ui-border bg-ui-panel py-1.5 shadow-xl"
                         >
                           <button
                             type="button"
                             role="menuitem"
-                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-violet-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
                             onClick={() => {
                               toggleMessageMenu(m._id);
                               setOpenReactionPickerId((prev) => (prev === m._id ? null : m._id));
@@ -361,7 +361,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                               <button
                                 type="button"
                                 role="menuitem"
-                                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-violet-50 disabled:pointer-events-none disabled:opacity-60 dark:text-slate-100 dark:hover:bg-slate-800"
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover disabled:pointer-events-none disabled:opacity-60 dark:text-slate-100"
                                 onClick={() => handleEditMessage(m)}
                                 disabled={!canEditDelete}
                               >
@@ -387,7 +387,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                           <button
                             type="button"
                             role="menuitem"
-                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-violet-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
                             onClick={
                               isPinned
                                 ? () => {
@@ -411,7 +411,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                             <button
                               type="button"
                               role="menuitem"
-                              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-violet-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
                               onClick={() => handleDeleteForMe(m._id)}
                             >
                               <Trash2 className="h-4 w-4 shrink-0 opacity-80" />
@@ -441,15 +441,15 @@ const ChatMessageRow = memo(function ChatMessageRow({
                     className={cn(
                       'mt-2 block rounded-xl border px-3 py-2 text-sm no-underline transition hover:brightness-[1.02]',
                       mine
-                        ? 'border-sky-800/30 bg-sky-900/10 text-sky-950 hover:bg-sky-900/15 dark:border-sky-400/20 dark:bg-white/5 dark:text-sky-50'
-                        : 'border-slate-200/90 bg-slate-50 text-slate-800 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700'
+                        ? 'border-ui-bubble-mine-border bg-ui-bubble-mine text-slate-900 hover:brightness-[1.02] dark:text-slate-100'
+                        : 'border-ui-bubble-other-border bg-ui-muted text-slate-800 hover:brightness-[1.02] dark:bg-ui-bubble-other dark:text-slate-100'
                     )}
                   >
                     <div className="truncate font-semibold">{m.fileName || 'Download file'}</div>
                     <div
                       className={cn(
                         'mt-0.5 text-xs opacity-80',
-                        mine ? 'text-sky-900/70 dark:text-sky-100/70' : 'text-slate-500'
+                        mine ? 'text-ui-accent dark:text-ui-accent-text' : 'text-slate-500'
                       )}
                     >
                       Open / download
@@ -463,7 +463,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                       m.isDeleted
                         ? 'italic opacity-80'
                         : mine
-                          ? 'text-slate-800 dark:text-sky-50'
+                          ? 'text-slate-800 dark:text-slate-100'
                           : 'text-slate-800 dark:text-slate-100'
                     )}
                   >
@@ -478,15 +478,14 @@ const ChatMessageRow = memo(function ChatMessageRow({
                 type="button"
                 data-reaction-picker
                 className={cn(
-                  'absolute -bottom-1 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/90 bg-white text-base shadow-sm transition',
+                  'absolute -bottom-1 flex h-7 w-7 items-center justify-center rounded-full border border-ui-border bg-ui-panel text-base shadow-sm transition',
                   'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100',
-                  'dark:border-slate-600 dark:bg-slate-900',
                   mine ? '-left-8' : '-right-8'
                 )}
                 onClick={() => setOpenReactionPickerId((prev) => (prev === m._id ? null : m._id))}
                 title="React"
               >
-                <SmilePlus className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                <SmilePlus className="h-3.5 w-3.5 text-ui-accent" />
               </button>
             ) : null}
           </div>
@@ -497,7 +496,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
         <div
           data-reaction-picker
           className={cn(
-            'mt-1.5 flex gap-1 rounded-full border border-slate-200/90 bg-white px-2 py-1 shadow-md dark:border-slate-700 dark:bg-slate-900',
+            'mt-1.5 flex gap-1 rounded-full border border-ui-border bg-ui-panel px-2 py-1 shadow-md',
             mine ? 'mr-11 justify-end' : 'ml-11'
           )}
         >
@@ -527,13 +526,13 @@ const ChatMessageRow = memo(function ChatMessageRow({
                 className={cn(
                   'flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition',
                   reacted
-                    ? 'border-sky-400 bg-sky-50 dark:border-sky-500 dark:bg-sky-950/50'
-                    : 'border-slate-200/90 bg-white dark:border-slate-700 dark:bg-slate-900'
+                    ? 'border-ui-accent bg-ui-accent-subtle'
+                    : 'border-ui-border bg-ui-panel'
                 )}
                 onClick={() => handleToggleDmReaction(m._id, emoji)}
               >
                 <span>{emoji}</span>
-                <span className={reacted ? 'text-sky-800 dark:text-sky-300' : 'text-slate-600 dark:text-slate-400'}>
+                <span className={reacted ? 'text-ui-accent dark:text-ui-accent-text' : 'text-slate-600 dark:text-slate-400'}>
                   {count}
                 </span>
               </button>
@@ -1273,7 +1272,7 @@ export default function ChatDashboardPage() {
         <ChatAppIconRail variant="vertical" active="dm" dmUnreadCount={dmUnreadTotal} />
       </nav>
 
-      <aside className="flex max-h-[42vh] min-h-0 flex-col border-b border-slate-200/80 bg-[#F7F8FA] dark:border-slate-800 dark:bg-slate-900/90 lg:max-h-none lg:border-b-0 lg:border-r">
+      <aside className="flex max-h-[42vh] min-h-0 flex-col border-b border-ui-border bg-ui-sidebar lg:max-h-none lg:border-b-0 lg:border-r">
         <div className="shrink-0 lg:hidden">
           <ChatAppIconRail active="dm" dmUnreadCount={dmUnreadTotal} />
         </div>
@@ -1281,13 +1280,13 @@ export default function ChatDashboardPage() {
             <div
               ref={searchWrapRef}
               data-sidebar-search
-              className="relative shrink-0 border-b border-slate-200/80 px-3 pb-3 pt-2 dark:border-slate-800"
+              className="relative shrink-0 border-b border-ui-border px-3 pb-3 pt-2"
             >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-slate-100">Your Inbox</h2>
                 <button
                   type="button"
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-600 text-white shadow-md shadow-sky-600/25 transition hover:bg-sky-700"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-ui-accent text-ui-on-accent shadow-md transition hover:bg-ui-accent-hover"
                   aria-label="New chat — search people"
                   onClick={() => {
                     setSearchOpen(true);
@@ -1302,7 +1301,7 @@ export default function ChatDashboardPage() {
                 <select
                   value={inboxMailbox}
                   onChange={(e) => setInboxMailbox(e.target.value)}
-                  className="rounded-lg border border-slate-200/90 bg-white py-1.5 pl-2 pr-7 text-xs font-semibold text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="rounded-lg border border-ui-border bg-ui-panel py-1.5 pl-2 pr-7 text-xs font-semibold text-slate-800 shadow-sm dark:text-slate-100"
                   aria-label="Mailbox"
                 >
                   <option value="open">Open</option>
@@ -1311,13 +1310,13 @@ export default function ChatDashboardPage() {
                 <button
                   type="button"
                   onClick={() => setInboxSort((s) => (s === 'newest' ? 'oldest' : 'newest'))}
-                  className="rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                  className="rounded-lg border border-ui-border bg-ui-panel px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ui-muted"
                 >
                   {inboxSort === 'newest' ? 'Newest' : 'Oldest'}
                 </button>
                 <button
                   type="button"
-                  className="ml-auto text-[11px] font-bold uppercase tracking-wide text-sky-600 transition hover:text-sky-700 dark:text-sky-400"
+                  className="ml-auto text-[11px] font-bold uppercase tracking-wide text-ui-accent transition hover:text-ui-accent-hover"
                   onClick={() => router.push('/groups')}
                 >
                   Groups
@@ -1328,7 +1327,7 @@ export default function ChatDashboardPage() {
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   ref={searchInputRef}
-                  className="w-full rounded-2xl border border-slate-200/90 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none ring-sky-500/20 placeholder:text-slate-400 focus:border-sky-500 focus:ring-4 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="w-full rounded-2xl border border-ui-border bg-ui-panel py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-ui-accent focus:ring-4 focus:ring-[var(--ui-focus)] dark:text-slate-100"
                   placeholder="Search visitor"
                   value={searchQuery}
                   onChange={(e) => {
@@ -1338,7 +1337,7 @@ export default function ChatDashboardPage() {
                   onFocus={() => setSearchOpen(true)}
                 />
                 {searchOpen && (searchQuery.trim().length > 0 || searchLoading) ? (
-                  <div className="anim-pop absolute left-0 right-0 top-full z-[60] mt-2 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-950">
+                  <div className="anim-pop absolute left-0 right-0 top-full z-[60] mt-2 overflow-hidden rounded-2xl border border-ui-border bg-ui-panel shadow-xl">
                     <div className="max-h-52 overflow-y-auto p-1">
                       {searchLoading ? (
                         <div className="flex items-center justify-center gap-2 py-6 text-sm text-slate-500">
@@ -1352,7 +1351,7 @@ export default function ChatDashboardPage() {
                           <button
                             key={u.id}
                             type="button"
-                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-violet-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-ui-menu-hover"
                             onClick={() => pickPeer(u.id, u.username)}
                           >
                             <Image
@@ -1361,7 +1360,7 @@ export default function ChatDashboardPage() {
                               width={36}
                               height={36}
                               unoptimized
-                              className="h-9 w-9 rounded-full border border-slate-200/80 object-cover dark:border-slate-700"
+                              className="h-9 w-9 rounded-full border border-ui-border object-cover"
                             />
                             <span className="min-w-0 flex-1 truncate">{u.username}</span>
                           </button>
@@ -1424,8 +1423,8 @@ export default function ChatDashboardPage() {
                       className={cn(
                         'flex w-full gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left transition',
                         selected
-                          ? 'border-sky-200 bg-sky-100 shadow-sm dark:border-sky-800 dark:bg-sky-950/50'
-                          : 'text-slate-800 hover:border-slate-200/80 hover:bg-white dark:text-slate-100 dark:hover:border-slate-700 dark:hover:bg-slate-800/80'
+                          ? 'border-ui-row-border bg-ui-row shadow-sm'
+                          : 'text-slate-800 hover:border-ui-border hover:bg-ui-panel dark:text-slate-100 dark:hover:bg-ui-muted'
                       )}
                     >
                       <Image
@@ -1436,7 +1435,7 @@ export default function ChatDashboardPage() {
                         unoptimized
                         className={cn(
                           'h-11 w-11 shrink-0 rounded-full border object-cover',
-                          selected ? 'border-sky-300 dark:border-sky-600' : 'border-slate-200/90 dark:border-slate-700'
+                          selected ? 'border-ui-accent' : 'border-ui-border'
                         )}
                       />
                       <div className="min-w-0 flex-1">
@@ -1444,7 +1443,7 @@ export default function ChatDashboardPage() {
                           <p
                             className={cn(
                               'flex min-w-0 items-center gap-1 truncate text-sm font-semibold',
-                              selected ? 'text-slate-900 dark:text-sky-50' : 'text-slate-800 dark:text-slate-100'
+                              selected ? 'text-slate-900 dark:text-ui-accent-text' : 'text-slate-800 dark:text-slate-100'
                             )}
                           >
                             <span className="truncate">{chat.peerUsername}</span>
@@ -1454,7 +1453,7 @@ export default function ChatDashboardPage() {
                           <span
                             className={cn(
                               'shrink-0 text-[11px] tabular-nums',
-                              selected ? 'text-sky-700 dark:text-sky-300' : 'text-slate-400 dark:text-slate-500'
+                              selected ? 'text-ui-accent dark:text-ui-accent-text' : 'text-slate-400 dark:text-slate-500'
                             )}
                           >
                             {formatListTime(chat.lastAt)}
@@ -1494,7 +1493,7 @@ export default function ChatDashboardPage() {
               <div
                 data-recent-menu
                 role="menu"
-                className="anim-pop fixed z-[130] min-w-[210px] overflow-hidden rounded-2xl border border-slate-200/90 bg-white py-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-950"
+                className="anim-pop fixed z-[130] min-w-[210px] overflow-hidden rounded-2xl border border-ui-border bg-ui-panel py-1.5 shadow-xl"
                 style={{
                   left: Math.min(recentMenu.x, (typeof window !== 'undefined' ? window.innerWidth : recentMenu.x) - 220),
                   top: Math.min(recentMenu.y, (typeof window !== 'undefined' ? window.innerHeight : recentMenu.y) - 220)
@@ -1503,7 +1502,7 @@ export default function ChatDashboardPage() {
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-violet-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
                   onClick={async () => {
                     try {
                       await setRecentDirectChatLocked({
@@ -1523,7 +1522,7 @@ export default function ChatDashboardPage() {
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-violet-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
                   onClick={async () => {
                     try {
                       await setRecentDirectChatArchived({
@@ -1570,8 +1569,8 @@ export default function ChatDashboardPage() {
             </div>
           )}
 
-          <section className="flex min-h-0 flex-1 flex-col overflow-hidden border-b border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900 lg:border-b-0">
-            <div className="flex shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden border-b border-ui-border bg-ui-panel lg:border-b-0">
+            <div className="flex shrink-0 items-center gap-3 border-b border-ui-border bg-ui-panel px-4 py-3">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 {activeUserId.trim() ? (
                   <>
@@ -1583,17 +1582,17 @@ export default function ChatDashboardPage() {
                           width={48}
                           height={48}
                           unoptimized
-                          className="h-12 w-12 rounded-full border border-slate-200/90 bg-slate-50 object-cover dark:border-slate-700 dark:bg-slate-800"
+                          className="h-12 w-12 rounded-full border border-ui-border bg-ui-muted object-cover"
                           onError={() => setPeerAvatarFailed(true)}
                         />
                       ) : (
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-sky-700 text-lg font-bold text-white shadow-md shadow-sky-500/25">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-ui-accent to-ui-accent-hover text-lg font-bold text-ui-on-accent shadow-md">
                           {peerInitial}
                         </div>
                       )}
                       {peerPresence?.online ? (
                         <span
-                          className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-900"
+                          className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-ui-panel bg-emerald-500"
                           title="Online"
                         />
                       ) : null}
@@ -1642,7 +1641,7 @@ export default function ChatDashboardPage() {
                     </button>
                     <Link
                       href={`/call?callee=${encodeURIComponent(activeUserId.trim())}`}
-                      className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-sky-600 dark:text-slate-400 dark:hover:bg-slate-800"
+                      className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-ui-accent dark:text-slate-400 dark:hover:bg-ui-muted"
                       title="Voice call"
                       aria-label="Voice call"
                     >
@@ -1650,7 +1649,7 @@ export default function ChatDashboardPage() {
                     </Link>
                     <Link
                       href={`/video-call?callee=${encodeURIComponent(activeUserId.trim())}`}
-                      className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-sky-600 dark:text-slate-400 dark:hover:bg-slate-800"
+                      className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-ui-accent dark:text-slate-400 dark:hover:bg-ui-muted"
                       title="Video call"
                       aria-label="Video call"
                     >
@@ -1659,7 +1658,7 @@ export default function ChatDashboardPage() {
                     <div className="relative" data-chat-header-menu>
                       <button
                         type="button"
-                        className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-violet-600 dark:text-slate-400 dark:hover:bg-slate-800"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-ui-muted hover:text-ui-accent dark:text-slate-400"
                         aria-expanded={chatHeaderMenuOpen}
                         aria-label="More actions"
                         onClick={() => setChatHeaderMenuOpen((o) => !o)}
@@ -1669,12 +1668,12 @@ export default function ChatDashboardPage() {
                       {chatHeaderMenuOpen ? (
                         <div
                           role="menu"
-                          className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[200px] overflow-hidden rounded-2xl border border-slate-200/90 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-950"
+                          className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[200px] overflow-hidden rounded-2xl border border-ui-border bg-ui-panel py-1 shadow-xl"
                         >
                           <button
                             type="button"
                             role="menuitem"
-                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-violet-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
                             onClick={() => {
                               setChatHeaderMenuOpen(false);
                               setMsgSearchOpen((o) => !o);
@@ -1686,7 +1685,7 @@ export default function ChatDashboardPage() {
                           <button
                             type="button"
                             role="menuitem"
-                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-violet-50 disabled:opacity-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-ui-menu-hover disabled:opacity-50 dark:text-slate-100"
                             disabled={chatTransferBusy}
                             onClick={() => {
                               setChatHeaderMenuOpen(false);
@@ -1699,7 +1698,7 @@ export default function ChatDashboardPage() {
                           <button
                             type="button"
                             role="menuitem"
-                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-violet-50 disabled:opacity-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-ui-menu-hover disabled:opacity-50 dark:text-slate-100"
                             disabled={chatTransferBusy}
                             onClick={() => {
                               setChatHeaderMenuOpen(false);
@@ -1737,10 +1736,10 @@ export default function ChatDashboardPage() {
             </div>
 
             {msgSearchOpen && activeUserId.trim() && (
-              <div className="shrink-0 border-b border-slate-200/80 bg-slate-50 px-4 py-2 dark:border-slate-800 dark:bg-slate-900/80">
+              <div className="shrink-0 border-b border-ui-border bg-ui-sidebar px-4 py-2">
                 <input
                   autoFocus
-                  className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/25 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="w-full rounded-xl border border-ui-border bg-ui-panel px-3 py-2 text-sm text-slate-800 outline-none focus:border-ui-accent focus:ring-2 focus:ring-[var(--ui-focus)] dark:text-slate-100"
                   placeholder="Search messages…"
                   value={msgSearch}
                   onChange={(e) => setMsgSearch(e.target.value)}
@@ -1749,16 +1748,16 @@ export default function ChatDashboardPage() {
             )}
 
             {pinnedMessages.length > 0 && activeUserId.trim() && (
-              <div className="shrink-0 border-b border-slate-200/80 bg-violet-50/80 dark:border-slate-800 dark:bg-violet-950/20">
+              <div className="shrink-0 border-b border-ui-border bg-ui-pinned">
                 {pinnedMessages.slice(0, 1).map((pin) => (
                   <div key={pin.messageId} className="flex items-center gap-2 px-4 py-2">
-                    <Pin className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
+                    <Pin className="h-3.5 w-3.5 shrink-0 text-ui-accent" />
                     <p className="min-w-0 flex-1 truncate text-xs font-medium text-slate-800 dark:text-slate-100">
                       {pin.content || 'Pinned message'}
                     </p>
                     <button
                       type="button"
-                      className="shrink-0 text-xs font-medium text-violet-600 hover:underline dark:text-violet-400"
+                      className="shrink-0 text-xs font-medium text-ui-accent hover:underline"
                       onClick={() => handleUnpinDmMessage(pin.messageId)}
                     >
                       Unpin
@@ -1775,7 +1774,7 @@ export default function ChatDashboardPage() {
 
             <div
               ref={messagesWrapRef}
-              className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain bg-[#eef2f7] px-3 py-3 dark:bg-slate-950/80 sm:px-5 sm:py-4"
+              className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain bg-ui-thread px-3 py-3 sm:px-5 sm:py-4"
             >
               {messageLoadError && (
                 <div className="rounded-2xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
@@ -1793,7 +1792,7 @@ export default function ChatDashboardPage() {
               )}
 
               {messagesLoading && (
-                <div className="rounded-2xl border border-slate-200/90 bg-white px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                <div className="rounded-2xl border border-ui-border bg-ui-panel px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
                   Loading messages…
                 </div>
               )}
@@ -1864,8 +1863,8 @@ export default function ChatDashboardPage() {
 
               {messages.length === 0 && (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-12 text-center">
-                  <div className="rounded-3xl border border-dashed border-slate-200/90 bg-white px-6 py-8 dark:border-slate-700 dark:bg-slate-900/60">
-                    <MessageCircle className="mx-auto h-10 w-10 text-violet-500" />
+                  <div className="rounded-3xl border border-dashed border-ui-border bg-ui-panel px-6 py-8">
+                    <MessageCircle className="mx-auto h-10 w-10 text-ui-accent" />
                     <p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-100">No messages yet</p>
                     <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
                       Say hi to start the conversation.
@@ -1916,7 +1915,7 @@ export default function ChatDashboardPage() {
             )}
 
             <form
-              className="shrink-0 border-t border-slate-200/80 bg-[#f0f2f5] px-2 py-2 dark:border-slate-800 dark:bg-slate-900 sm:px-3"
+              className="shrink-0 border-t border-ui-border bg-ui-composer px-2 py-2 sm:px-3"
               onSubmit={sendMessage}
             >
               <input
@@ -1947,7 +1946,7 @@ export default function ChatDashboardPage() {
                 </div>
               ) : (
                 <div className="mx-auto flex max-w-4xl items-end gap-1">
-                  <div className="flex min-h-[48px] min-w-0 flex-1 items-end gap-0.5 rounded-[1.35rem] border border-slate-200/90 bg-slate-100/95 px-1 py-1 shadow-sm dark:border-slate-600 dark:bg-slate-800/95">
+                  <div className="flex min-h-[48px] min-w-0 flex-1 items-end gap-0.5 rounded-[1.35rem] border border-ui-border bg-ui-composer-pill px-1 py-1 shadow-sm">
                     <button
                       type="button"
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/90 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-700/80"
@@ -2018,7 +2017,7 @@ export default function ChatDashboardPage() {
                       <button
                         type="submit"
                         disabled={!activeUserId.trim() || sendingMessage}
-                        className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white shadow-md transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-45"
+                        className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ui-accent text-ui-on-accent shadow-md transition hover:bg-ui-accent-hover disabled:cursor-not-allowed disabled:opacity-45"
                         aria-label="Send"
                       >
                         {sendingMessage ? (
@@ -2053,7 +2052,7 @@ export default function ChatDashboardPage() {
                 onClick={() => setPollModalOpen(false)}
               >
                 <div
-                  className="w-full max-w-md rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+                  className="w-full max-w-md rounded-2xl border border-ui-border bg-ui-panel p-4 shadow-2xl"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <h3 id="dm-poll-title" className="text-base font-bold text-slate-900 dark:text-slate-50">
@@ -2095,7 +2094,7 @@ export default function ChatDashboardPage() {
                     <Button
                       type="button"
                       size="sm"
-                      className="bg-sky-600 hover:bg-sky-700"
+                      className="bg-ui-accent hover:bg-ui-accent-hover text-ui-on-accent"
                       disabled={sendingMessage || !activeUserId.trim()}
                       onClick={() => sendPollMessage()}
                     >
@@ -2107,14 +2106,14 @@ export default function ChatDashboardPage() {
             ) : null}
 
             {actionError && (
-              <div className="border-t border-slate-200/80 px-4 py-2 text-xs text-red-600 dark:border-slate-800 dark:text-red-400">
+              <div className="border-t border-ui-border px-4 py-2 text-xs text-red-600 dark:text-red-400">
                 {actionError}
               </div>
             )}
           </section>
 
-          <aside className="hidden min-h-0 w-full max-w-[400px] flex-col overflow-y-auto border-l border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900 xl:flex">
-            <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-slate-200/80 bg-white/95 px-2 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+          <aside className="hidden min-h-0 w-full max-w-[400px] flex-col overflow-y-auto border-l border-ui-border bg-ui-panel xl:flex">
+            <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-ui-border bg-ui-panel/95 px-2 py-2 backdrop-blur dark:bg-ui-panel/95">
               {[
                 { id: 'overview', label: 'Overview' },
                 { id: 'notes', label: 'Notes' },
@@ -2128,7 +2127,7 @@ export default function ChatDashboardPage() {
                   className={cn(
                     'rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition',
                     detailTab === t.id
-                      ? 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-200'
+                      ? 'bg-ui-accent-subtle text-ui-accent-text dark:text-ui-accent-text'
                       : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
                   )}
                 >
@@ -2144,19 +2143,19 @@ export default function ChatDashboardPage() {
               {detailTab === 'overview' && (
                 <>
                   <div className="grid grid-cols-3 gap-2">
-                    <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-2 py-2 text-center dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="rounded-xl border border-ui-border bg-ui-muted px-2 py-2 text-center">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Msgs
                       </p>
                       <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-slate-50">{sessionStats.count}</p>
                     </div>
-                    <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-2 py-2 text-center dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="rounded-xl border border-ui-border bg-ui-muted px-2 py-2 text-center">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Duration
                       </p>
                       <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-slate-50">{sessionStats.durationLabel}</p>
                     </div>
-                    <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-2 py-2 text-center dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="rounded-xl border border-ui-border bg-ui-muted px-2 py-2 text-center">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Tickets
                       </p>
@@ -2164,7 +2163,7 @@ export default function ChatDashboardPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/40">
+                  <div className="rounded-xl border border-ui-border bg-ui-muted/80 p-3">
                     <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Visitor status</p>
                     <div className="mt-2 flex items-center gap-2">
                       <span
@@ -2185,7 +2184,7 @@ export default function ChatDashboardPage() {
                         width={32}
                         height={32}
                         unoptimized
-                        className="h-8 w-8 rounded-full border border-slate-200/80 dark:border-slate-600"
+                        className="h-8 w-8 rounded-full border border-ui-border"
                       />
                       <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
                         {user?.username || 'You'}
@@ -2197,7 +2196,7 @@ export default function ChatDashboardPage() {
                     <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       Visitor information
                     </p>
-                    <ul className="space-y-2 rounded-xl border border-slate-200/80 bg-white p-3 dark:border-slate-700 dark:bg-slate-950/50">
+                    <ul className="space-y-2 rounded-xl border border-ui-border bg-ui-panel p-3">
                       {[
                         { Icon: User, label: 'Name', value: peerUsername || peerShort || '—' },
                         { Icon: Phone, label: 'Phone', value: '—' },
@@ -2217,8 +2216,8 @@ export default function ChatDashboardPage() {
                     </ul>
                   </div>
 
-                  <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-700">
-                    <div className="flex h-28 items-center justify-center bg-gradient-to-br from-sky-100/80 to-slate-200/80 dark:from-slate-800 dark:to-slate-900">
+                  <div className="overflow-hidden rounded-xl border border-ui-border">
+                    <div className="flex h-28 items-center justify-center bg-gradient-to-br from-ui-accent-subtle to-ui-muted dark:from-ui-muted dark:to-ui-panel">
                       <div className="text-center text-xs text-slate-500 dark:text-slate-400">
                         <MapPin className="mx-auto h-6 w-6 opacity-60" />
                         <p className="mt-1 font-medium">Map preview</p>
@@ -2229,13 +2228,13 @@ export default function ChatDashboardPage() {
                   <Button
                     type="button"
                     variant="secondary"
-                    className="w-full justify-center gap-2 rounded-xl border-slate-200/90 bg-white font-semibold dark:border-slate-700 dark:bg-slate-800"
+                    className="w-full justify-center gap-2 rounded-xl border-ui-border bg-ui-panel font-semibold"
                   >
                     <PlusCircle className="h-4 w-4" />
                     Create ticket
                   </Button>
 
-                  <div className="rounded-xl border border-slate-200/80 dark:border-slate-700">
+                  <div className="rounded-xl border border-ui-border">
                     <button
                       type="button"
                       className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
@@ -2248,7 +2247,7 @@ export default function ChatDashboardPage() {
                       {detailTagsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
                     {detailTagsOpen ? (
-                      <div className="border-t border-slate-100 px-3 py-2 dark:border-slate-800">
+                      <div className="border-t border-ui-border px-3 py-2">
                         <div className="flex flex-wrap gap-1.5">
                           {['VIP', 'Returning', 'Priority'].map((tag) => (
                             <span
@@ -2267,7 +2266,7 @@ export default function ChatDashboardPage() {
               )}
 
               {detailTab === 'notes' && (
-                <div className="rounded-xl border border-dashed border-slate-200/90 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30">
+                <div className="rounded-xl border border-dashed border-ui-border bg-ui-muted/50 p-4">
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Session notes</p>
                   <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                     Private notes for this conversation (stored locally in your workflow — wire to backend when needed).
@@ -2282,7 +2281,7 @@ export default function ChatDashboardPage() {
               )}
 
               {detailTab === 'files' && (
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30">
+                <div className="rounded-xl border border-ui-border bg-ui-muted/50 p-4">
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Shared files</p>
                   <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                     Files and images appear in the thread. A dedicated file list API can be added later.
@@ -2291,7 +2290,7 @@ export default function ChatDashboardPage() {
               )}
 
               {detailTab === 'apps' && (
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30">
+                <div className="rounded-xl border border-ui-border bg-ui-muted/50 p-4">
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Connected apps</p>
                   <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                     Integrations (CRM, helpdesk) can plug in here.
@@ -2308,7 +2307,7 @@ export default function ChatDashboardPage() {
                     searchResults.slice(0, 4).map((u) => (
                       <li
                         key={u.id}
-                        className="flex items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 p-2 dark:border-slate-700 dark:bg-slate-950/50"
+                        className="flex items-center gap-3 rounded-xl border border-ui-border bg-ui-muted/80 p-2"
                       >
                         <Image
                           src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.username || u.id)}`}
@@ -2316,14 +2315,14 @@ export default function ChatDashboardPage() {
                           width={36}
                           height={36}
                           unoptimized
-                          className="h-9 w-9 rounded-full border border-slate-200/80 object-cover dark:border-slate-700"
+                          className="h-9 w-9 rounded-full border border-ui-border object-cover"
                         />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{u.username}</p>
                         </div>
                         <button
                           type="button"
-                          className="shrink-0 rounded-full bg-sky-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-sky-700"
+                          className="shrink-0 rounded-full bg-ui-accent px-3 py-1 text-[11px] font-semibold text-ui-on-accent hover:bg-ui-accent-hover"
                           onClick={() => pickPeer(u.id, u.username)}
                         >
                           Chat
@@ -2331,7 +2330,7 @@ export default function ChatDashboardPage() {
                       </li>
                     ))
                   ) : (
-                    <li className="rounded-xl border border-dashed border-slate-200/90 px-3 py-4 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                    <li className="rounded-xl border border-dashed border-ui-border px-3 py-4 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
                       Search the inbox to find people to add here.
                     </li>
                   )}

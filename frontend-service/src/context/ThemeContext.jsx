@@ -19,8 +19,8 @@ function resolveDarkClass(mode) {
 
 export function ThemeProvider({ children }) {
   // SSR + first client render must match — never read localStorage in useState initialiser
-  // (server defaults to 'dark', client with saved 'light' would mismatch → hydration error).
-  const [mode, setModeState] = useState('dark');
+  // (default matches layout theme script: warm light when no saved preference).
+  const [mode, setModeState] = useState('light');
   const hasSyncedFromStorage = useRef(false);
 
   useLayoutEffect(() => {
