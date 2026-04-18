@@ -351,6 +351,10 @@ export default function ChatDashboardPage() {
   const shouldAutoScrollRef = useRef(true);
 
   const peerKey = useMemo(() => activeUserId.trim(), [activeUserId]);
+  const peerShort = useMemo(() => {
+    if (!peerKey) return '—';
+    return peerKey.length > 12 ? `${peerKey.slice(0, 6)}…${peerKey.slice(-4)}` : peerKey;
+  }, [peerKey]);
   const peerLabel = useMemo(() => (peerKey ? peerUsername || peerShort : 'Peer'), [peerKey, peerUsername, peerShort]);
   const msgSearchLower = useMemo(() => msgSearch.trim().toLowerCase(), [msgSearch]);
   const filteredMessages = useMemo(() => {
@@ -822,11 +826,6 @@ export default function ChatDashboardPage() {
     mediaRecorderRef.current = null;
     setIsRecording(false);
   };
-
-  const peerShort =
-    activeUserId.trim().length > 12
-      ? `${activeUserId.trim().slice(0, 6)}…${activeUserId.trim().slice(-4)}`
-      : activeUserId.trim() || '—';
 
   const peerDisplay = peerUsername || (activeUserId.trim() ? peerShort : '');
   const peerInitial = peerUsername
