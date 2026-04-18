@@ -598,15 +598,47 @@ export function subscribeUserPresence(_userId, callback) {
   ;(async () => {
     const snapshot = await getCurrentAuthSnapshot().catch(() => null)
     const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
+    if (!peerId) return cb({ online: false, lastSeen: null })
+    if (!uid || !snapshot?.token) return cb({ online: false, lastSeen: null })
+
     const s = await getSocket({ userId: uid })
     const handler = (payload) => {
       if (disposed) return
       if (!payload || String(payload.userId || '').trim() !== peerId) return
       const status = String(payload.status || '').toLowerCase()
-      cb({ online: status === 'online', lastSeen: null })
+      const lastSeen =
+        payload.lastSeen ||
+        payload.last_seen ||
+        payload.last_seen_at ||
+        payload.lastSeenAt ||
+        null
+      cb({ online: status === 'online', lastSeen: lastSeen || null })
     }
     s.on('user_status', handler)
     cb({ online: false, lastSeen: null })
+
+    // Best-effort: ask server for current status / lastSeen (if supported).
+    try {
+      s.emit('get_user_status', { userId: peerId })
+    } catch {
+      // ignore
+    }
+
+    // Best-effort: fetch presence snapshot (if API route exists).
+    try {
+      const res = await fetch(`${API_BASE_URL}/chat/presence/${encodeURIComponent(peerId)}`, {
+        headers: { Authorization: `Bearer ${snapshot.token}` },
+      })
+      const json = await res.json().catch(() => ({}))
+      const p = json?.presence || json?.data || json
+      if (!disposed && res.ok && p) {
+        const status = String(p.status || p.state || '').toLowerCase()
+        const lastSeen = p.last_seen || p.lastSeen || p.last_seen_at || p.lastSeenAt || null
+        cb({ online: status === 'online' || status === 'active', lastSeen: lastSeen || null })
+      }
+    } catch {
+      // ignore
+    }
     const off = () => s.off('user_status', handler)
     const prevUnsub = unsubRef.get(cb)
     if (prevUnsub) prevUnsub()

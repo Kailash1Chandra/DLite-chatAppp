@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { formatPeerPresence } from '@/lib/formatPresence';
@@ -102,6 +102,275 @@ export default function ChatDashboardPage() {
   const mediaInputRef = useRef(null);
   const messagesWrapRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
+
+  const peerKey = useMemo(() => activeUserId.trim(), [activeUserId]);
+  const peerLabel = useMemo(() => (peerKey ? peerUsername || peerShort : 'Peer'), [peerKey, peerUsername, peerShort]);
+  const msgSearchLower = useMemo(() => msgSearch.trim().toLowerCase(), [msgSearch]);
+  const filteredMessages = useMemo(() => {
+    if (!msgSearchLower) return messages;
+    return messages.filter((m) => (m.content || '').toLowerCase().includes(msgSearchLower));
+  }, [messages, msgSearchLower]);
+  const pinnedSet = useMemo(() => new Set(pinnedMessages.map((p) => p.messageId)), [pinnedMessages]);
+
+  const toggleMessageMenu = useCallback((messageId) => {
+    setOpenMessageMenuId((prev) => (prev === messageId ? null : messageId));
+  }, []);
+
+  const MessageRow = useMemo(
+    () =>
+      memo(function MessageRowInner({
+        m,
+        idx,
+        mine,
+        senderLabel,
+        canEditDelete,
+        isPinned,
+        peerKey,
+        openMessageMenuId,
+        deletingMessageId,
+        toggleMessageMenu,
+        handleEditMessage,
+        handleDeleteMessage,
+        handleDeleteForMe,
+        handlePinDmMessage,
+        handleUnpinDmMessage,
+        openReactionPickerId,
+        setOpenReactionPickerId,
+        EMOJI_OPTIONS,
+        handleToggleDmReaction,
+      }) {
+        const reactionEntries = Object.entries(m.reactions || {});
+        return (
+          <motion.div
+            key={m._id || idx}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+            className={cn('group flex w-full flex-col', mine ? 'items-end' : 'items-start')}
+          >
+            <div className="relative flex items-end">
+              <div
+                className={cn(
+                  'relative max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm sm:max-w-[70%]',
+                  mine
+                    ? 'rounded-br-md border border-emerald-200 bg-emerald-100 text-emerald-950 shadow-emerald-600/10 dark:border-emerald-500/25 dark:bg-emerald-500/15 dark:text-slate-50'
+                    : 'rounded-bl-md border border-yellow-200 bg-yellow-50 text-amber-950 shadow-amber-600/10 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-slate-50'
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div
+                    className={cn(
+                      'truncate text-[11px] font-semibold tracking-wide',
+                      mine ? 'text-emerald-700/90 dark:text-emerald-200/90' : 'text-amber-700/90 dark:text-amber-200/90'
+                    )}
+                  >
+                    {senderLabel}
+                    {isPinned && <Pin className="ml-1 inline h-2.5 w-2.5 opacity-70" />}
+                    {mine && (
+                      <div
+                        className={cn(
+                          'mt-0.5 text-[10px] font-semibold tracking-wide',
+                          m.readBy?.[peerKey]
+                            ? 'text-emerald-700/85 dark:text-emerald-200/85'
+                            : m.deliveredBy?.[peerKey]
+                              ? 'text-emerald-700/70 dark:text-emerald-200/70'
+                              : 'text-emerald-700/60 dark:text-emerald-200/60'
+                        )}
+                      >
+                        {m.readBy?.[peerKey] ? 'Read' : m.deliveredBy?.[peerKey] ? 'Delivered' : 'Sent'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="relative -mr-1" data-message-menu>
+                    <button
+                      type="button"
+                      className={cn(
+                        'rounded-md p-1.5 transition',
+                        mine
+                          ? 'text-emerald-700/90 hover:bg-emerald-200/70 dark:text-emerald-200/90 dark:hover:bg-emerald-500/20'
+                          : 'text-amber-700/90 hover:bg-yellow-100/80 dark:text-amber-200/90 dark:hover:bg-amber-500/15'
+                      )}
+                      onClick={() => toggleMessageMenu(m._id)}
+                      aria-label="Message actions"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+
+                    {openMessageMenuId === m._id && (
+                      <div
+                        role="menu"
+                        className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[170px] overflow-hidden rounded-2xl border border-amber-200/90 bg-white py-1.5 shadow-xl shadow-amber-900/10 dark:border-navy-700/60 dark:bg-navy-950"
+                      >
+                        {mine && (
+                          <>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-amber-950 transition-colors duration-150 hover:bg-amber-100 disabled:pointer-events-none disabled:opacity-60 dark:text-slate-50 dark:hover:bg-navy-800/60"
+                              onClick={() => handleEditMessage(m)}
+                              disabled={!canEditDelete}
+                            >
+                              <Pencil className="h-4 w-4 shrink-0 opacity-80" />
+                              Edit message
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-700 transition-colors duration-150 hover:bg-red-50 disabled:pointer-events-none disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950/50"
+                              onClick={() => {
+                                if (!canEditDelete) return;
+                                toggleMessageMenu(m._id);
+                                handleDeleteMessage(m._id);
+                              }}
+                              disabled={!canEditDelete || deletingMessageId === m._id}
+                            >
+                              <Trash2 className="h-4 w-4 shrink-0" />
+                              {deletingMessageId === m._id ? 'Unsending…' : 'Unsend message'}
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-amber-950 transition-colors duration-150 hover:bg-amber-100 dark:text-slate-50 dark:hover:bg-navy-800/60"
+                          onClick={
+                            isPinned
+                              ? () => {
+                                  handleUnpinDmMessage(m._id);
+                                  toggleMessageMenu(m._id);
+                                }
+                              : () => {
+                                  handlePinDmMessage(m);
+                                  toggleMessageMenu(m._id);
+                                }
+                          }
+                        >
+                          {isPinned ? <PinOff className="h-4 w-4 shrink-0 opacity-80" /> : <Pin className="h-4 w-4 shrink-0 opacity-80" />}
+                          {isPinned ? 'Unpin message' : 'Pin message'}
+                        </button>
+                        {mine && (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-amber-950 transition-colors duration-150 hover:bg-amber-100 dark:text-slate-50 dark:hover:bg-navy-800/60"
+                            onClick={() => handleDeleteForMe(m._id)}
+                          >
+                            <Trash2 className="h-4 w-4 shrink-0 opacity-80" />
+                            Delete for me
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {m.mediaType === 'image' && m.mediaUrl ? (
+                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={m.mediaUrl} alt={m.fileName || 'Shared image'} className="max-h-72 w-auto rounded-xl object-cover" />
+                  </a>
+                ) : null}
+                {m.mediaType === 'video' && m.mediaUrl ? (
+                  <video src={m.mediaUrl} controls className="mt-2 max-h-72 w-full rounded-xl bg-black" />
+                ) : null}
+                {m.mediaType === 'audio' && m.mediaUrl ? (
+                  <audio src={m.mediaUrl} controls className="mt-2 w-full" />
+                ) : null}
+                {m.mediaType === 'file' && m.mediaUrl ? (
+                  <a
+                    href={m.mediaUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(
+                      'mt-2 block rounded-xl border px-3 py-2 text-sm no-underline transition hover:brightness-[1.02]',
+                      mine
+                        ? 'border-emerald-200/80 bg-emerald-50 text-emerald-950 hover:bg-emerald-100 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-slate-50 dark:hover:bg-emerald-500/15'
+                        : 'border-yellow-200/80 bg-yellow-50 text-amber-950 hover:bg-yellow-100/70 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-slate-50 dark:hover:bg-amber-500/15'
+                    )}
+                  >
+                    <div className="truncate font-semibold">{m.fileName || 'Download file'}</div>
+                    <div className={cn('mt-0.5 text-xs opacity-80', mine ? 'text-emerald-700/80 dark:text-emerald-200/80' : '')}>
+                      Open / download
+                    </div>
+                  </a>
+                ) : null}
+                {(m.content || m.isDeleted) ? (
+                  <p
+                    className={cn(
+                      'mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed',
+                      m.isDeleted ? 'italic opacity-80' : mine ? 'text-emerald-950 dark:text-slate-50' : 'text-amber-950 dark:text-slate-50'
+                    )}
+                  >
+                    {m.content}
+                  </p>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                data-reaction-picker
+                className={cn(
+                  'absolute bottom-1 flex h-7 w-7 items-center justify-center rounded-full border border-amber-200/80 bg-white text-base shadow transition',
+                  'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100',
+                  'dark:border-navy-700/60 dark:bg-navy-950',
+                  mine ? 'left-[-36px]' : 'right-[-36px]'
+                )}
+                onClick={() => setOpenReactionPickerId((prev) => (prev === m._id ? null : m._id))}
+                title="React"
+              >
+                <SmilePlus className="h-3.5 w-3.5 text-amber-600 dark:text-sky-400" />
+              </button>
+            </div>
+
+            {openReactionPickerId === m._id && (
+              <div
+                data-reaction-picker
+                className={cn(
+                  'mt-1 flex gap-1 rounded-full border border-amber-200/80 bg-white px-2 py-1 shadow-md dark:border-navy-700/60 dark:bg-navy-950',
+                  mine ? 'mr-8' : 'ml-8'
+                )}
+              >
+                {EMOJI_OPTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="rounded-full px-1 py-0.5 text-base transition hover:scale-125"
+                    onClick={() => handleToggleDmReaction(m._id, emoji)}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {reactionEntries.length > 0 && (
+              <div className={cn('mt-1 flex flex-wrap gap-1', mine ? 'mr-8 justify-end' : 'ml-8')}>
+                {reactionEntries.map(([emoji, users]) => {
+                  const count = Object.keys(users || {}).length;
+                  if (!count) return null;
+                  const reacted = !!(users || {})[user?.id];
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className={cn(
+                        'flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition',
+                        reacted ? 'border-amber-400 bg-amber-100 dark:border-sky-500 dark:bg-navy-800' : 'border-amber-200/80 bg-white dark:border-navy-700 dark:bg-navy-900'
+                      )}
+                      onClick={() => handleToggleDmReaction(m._id, emoji)}
+                    >
+                      <span>{emoji}</span>
+                      <span className={reacted ? 'text-amber-700 dark:text-sky-400' : 'text-amber-800 dark:text-slate-300'}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </motion.div>
+        );
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user?.id]
+  );
 
   // FIX: auto-scroll only if user is near bottom (don’t interrupt when scrolling up).
   useEffect(() => {
@@ -1102,230 +1371,35 @@ export default function ChatDashboardPage() {
                 </div>
               )}
 
-              {messages
-                .filter((m) => !msgSearch.trim() || (m.content || '').toLowerCase().includes(msgSearch.trim().toLowerCase()))
-                .map((m, idx) => {
+              {filteredMessages.map((m, idx) => {
                 const mine = m.senderId === user?.id;
-                const peerKey = activeUserId.trim();
                 const createdAt = Number(m.createdAt || 0);
                 const canEditDelete = !m.isDeleted && createdAt && Date.now() - createdAt <= EDIT_WINDOW_MS;
-                const peerLabel = activeUserId.trim() ? peerUsername || peerShort : 'Peer';
                 const senderLabel = mine ? user?.username || 'You' : peerLabel;
-                const isPinned = pinnedMessages.some((p) => p.messageId === m._id);
-                const reactionEntries = Object.entries(m.reactions || {});
+                const isPinned = pinnedSet.has(m._id);
                 return (
-                  <motion.div
+                  <MessageRow
                     key={m._id || idx}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className={cn('group flex w-full flex-col', mine ? 'items-end' : 'items-start')}
-                  >
-                    <div className="relative flex items-end gap-1">
-                      {/* Reaction picker trigger — visible on group hover */}
-                      <button
-                        type="button"
-                        data-reaction-picker
-                        className={cn(
-                          'mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-amber-200/80 bg-white text-base opacity-0 shadow transition group-hover:opacity-100 dark:border-navy-700/60 dark:bg-navy-950',
-                          mine ? 'order-first' : 'order-last'
-                        )}
-                        onClick={() => setOpenReactionPickerId((prev) => (prev === m._id ? null : m._id))}
-                        title="React"
-                      >
-                        <SmilePlus className="h-3.5 w-3.5 text-amber-600 dark:text-sky-400" />
-                      </button>
-
-                      <div
-                        className={cn(
-                          'relative max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm sm:max-w-[70%]',
-                          mine
-                            ? 'rounded-br-md border border-emerald-200 bg-emerald-100 text-emerald-950 shadow-emerald-600/10 dark:border-emerald-500/25 dark:bg-emerald-500/15 dark:text-slate-50'
-                            : 'rounded-bl-md border border-yellow-200 bg-yellow-50 text-amber-950 shadow-amber-600/10 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-slate-50'
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div
-                            className={cn(
-                              'truncate text-[11px] font-semibold tracking-wide',
-                              mine ? 'text-emerald-700/90 dark:text-emerald-200/90' : 'text-amber-700/90 dark:text-amber-200/90'
-                            )}
-                          >
-                            {senderLabel}
-                            {isPinned && <Pin className="ml-1 inline h-2.5 w-2.5 opacity-70" />}
-                            {mine && (
-                              <div
-                                className={cn(
-                                  'mt-0.5 text-[10px] font-semibold tracking-wide',
-                                  m.readBy?.[peerKey]
-                                    ? 'text-emerald-700/85 dark:text-emerald-200/85'
-                                    : m.deliveredBy?.[peerKey]
-                                      ? 'text-emerald-700/70 dark:text-emerald-200/70'
-                                      : 'text-emerald-700/60 dark:text-emerald-200/60'
-                                )}
-                              >
-                                {m.readBy?.[peerKey] ? 'Read' : m.deliveredBy?.[peerKey] ? 'Delivered' : 'Sent'}
-                              </div>
-                            )}
-                          </div>
-                          <div className="relative -mr-1" data-message-menu>
-                            <button
-                              type="button"
-                              className={cn(
-                                'rounded-md p-1.5 transition',
-                                mine
-                                  ? 'text-emerald-700/90 hover:bg-emerald-200/70 dark:text-emerald-200/90 dark:hover:bg-emerald-500/20'
-                                  : 'text-amber-700/90 hover:bg-yellow-100/80 dark:text-amber-200/90 dark:hover:bg-amber-500/15'
-                              )}
-                              onClick={() => setOpenMessageMenuId((prev) => (prev === m._id ? null : m._id))}
-                              aria-label="Message actions"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
-
-                            {openMessageMenuId === m._id && (
-                              <div
-                                role="menu"
-                                className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[170px] overflow-hidden rounded-2xl border border-amber-200/90 bg-white py-1.5 shadow-xl shadow-amber-900/10 dark:border-navy-700/60 dark:bg-navy-950"
-                              >
-                                {mine && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      role="menuitem"
-                                      className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-amber-950 transition-colors duration-150 hover:bg-amber-100 disabled:pointer-events-none disabled:opacity-60 dark:text-slate-50 dark:hover:bg-navy-800/60"
-                                      onClick={() => handleEditMessage(m)}
-                                      disabled={!canEditDelete}
-                                    >
-                                      <Pencil className="h-4 w-4 shrink-0 opacity-80" />
-                                      Edit message
-                                    </button>
-                                    <button
-                                      type="button"
-                                      role="menuitem"
-                                      className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-700 transition-colors duration-150 hover:bg-red-50 disabled:pointer-events-none disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950/50"
-                                      onClick={() => { if (!canEditDelete) return; setOpenMessageMenuId(null); handleDeleteMessage(m._id); }}
-                                      disabled={!canEditDelete || deletingMessageId === m._id}
-                                    >
-                                      <Trash2 className="h-4 w-4 shrink-0" />
-                                      {deletingMessageId === m._id ? 'Unsending…' : 'Unsend message'}
-                                    </button>
-                                  </>
-                                )}
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-amber-950 transition-colors duration-150 hover:bg-amber-100 dark:text-slate-50 dark:hover:bg-navy-800/60"
-                                  onClick={isPinned ? () => { handleUnpinDmMessage(m._id); setOpenMessageMenuId(null); } : () => handlePinDmMessage(m)}
-                                >
-                                  {isPinned ? <PinOff className="h-4 w-4 shrink-0 opacity-80" /> : <Pin className="h-4 w-4 shrink-0 opacity-80" />}
-                                  {isPinned ? 'Unpin message' : 'Pin message'}
-                                </button>
-                                {mine && (
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-amber-950 transition-colors duration-150 hover:bg-amber-100 dark:text-slate-50 dark:hover:bg-navy-800/60"
-                                    onClick={() => handleDeleteForMe(m._id)}
-                                  >
-                                    <Trash2 className="h-4 w-4 shrink-0 opacity-80" />
-                                    Delete for me
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        {m.mediaType === 'image' && m.mediaUrl ? (
-                          <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 block">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={m.mediaUrl} alt={m.fileName || 'Shared image'} className="max-h-72 w-auto rounded-xl object-cover" />
-                          </a>
-                        ) : null}
-                        {m.mediaType === 'video' && m.mediaUrl ? (
-                          <video src={m.mediaUrl} controls className="mt-2 max-h-72 w-full rounded-xl bg-black" />
-                        ) : null}
-                        {m.mediaType === 'audio' && m.mediaUrl ? (
-                          <audio src={m.mediaUrl} controls className="mt-2 w-full" />
-                        ) : null}
-                        {m.mediaType === 'file' && m.mediaUrl ? (
-                          <a
-                            href={m.mediaUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={cn(
-                              'mt-2 block rounded-xl border px-3 py-2 text-sm no-underline transition hover:brightness-[1.02]',
-                              mine
-                                ? 'border-emerald-200/80 bg-emerald-50 text-emerald-950 hover:bg-emerald-100 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-slate-50 dark:hover:bg-emerald-500/15'
-                                : 'border-yellow-200/80 bg-yellow-50 text-amber-950 hover:bg-yellow-100/70 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-slate-50 dark:hover:bg-amber-500/15'
-                            )}
-                          >
-                            <div className="truncate font-semibold">{m.fileName || 'Download file'}</div>
-                            <div className={cn('mt-0.5 text-xs opacity-80', mine ? 'text-emerald-700/80 dark:text-emerald-200/80' : '')}>Open / download</div>
-                          </a>
-                        ) : null}
-                        {(m.content || m.isDeleted) ? (
-                          <p
-                            className={cn(
-                              'mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed',
-                              m.isDeleted ? 'italic opacity-80' : mine ? 'text-emerald-950 dark:text-slate-50' : 'text-amber-950 dark:text-slate-50'
-                            )}
-                          >
-                            {m.content}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* Emoji reaction picker */}
-                    {openReactionPickerId === m._id && (
-                      <div
-                        data-reaction-picker
-                        className={cn(
-                          'mt-1 flex gap-1 rounded-full border border-amber-200/80 bg-white px-2 py-1 shadow-md dark:border-navy-700/60 dark:bg-navy-950',
-                          mine ? 'mr-8' : 'ml-8'
-                        )}
-                      >
-                        {EMOJI_OPTIONS.map((emoji) => (
-                          <button
-                            key={emoji}
-                            type="button"
-                            className="rounded-full px-1 py-0.5 text-base transition hover:scale-125"
-                            onClick={() => handleToggleDmReaction(m._id, emoji)}
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Reactions display */}
-                    {reactionEntries.length > 0 && (
-                      <div className={cn('mt-1 flex flex-wrap gap-1', mine ? 'mr-8 justify-end' : 'ml-8')}>
-                        {reactionEntries.map(([emoji, users]) => {
-                          const count = Object.keys(users || {}).length;
-                          if (!count) return null;
-                          const reacted = !!(users || {})[user?.id];
-                          return (
-                            <button
-                              key={emoji}
-                              type="button"
-                              className={cn(
-                                'flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition',
-                                reacted
-                                  ? 'border-amber-400 bg-amber-100 dark:border-sky-500 dark:bg-navy-800'
-                                  : 'border-amber-200/80 bg-white dark:border-navy-700 dark:bg-navy-900'
-                              )}
-                              onClick={() => handleToggleDmReaction(m._id, emoji)}
-                            >
-                              <span>{emoji}</span>
-                              <span className={reacted ? 'text-amber-700 dark:text-sky-400' : 'text-amber-800 dark:text-slate-300'}>{count}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </motion.div>
+                    m={m}
+                    idx={idx}
+                    mine={mine}
+                    senderLabel={senderLabel}
+                    canEditDelete={canEditDelete}
+                    isPinned={isPinned}
+                    peerKey={peerKey}
+                    openMessageMenuId={openMessageMenuId}
+                    deletingMessageId={deletingMessageId}
+                    toggleMessageMenu={toggleMessageMenu}
+                    handleEditMessage={handleEditMessage}
+                    handleDeleteMessage={handleDeleteMessage}
+                    handleDeleteForMe={handleDeleteForMe}
+                    handlePinDmMessage={handlePinDmMessage}
+                    handleUnpinDmMessage={handleUnpinDmMessage}
+                    openReactionPickerId={openReactionPickerId}
+                    setOpenReactionPickerId={setOpenReactionPickerId}
+                    EMOJI_OPTIONS={EMOJI_OPTIONS}
+                    handleToggleDmReaction={handleToggleDmReaction}
+                  />
                 );
               })}
 
