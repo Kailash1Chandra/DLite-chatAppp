@@ -3,6 +3,7 @@ import { API_BASE_URL, CHAT_SOCKET_URL } from './appClient'
 import { getCurrentAuthSnapshot } from './authClient'
 
 let socketInstance = null
+let lastChatSocketAuthKey = ''
 const unsubRef = new Map()
 
 async function authedSocketOptions({ userId } = {}) {
@@ -15,9 +16,41 @@ async function authedSocketOptions({ userId } = {}) {
   }
 }
 
+function chatSocketAuthKey(auth) {
+  const uid = String(auth?.userId || '')
+  const tok = String(auth?.token || '')
+  return `${uid}|${tok}`
+}
+
 async function getSocket({ userId } = {}) {
-  if (socketInstance) return socketInstance
   const auth = await authedSocketOptions({ userId })
+  if (!auth?.userId) {
+    if (socketInstance) {
+      try {
+        socketInstance.removeAllListeners()
+        socketInstance.disconnect()
+      } catch {
+        /* ignore */
+      }
+      socketInstance = null
+    }
+    lastChatSocketAuthKey = ''
+    throw new Error('Chat socket requires userId')
+  }
+  const key = chatSocketAuthKey(auth)
+  if (socketInstance && lastChatSocketAuthKey === key) {
+    return socketInstance
+  }
+  if (socketInstance) {
+    try {
+      socketInstance.removeAllListeners()
+      socketInstance.disconnect()
+    } catch {
+      /* ignore */
+    }
+    socketInstance = null
+  }
+  lastChatSocketAuthKey = key
   socketInstance = io(CHAT_SOCKET_URL, {
     autoConnect: true,
     transports: ['websocket'],
@@ -37,7 +70,11 @@ export function initializeMyPresence() {
     const snapshot = await getCurrentAuthSnapshot().catch(() => null)
     const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
     if (!uid || cancelled) return
-    await getSocket({ userId: uid })
+    try {
+      await getSocket({ userId: uid })
+    } catch {
+      /* ignore */
+    }
   })()
   return () => {
     cancelled = true
@@ -99,7 +136,12 @@ export function subscribeDirectMessages(_userId, chatId, callback) {
   ;(async () => {
     const snapshot = await getCurrentAuthSnapshot().catch(() => null)
     if (!snapshot?.token || !peerId) return
-    const s = await getSocket({ userId: _userId })
+    let s
+    try {
+      s = await getSocket({ userId: _userId })
+    } catch {
+      return
+    }
 
     const r = await fetch(`${API_BASE_URL}/chat/dm/ensure`, {
       method: 'POST',
@@ -166,7 +208,12 @@ export async function sendDirectMessage({ chatId, senderId, content }) {
   if (!rSend.ok || jSend?.success === false) throw new Error(jSend?.message || 'Could not send')
   const saved = jSend?.message || {}
 
-  const s = await getSocket({ userId: sender })
+  let s
+  try {
+    s = await getSocket({ userId: sender })
+  } catch {
+    return
+  }
   s.emit('join_chat', { chatId: realChatId })
   s.emit('send_message', {
     chatId: realChatId,
@@ -435,7 +482,12 @@ export async function setDmTyping() {
   const snapshot = await getCurrentAuthSnapshot().catch(() => null)
   const uid = String(snapshot?.user?.id || '').trim()
   if (!uid || !peerId) return
-  const s = await getSocket({ userId: uid })
+  let s
+  try {
+    s = await getSocket({ userId: uid })
+  } catch {
+    return
+  }
   // We reuse peerId as "chatId" in legacy UI; server expects actual chatId.
   const r = await fetch(`${API_BASE_URL}/chat/dm/ensure`, {
     method: 'POST',
@@ -450,14 +502,25 @@ export async function setDmTyping() {
 }
 export function subscribeDmTyping() {
   const peerId = String(arguments?.[1] || '').trim()
-  const cb = typeof arguments?.[2] === 'function' ? arguments?.[2] : () => undefined
+  const cb =
+    typeof arguments?.[2] === 'function'
+      ? arguments[2]
+      : typeof arguments?.[3] === 'function'
+        ? arguments[3]
+        : () => undefined
   let disposed = false
+  let detach = () => {}
 
   ;(async () => {
     const snapshot = await getCurrentAuthSnapshot().catch(() => null)
     const uid = String(snapshot?.user?.id || '').trim()
     if (!snapshot?.token || !uid || !peerId) return
-    const s = await getSocket({ userId: uid })
+    let s
+    try {
+      s = await getSocket({ userId: uid })
+    } catch {
+      return
+    }
     const r = await fetch(`${API_BASE_URL}/chat/dm/ensure`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
@@ -481,14 +544,19 @@ export function subscribeDmTyping() {
     }
     s.on('typing', onTyping)
     s.on('stop_typing', onStop)
-    return () => {
-      s.off('typing', onTyping)
-      s.off('stop_typing', onStop)
+    detach = () => {
+      try {
+        s.off('typing', onTyping)
+        s.off('stop_typing', onStop)
+      } catch {
+        /* ignore */
+      }
     }
   })()
 
   return () => {
     disposed = true
+    detach()
   }
 }
 export async function pinDmMessage() {
@@ -601,7 +669,12 @@ export function subscribeUserPresence(_userId, callback) {
     if (!peerId) return cb({ online: false, lastSeen: null })
     if (!uid || !snapshot?.token) return cb({ online: false, lastSeen: null })
 
-    const s = await getSocket({ userId: uid })
+    let s
+    try {
+      s = await getSocket({ userId: uid })
+    } catch {
+      return cb({ online: false, lastSeen: null })
+    }
     const handler = (payload) => {
       if (disposed) return
       if (!payload || String(payload.userId || '').trim() !== peerId) return

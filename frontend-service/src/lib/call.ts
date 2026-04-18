@@ -5,9 +5,23 @@ import { AnswerPayload, IceCandidatePayload, OfferPayload } from '@/types/call'
 type CallSocket = Socket
 
 let socketInstance: CallSocket | null = null
+let callSocketUserId: string | null = null
 
 function getSocket(userId: string): CallSocket {
-  if (socketInstance) return socketInstance
+  if (socketInstance && callSocketUserId === userId) {
+    return socketInstance
+  }
+  if (socketInstance) {
+    try {
+      socketInstance.removeAllListeners()
+      socketInstance.disconnect()
+    } catch {
+      /* ignore */
+    }
+    socketInstance = null
+    callSocketUserId = null
+  }
+  callSocketUserId = userId
   socketInstance = io(CALL_SOCKET_URL, {
     autoConnect: true,
     transports: ['websocket'],

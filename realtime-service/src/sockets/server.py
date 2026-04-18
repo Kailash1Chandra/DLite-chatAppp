@@ -152,5 +152,41 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
             return
         await sio.emit("stop_typing", {"chatId": chat_id, "senderId": sender_id}, room=chat_room(chat_id), skip_sid=sid)
 
+    @sio.event
+    async def get_user_status(sid, data):
+        """Return whether a user currently has any socket connection (online)."""
+        target = str((data or {}).get("userId") or "").strip()
+        if not target:
+            return
+        online = bool(connections_by_user.get(target))
+        await sio.emit(
+            "user_status",
+            {"userId": target, "status": "online" if online else "offline"},
+            to=sid,
+        )
+
+    @sio.event
+    async def call_user(sid, data):
+        """
+        Relay WebRTC offer to callee. Frontend listens for event name `call_user` on the callee socket.
+        """
+        session = await sio.get_session(sid)
+        from_uid = (session or {}).get("userId")
+        if not from_uid:
+            return
+        payload = data or {}
+        to_uid = str(payload.get("toUserId") or "").strip()
+        if not to_uid or to_uid == str(from_uid):
+            return
+        await sio.emit(
+            "call_user",
+            {
+                "fromUserId": str(from_uid),
+                "callType": payload.get("callType") or "audio",
+                "offer": payload.get("offer"),
+            },
+            room=user_room(to_uid),
+        )
+
     return socketio.ASGIApp(sio, other_asgi_app=other_asgi_app, socketio_path="socket.io")
 

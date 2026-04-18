@@ -497,9 +497,17 @@ export default function ChatDashboardPage() {
       setTypingUsers([]);
       return;
     }
-    const unsub = subscribeDmTyping(user.id, activeUserId.trim(), user.id, setTypingUsers);
+    const peerTypingLabel = peerUsername || 'Someone';
+    const unsub = subscribeDmTyping(user.id, activeUserId.trim(), ({ senderId, isTyping }) => {
+      if (!senderId || senderId === user.id) return;
+      setTypingUsers((prev) => {
+        if (!isTyping) return prev.filter((name) => name !== peerTypingLabel);
+        if (prev.includes(peerTypingLabel)) return prev;
+        return [...prev, peerTypingLabel];
+      });
+    });
     return unsub;
-  }, [user?.id, activeUserId]);
+  }, [user?.id, activeUserId, peerUsername]);
 
   // Pinned messages subscription
   useEffect(() => {
@@ -767,8 +775,29 @@ export default function ChatDashboardPage() {
     if (!user?.id || !activeUserId.trim() || !messageId) return;
     setOpenReactionPickerId(null);
     try {
-      await toggleDmReaction({ userId: user.id, peerId: activeUserId.trim(), messageId, emoji });
-    } catch { /* ignore */ }
+      const result = await toggleDmReaction({ userId: user.id, peerId: activeUserId.trim(), messageId, emoji });
+      const on = result?.active === true;
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg._id !== messageId) return msg;
+          const nextReactions = { ...(msg.reactions || {}) };
+          const bucket = { ...(nextReactions[emoji] || {}) };
+          if (on) {
+            bucket[user.id] = true;
+          } else {
+            delete bucket[user.id];
+          }
+          if (Object.keys(bucket).length === 0) {
+            delete nextReactions[emoji];
+          } else {
+            nextReactions[emoji] = bucket;
+          }
+          return { ...msg, reactions: nextReactions };
+        })
+      );
+    } catch {
+      setActionError('Could not update reaction.');
+    }
   };
 
   const handlePinDmMessage = async (message) => {
