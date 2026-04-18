@@ -38,14 +38,18 @@ import {
   AtSign,
   BarChart2,
   ChevronDown,
+  ChevronLeft,
   ChevronUp,
-  Globe,
+  FileText,
+  Film,
+  FolderOpen,
   Loader2,
   Lock,
   Archive,
   Download,
   ImageIcon,
   LayoutGrid,
+  Link2,
   Mail,
   MapPin,
   MessageCircle,
@@ -73,7 +77,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ChatAppShell } from '@/components/ChatAppShell';
 import { ChatAppIconRail } from '@/components/ChatAppIconRail';
-import { ComposerOverflowMenu } from '@/components/ComposerOverflowMenu';
+import { ComposerOverflowMenu, composerMenuItemClass } from '@/components/ComposerOverflowMenu';
 
 function sameCalendarDay(aMs, bMs) {
   const da = new Date(aMs);
@@ -589,6 +593,8 @@ export default function ChatDashboardPage() {
   const [inboxSort, setInboxSort] = useState('newest');
   const [detailTab, setDetailTab] = useState('overview');
   const [detailTagsOpen, setDetailTagsOpen] = useState(true);
+  /** Messages | Contact — matches reference tab strip */
+  const [chatMainTab, setChatMainTab] = useState('messages');
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
@@ -651,9 +657,24 @@ export default function ChatDashboardPage() {
     return { count: n, durationLabel };
   }, [messages]);
 
+  const threadShareStats = useMemo(() => {
+    let fileLike = 0;
+    let linkLike = 0;
+    for (const m of messages) {
+      if (m.mediaUrl || m.mediaType) fileLike += 1;
+      const c = typeof m.content === 'string' ? m.content : '';
+      if (/\bhttps?:\/\//i.test(c)) linkLike += 1;
+    }
+    return { fileLike, linkLike };
+  }, [messages]);
+
   const toggleMessageMenu = useCallback((messageId) => {
     setOpenMessageMenuId((prev) => (prev === messageId ? null : messageId));
   }, []);
+
+  useEffect(() => {
+    setChatMainTab('messages');
+  }, [activeUserId]);
 
   // Message row is memoized outside component for stability.
 
@@ -1277,17 +1298,47 @@ export default function ChatDashboardPage() {
           <ChatAppIconRail active="dm" dmUnreadCount={dmUnreadTotal} />
         </div>
 
+        <div className="flex items-center gap-2 px-4 pb-1 pt-3">
+          <Link
+            href="/"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-ui-muted dark:text-slate-300"
+            aria-label="Back"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Link>
+          <h1 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Chat</h1>
+        </div>
+
+        <div className="px-4 pb-3">
+          <div className="flex flex-col items-center rounded-2xl border border-ui-border bg-ui-muted/50 py-4 dark:bg-slate-800/30">
+            <Image
+              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user?.username || user?.id || 'me')}`}
+              alt=""
+              width={72}
+              height={72}
+              unoptimized
+              className="h-[72px] w-[72px] rounded-full border-2 border-white bg-ui-panel object-cover shadow-md dark:border-slate-600"
+            />
+            <p className="mt-2.5 text-center text-sm font-bold text-slate-900 dark:text-white">
+              {user?.username || 'You'}
+            </p>
+            <span className="mt-2 inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+              Available
+            </span>
+          </div>
+        </div>
+
             <div
               ref={searchWrapRef}
               data-sidebar-search
-              className="relative shrink-0 border-b border-ui-border px-3 pb-3 pt-2"
+              className="relative shrink-0 border-b border-ui-border px-4 pb-3"
             >
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-slate-100">Your Inbox</h2>
+                <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">Last chats</h2>
                 <button
                   type="button"
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-ui-accent text-ui-on-accent shadow-md transition hover:bg-ui-accent-hover"
-                  aria-label="New chat — search people"
+                  aria-label="New chat"
                   onClick={() => {
                     setSearchOpen(true);
                     setTimeout(() => searchInputRef.current?.focus(), 50);
@@ -1297,11 +1348,11 @@ export default function ChatDashboardPage() {
                 </button>
               </div>
 
-              <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="mb-3 flex items-center gap-2">
                 <select
                   value={inboxMailbox}
                   onChange={(e) => setInboxMailbox(e.target.value)}
-                  className="rounded-lg border border-ui-border bg-ui-panel py-1.5 pl-2 pr-7 text-xs font-semibold text-slate-800 shadow-sm dark:text-slate-100"
+                  className="min-w-0 flex-1 rounded-xl border border-ui-border bg-ui-panel py-1.5 pl-2 pr-6 text-[10px] font-semibold text-slate-800 shadow-sm dark:text-slate-100"
                   aria-label="Mailbox"
                 >
                   <option value="open">Open</option>
@@ -1310,13 +1361,13 @@ export default function ChatDashboardPage() {
                 <button
                   type="button"
                   onClick={() => setInboxSort((s) => (s === 'newest' ? 'oldest' : 'newest'))}
-                  className="rounded-lg border border-ui-border bg-ui-panel px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ui-muted"
+                  className="shrink-0 rounded-xl border border-ui-border bg-ui-panel px-2 py-1.5 text-[10px] font-semibold text-slate-700 shadow-sm transition hover:bg-ui-muted dark:text-slate-200"
                 >
                   {inboxSort === 'newest' ? 'Newest' : 'Oldest'}
                 </button>
                 <button
                   type="button"
-                  className="ml-auto text-[11px] font-bold uppercase tracking-wide text-ui-accent transition hover:text-ui-accent-hover"
+                  className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-ui-accent transition hover:text-ui-accent-hover"
                   onClick={() => router.push('/groups')}
                 >
                   Groups
@@ -1328,7 +1379,7 @@ export default function ChatDashboardPage() {
                 <input
                   ref={searchInputRef}
                   className="w-full rounded-2xl border border-ui-border bg-ui-panel py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-ui-accent focus:ring-4 focus:ring-[var(--ui-focus)] dark:text-slate-100"
-                  placeholder="Search visitor"
+                  placeholder="Search…"
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -1372,7 +1423,7 @@ export default function ChatDashboardPage() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3 pt-1 sm:px-3">
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-3 pt-1 sm:px-4">
               {recentLoadError && (
                 <div className="rounded-xl border border-red-400/40 bg-red-500/10 px-2.5 py-2 text-xs text-red-700 dark:text-red-300">
                   <p>{recentLoadError}</p>
@@ -1570,100 +1621,83 @@ export default function ChatDashboardPage() {
           )}
 
           <section className="flex min-h-0 flex-1 flex-col overflow-hidden border-b border-ui-border bg-ui-panel lg:border-b-0">
-            <div className="flex shrink-0 items-center gap-3 border-b border-ui-border bg-ui-panel px-4 py-3">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                {activeUserId.trim() ? (
-                  <>
-                    <div className="relative shrink-0">
+            <div className="shrink-0 border-b border-ui-border bg-ui-panel px-4 pb-0 pt-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                    {activeUserId.trim()
+                      ? peerUsername || peerShort || 'Chat'
+                      : 'Chat'}
+                  </h2>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    {activeUserId.trim()
+                      ? peerPresenceLoading
+                        ? 'Status…'
+                        : formatPeerPresence(peerPresence?.online, peerPresence?.lastSeen)
+                      : 'Select a chat from the list'}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {activeUserId.trim() ? (
+                    <div className="relative mr-1">
                       {!peerAvatarFailed ? (
                         <Image
                           src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${peerAvatarSeed}`}
                           alt=""
-                          width={48}
-                          height={48}
+                          width={44}
+                          height={44}
                           unoptimized
-                          className="h-12 w-12 rounded-full border border-ui-border bg-ui-muted object-cover"
+                          className="h-11 w-11 rounded-full border border-ui-border bg-ui-muted object-cover"
                           onError={() => setPeerAvatarFailed(true)}
                         />
                       ) : (
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-ui-accent to-ui-accent-hover text-lg font-bold text-ui-on-accent shadow-md">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-ui-accent to-ui-accent-hover text-sm font-bold text-ui-on-accent">
                           {peerInitial}
                         </div>
                       )}
                       {peerPresence?.online ? (
                         <span
-                          className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-ui-panel bg-emerald-500"
+                          className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-ui-panel bg-emerald-500"
                           title="Online"
                         />
                       ) : null}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-base font-semibold text-slate-900 dark:text-slate-50">
-                        {user?.username && peerUsername ? (
-                          <span className="text-[15px]">
-                            {user.username} with {peerUsername}
-                          </span>
-                        ) : peerUsername ? (
-                          <span className="text-[15px]">{peerUsername}</span>
-                        ) : (
-                          <span className="font-mono text-[15px]">{peerShort}</span>
-                        )}
-                      </p>
-                      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                        <Globe className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                        <span>via Web</span>
-                        <span className="text-slate-300 dark:text-slate-600">·</span>
-                        {peerPresenceLoading ? (
-                          <span className="inline-flex items-center gap-1">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Status…
-                          </span>
-                        ) : (
-                          <span>{formatPeerPresence(peerPresence?.online, peerPresence?.lastSeen)}</span>
-                        )}
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sm font-semibold text-slate-400">Select a conversation</p>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                {activeUserId.trim() && user?.id ? (
-                  <>
+                  ) : null}
+                  {activeUserId.trim() && user?.id ? (
+                    <>
                     <button
                       type="button"
-                      className="flex h-10 w-10 cursor-not-allowed items-center justify-center rounded-xl text-slate-400 opacity-60 dark:text-slate-500"
+                      className="hidden h-9 w-9 cursor-not-allowed items-center justify-center rounded-xl text-slate-400 opacity-50 sm:flex dark:text-slate-500"
                       title="Screen share — use call page"
                       disabled
                     >
-                      <Monitor className="h-5 w-5" />
+                      <Monitor className="h-4 w-4" />
                     </button>
                     <Link
                       href={`/call?callee=${encodeURIComponent(activeUserId.trim())}`}
-                      className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-ui-accent dark:text-slate-400 dark:hover:bg-ui-muted"
+                      className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-ui-muted hover:text-ui-accent dark:text-slate-400"
                       title="Voice call"
                       aria-label="Voice call"
                     >
-                      <Phone className="h-5 w-5" />
+                      <Phone className="h-4 w-4" />
                     </Link>
                     <Link
                       href={`/video-call?callee=${encodeURIComponent(activeUserId.trim())}`}
-                      className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-ui-accent dark:text-slate-400 dark:hover:bg-ui-muted"
+                      className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-ui-muted hover:text-ui-accent dark:text-slate-400"
                       title="Video call"
                       aria-label="Video call"
                     >
-                      <Video className="h-5 w-5" />
+                      <Video className="h-4 w-4" />
                     </Link>
                     <div className="relative" data-chat-header-menu>
                       <button
                         type="button"
-                        className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-ui-muted hover:text-ui-accent dark:text-slate-400"
+                        className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-ui-muted hover:text-ui-accent dark:text-slate-400"
                         aria-expanded={chatHeaderMenuOpen}
                         aria-label="More actions"
                         onClick={() => setChatHeaderMenuOpen((o) => !o)}
                       >
-                        <MoreVertical className="h-5 w-5" />
+                        <MoreVertical className="h-4 w-4" />
                       </button>
                       {chatHeaderMenuOpen ? (
                         <div
@@ -1730,8 +1764,38 @@ export default function ChatDashboardPage() {
                       className="hidden"
                       onChange={(e) => handleImportChatFile(e.target.files?.[0])}
                     />
-                  </>
-                ) : null}
+ </>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-3 flex w-full max-w-md border-b border-ui-border">
+                <button
+                  type="button"
+                  className={cn(
+                    'flex-1 border-b-2 py-2.5 text-center text-xs font-bold transition',
+                    chatMainTab === 'messages'
+                      ? 'border-ui-accent text-ui-accent'
+                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  )}
+                  onClick={() => setChatMainTab('messages')}
+                >
+                  Messages
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    'flex-1 border-b-2 py-2.5 text-center text-xs font-bold transition',
+                    chatMainTab === 'contact'
+                      ? 'border-ui-accent text-ui-accent'
+                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  )}
+                  onClick={() => {
+                    setChatMainTab('contact');
+                    setDetailTab('overview');
+                  }}
+                >
+                  Contact
+                </button>
               </div>
             </div>
 
@@ -1945,49 +2009,17 @@ export default function ChatDashboardPage() {
                   </button>
                 </div>
               ) : (
-                <div className="mx-auto flex max-w-4xl items-end gap-1">
-                  <div className="flex min-h-[48px] min-w-0 flex-1 items-end gap-0.5 rounded-[1.35rem] border border-ui-border bg-ui-composer-pill px-1 py-1 shadow-sm">
+                <div className="mx-auto flex max-w-4xl items-end gap-1.5">
+                  <div className="flex min-h-[48px] min-w-0 flex-1 items-end gap-0.5 rounded-[1.35rem] border border-ui-border bg-ui-composer-pill px-1.5 py-1 shadow-sm">
                     <button
                       type="button"
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/90 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-700/80"
-                      title="Attach file"
-                      aria-label="Attach file"
+                      title="Attach"
+                      aria-label="Attach"
                       disabled={!activeUserId.trim()}
                       onClick={() => mediaInputRef.current?.click()}
                     >
-                      <Paperclip className="h-[22px] w-[22px]" />
-                    </button>
-                    <button
-                      type="button"
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/90 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-700/80"
-                      aria-label="Attach image"
-                      disabled={!activeUserId.trim()}
-                      onClick={() => mediaImageInputRef.current?.click()}
-                    >
-                      <ImageIcon className="h-[22px] w-[22px]" />
-                    </button>
-                    <button
-                      type="button"
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/90 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-700/80"
-                      title="Mention"
-                      aria-label="Insert mention"
-                      disabled={!activeUserId.trim()}
-                      onClick={() => {
-                        composerInputRef.current?.focus();
-                        setInput((prev) => `${prev}@`);
-                      }}
-                    >
-                      <AtSign className="h-[22px] w-[22px]" />
-                    </button>
-                    <button
-                      type="button"
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/90 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-700/80"
-                      title="Poll"
-                      aria-label="Poll"
-                      disabled={!activeUserId.trim() || sendingMessage}
-                      onClick={() => setPollModalOpen(true)}
-                    >
-                      <BarChart2 className="h-[20px] w-[20px]" />
+                      <Plus className="h-[22px] w-[22px]" />
                     </button>
                     <textarea
                       ref={composerInputRef}
@@ -2000,7 +2032,7 @@ export default function ChatDashboardPage() {
                         ta.style.height = 'auto';
                         ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 40), 128)}px`;
                       }}
-                      placeholder={activeUserId.trim() ? 'Message' : 'Select a chat'}
+                      placeholder={activeUserId.trim() ? 'Write your message…' : 'Select a chat'}
                       disabled={!activeUserId.trim()}
                     />
                     <button
@@ -2038,7 +2070,55 @@ export default function ChatDashboardPage() {
                       </button>
                     )}
                   </div>
-                  <ComposerOverflowMenu />
+                  <ComposerOverflowMenu
+                    composerActions={
+                      <>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={composerMenuItemClass}
+                          disabled={!activeUserId.trim()}
+                          onClick={() => mediaInputRef.current?.click()}
+                        >
+                          <Paperclip className="h-4 w-4 shrink-0 opacity-80" />
+                          Attach file
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={composerMenuItemClass}
+                          disabled={!activeUserId.trim()}
+                          onClick={() => mediaImageInputRef.current?.click()}
+                        >
+                          <ImageIcon className="h-4 w-4 shrink-0 opacity-80" />
+                          Photo
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={composerMenuItemClass}
+                          disabled={!activeUserId.trim()}
+                          onClick={() => {
+                            composerInputRef.current?.focus();
+                            setInput((prev) => `${prev}@`);
+                          }}
+                        >
+                          <AtSign className="h-4 w-4 shrink-0 opacity-80" />
+                          Mention
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={composerMenuItemClass}
+                          disabled={!activeUserId.trim() || sendingMessage}
+                          onClick={() => setPollModalOpen(true)}
+                        >
+                          <BarChart2 className="h-4 w-4 shrink-0 opacity-80" />
+                          Poll
+                        </button>
+                      </>
+                    }
+                  />
                 </div>
               )}
             </form>
@@ -2112,34 +2192,117 @@ export default function ChatDashboardPage() {
             )}
           </section>
 
-          <aside className="hidden min-h-0 w-full max-w-[400px] flex-col overflow-y-auto border-l border-ui-border bg-ui-panel xl:flex">
-            <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-ui-border bg-ui-panel/95 px-2 py-2 backdrop-blur dark:bg-ui-panel/95">
-              {[
-                { id: 'overview', label: 'Overview' },
-                { id: 'notes', label: 'Notes' },
-                { id: 'files', label: 'Files' },
-                { id: 'apps', label: 'Apps' },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setDetailTab(t.id)}
-                  className={cn(
-                    'rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition',
-                    detailTab === t.id
-                      ? 'bg-ui-accent-subtle text-ui-accent-text dark:text-ui-accent-text'
-                      : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
-                  )}
-                >
-                  {t.label}
-                </button>
-              ))}
-              <span className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 dark:text-slate-500">
-                <LayoutGrid className="h-4 w-4" />
+          <aside className="hidden min-h-0 w-full max-w-[380px] flex-col overflow-y-auto border-l border-ui-border bg-ui-panel xl:flex">
+            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-ui-border bg-ui-panel/95 px-3 py-3 backdrop-blur dark:bg-ui-panel/95">
+              <span
+                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 dark:text-slate-400"
+                aria-hidden
+              >
+                <ChevronLeft className="h-4 w-4" />
               </span>
+              <span className="text-sm font-bold text-slate-900 dark:text-white">Shared files</span>
             </div>
 
             <div className="min-h-0 flex-1 space-y-4 p-4">
+              <div className="flex flex-col items-center text-center">
+                {activeUserId.trim() ? (
+                  <>
+                    {!peerAvatarFailed ? (
+                      <Image
+                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${peerAvatarSeed}`}
+                        alt=""
+                        width={88}
+                        height={88}
+                        unoptimized
+                        className="h-[88px] w-[88px] rounded-full border-4 border-white object-cover shadow-md dark:border-slate-600"
+                        onError={() => setPeerAvatarFailed(true)}
+                      />
+                    ) : (
+                      <div className="flex h-[88px] w-[88px] items-center justify-center rounded-full bg-gradient-to-br from-ui-accent to-ui-accent-hover text-2xl font-bold text-ui-on-accent">
+                        {peerInitial}
+                      </div>
+                    )}
+                    <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
+                      {peerUsername || peerShort || 'Chat'}
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Direct message</p>
+                  </>
+                ) : (
+                  <p className="py-8 text-sm text-slate-500 dark:text-slate-400">Select a conversation to see details</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-ui-accent p-3 text-ui-on-accent shadow-sm">
+                  <FolderOpen className="h-5 w-5 opacity-95" />
+                  <p className="mt-2 text-[10px] font-bold uppercase tracking-wide opacity-90">All files</p>
+                  <p className="mt-0.5 text-2xl font-bold tabular-nums">{threadShareStats.fileLike}</p>
+                </div>
+                <div className="rounded-2xl border border-ui-border bg-ui-muted p-3 dark:bg-slate-800/80">
+                  <Link2 className="h-5 w-5 text-slate-600 dark:text-slate-300" />
+                  <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    All links
+                  </p>
+                  <p className="mt-0.5 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+                    {threadShareStats.linkLike}
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-ui-border bg-ui-panel">
+                {[
+                  { Icon: FileText, label: 'Documents', meta: '—' },
+                  {
+                    Icon: ImageIcon,
+                    label: 'Photos',
+                    meta: threadShareStats.fileLike > 0 ? `${threadShareStats.fileLike} in thread` : '—',
+                  },
+                  { Icon: Film, label: 'Movies', meta: '—' },
+                  { Icon: LayoutGrid, label: 'Other', meta: '—' },
+                ].map(({ Icon, label, meta }) => (
+                  <div
+                    key={label}
+                    className="flex items-center gap-3 border-b border-ui-border px-3 py-2.5 last:border-b-0"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ui-muted dark:bg-slate-800/80">
+                      <Icon className="h-4 w-4 text-ui-accent" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{label}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">{meta}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Workspace
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'overview', label: 'Overview' },
+                    { id: 'notes', label: 'Notes' },
+                    { id: 'files', label: 'Files' },
+                    { id: 'apps', label: 'Apps' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setDetailTab(t.id)}
+                      className={cn(
+                        'rounded-full px-2.5 py-1 text-[10px] font-bold transition',
+                        detailTab === t.id
+                          ? 'bg-ui-accent-subtle text-ui-accent-text dark:text-ui-accent-text'
+                          : 'bg-ui-muted text-slate-600 hover:bg-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {detailTab === 'overview' && (
                 <>
                   <div className="grid grid-cols-3 gap-2">
