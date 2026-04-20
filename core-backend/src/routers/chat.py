@@ -59,6 +59,15 @@ def _now_iso() -> str:
 
     return _dt.datetime.now(tz=_dt.timezone.utc).isoformat()
 
+def _normalize_group_role(role: Optional[str]) -> str:
+    r = str(role or "").strip().lower()
+    # Back-compat: older rows used "owner" for group creators.
+    if r == "owner":
+        return "admin"
+    if r in ("admin", "member"):
+        return r
+    return "member"
+
 
 @router.get("/users/search")
 async def search_users(username: str = "", exclude: str = "", authorization: Optional[str] = Header(default=None)):
@@ -188,7 +197,13 @@ async def list_my_groups(authorization: Optional[str] = Header(default=None)):
         chat = (row or {}).get("chats") or {}
         if not chat:
             continue
-        groups.append({"id": chat.get("id"), "name": chat.get("name") or chat.get("id"), "role": row.get("role")})
+        groups.append(
+            {
+                "id": chat.get("id"),
+                "name": chat.get("name") or chat.get("id"),
+                "role": _normalize_group_role(row.get("role")),
+            }
+        )
     return {"success": True, "groups": groups}
 
 
@@ -245,7 +260,8 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
             r_member = await client.post(
                 gm_url,
                 headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
-                json={"chat_id": chat_id, "user_id": uid, "role": "owner"},
+                # WhatsApp-style: group creator is admin.
+                json={"chat_id": chat_id, "user_id": uid, "role": "admin"},
             )
             # Some PostgREST setups return 200 for inserts depending on Prefer headers.
             if r_member.status_code not in (200, 201, 204, 409):
@@ -639,7 +655,7 @@ async def list_group_members(group_id: str, authorization: Optional[str] = Heade
                 members.append(
                     {
                         "userId": mid,
-                        "role": (row or {}).get("role") or "member",
+                        "role": _normalize_group_role((row or {}).get("role")),
                         "user": profiles_by_id.get(mid) or {"id": mid, "username": None, "avatar_url": None, "created_at": None},
                     }
                 )
@@ -689,6 +705,9 @@ async def add_group_member_by_username(group_id: str, req: Request, authorizatio
         mem_rows = await safe_json_list(r_mem)
         if not mem_rows:
             return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this group"})
+        caller_role = _normalize_group_role((mem_rows[0] or {}).get("role"))
+        if caller_role != "admin":
+            return JSONResponse(status_code=403, content={"success": False, "message": "Admin only"})
 
         # 2) Lookup user by username
         r_user = await client.get(
@@ -715,6 +734,150 @@ async def add_group_member_by_username(group_id: str, req: Request, authorizatio
             return JSONResponse(status_code=_status_map(r_add.status_code), content={"success": False, "message": _supabase_hint(r_add)})
 
     return {"success": True, "member": {"userId": target_id, "role": "member", "user": target}}
+
+
+@router.post("/groups/{group_id}/members/remove")
+async def remove_group_member(group_id: str, req: Request, authorization: Optional[str] = Header(default=None)):
+    require_supabase()
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    uid = str(user.get("id") or "").strip()
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    gid = str(group_id or "").strip()
+    if not gid:
+        return JSONResponse(status_code=400, content={"success": False, "message": "groupId is required"})
+
+    body = await req.json()
+    target_user_id = str((body or {}).get("userId") or (body or {}).get("memberId") or "").strip()
+    if not target_user_id:
+        return JSONResponse(status_code=400, content={"success": False, "message": "userId is required"})
+
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required for member writes"})
+
+    chats_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+    gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+    headers = postgrest_headers(use_service_role=True)
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            # Admin check
+            r_mem = await client.get(
+                gm_url,
+                headers=headers,
+                params={"select": "role", "chat_id": f"eq.{gid}", "user_id": f"eq.{uid}", "limit": "1"},
+            )
+            if r_mem.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_mem.status_code), content={"success": False, "message": _supabase_hint(r_mem)})
+            mem_rows = await safe_json_list(r_mem)
+            if not mem_rows:
+                return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this group"})
+            if _normalize_group_role((mem_rows[0] or {}).get("role")) != "admin":
+                return JSONResponse(status_code=403, content={"success": False, "message": "Admin only"})
+
+            # Prevent removing creator/admin-of-record: check created_by
+            r_chat = await client.get(
+                chats_url,
+                headers=headers,
+                params={"select": "id,created_by", "id": f"eq.{gid}", "limit": "1"},
+            )
+            if r_chat.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_chat.status_code), content={"success": False, "message": _supabase_hint(r_chat)})
+            chats = await safe_json_list(r_chat)
+            chat = chats[0] if chats else None
+            created_by = str((chat or {}).get("created_by") or "").strip()
+            if created_by and target_user_id == created_by:
+                return JSONResponse(status_code=400, content={"success": False, "message": "Cannot remove group creator"})
+
+            r_del = await client.delete(
+                gm_url,
+                headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=minimal"}),
+                params={"chat_id": f"eq.{gid}", "user_id": f"eq.{target_user_id}"},
+            )
+            if r_del.status_code not in (200, 204):
+                return JSONResponse(status_code=_status_map(r_del.status_code), content={"success": False, "message": _supabase_hint(r_del)})
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
+
+    return {"success": True}
+
+
+@router.post("/groups/{group_id}/members/set-role")
+async def set_group_member_role(group_id: str, req: Request, authorization: Optional[str] = Header(default=None)):
+    require_supabase()
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    uid = str(user.get("id") or "").strip()
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    gid = str(group_id or "").strip()
+    if not gid:
+        return JSONResponse(status_code=400, content={"success": False, "message": "groupId is required"})
+
+    body = await req.json()
+    target_user_id = str((body or {}).get("userId") or "").strip()
+    role = _normalize_group_role((body or {}).get("role"))
+    if not target_user_id:
+        return JSONResponse(status_code=400, content={"success": False, "message": "userId is required"})
+
+    if role not in ("admin", "member"):
+        return JSONResponse(status_code=400, content={"success": False, "message": "Invalid role"})
+
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required for member writes"})
+
+    chats_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+    gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+    headers = postgrest_headers(use_service_role=True)
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            # Admin check
+            r_mem = await client.get(
+                gm_url,
+                headers=headers,
+                params={"select": "role", "chat_id": f"eq.{gid}", "user_id": f"eq.{uid}", "limit": "1"},
+            )
+            if r_mem.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_mem.status_code), content={"success": False, "message": _supabase_hint(r_mem)})
+            mem_rows = await safe_json_list(r_mem)
+            if not mem_rows:
+                return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this group"})
+            if _normalize_group_role((mem_rows[0] or {}).get("role")) != "admin":
+                return JSONResponse(status_code=403, content={"success": False, "message": "Admin only"})
+
+            # Prevent demoting creator
+            r_chat = await client.get(
+                chats_url,
+                headers=headers,
+                params={"select": "id,created_by", "id": f"eq.{gid}", "limit": "1"},
+            )
+            if r_chat.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_chat.status_code), content={"success": False, "message": _supabase_hint(r_chat)})
+            chats = await safe_json_list(r_chat)
+            chat = chats[0] if chats else None
+            created_by = str((chat or {}).get("created_by") or "").strip()
+            if created_by and target_user_id == created_by and role != "admin":
+                return JSONResponse(status_code=400, content={"success": False, "message": "Creator must remain admin"})
+
+            r_up = await client.post(
+                gm_url,
+                headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
+                json={"chat_id": gid, "user_id": target_user_id, "role": role},
+            )
+            if r_up.status_code not in (200, 201, 204, 409):
+                return JSONResponse(status_code=_status_map(r_up.status_code), content={"success": False, "message": _supabase_hint(r_up)})
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
+
+    return {"success": True, "member": {"userId": target_user_id, "role": role}}
 
 
 @router.post("/messages/send")

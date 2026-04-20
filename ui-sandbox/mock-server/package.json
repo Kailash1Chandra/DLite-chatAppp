@@ -1,0 +1,15 @@
+{
+  "name": "d-lite-ui-mock-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:api": "node api.mjs",
+    "dev:sockets": "node sockets.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
+
