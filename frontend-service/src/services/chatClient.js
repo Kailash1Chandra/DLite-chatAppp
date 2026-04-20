@@ -687,7 +687,8 @@ export function subscribeRecentDirectChats(_userId, callback) {
     const rows = Array.isArray(items) ? items : []
     const byKey = new Map()
     for (const chat of rows) {
-      const key = String(chat?.threadId || chat?.chatId || chat?.peerId || chat?.id || '').trim()
+      // DMs should be unique per peer (backend may accidentally create multiple threads).
+      const key = String(chat?.peerId || chat?.peer_id || chat?.peer?.id || chat?.threadId || chat?.chatId || chat?.id || '').trim()
       if (!key) continue
       const prev = byKey.get(key)
       if (!prev) {
