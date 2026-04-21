@@ -180,6 +180,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   canEditDelete,
   isPinned,
   peerKey,
+  peerUsername,
   userId,
   openMessageMenuId,
   deletingMessageId,
@@ -546,6 +547,13 @@ const ChatMessageRow = memo(function ChatMessageRow({
             const count = Object.keys(users || {}).length;
             if (!count) return null;
             const reacted = !!(users || {})[userId];
+            const who = Object.keys(users || {})
+              .map((uid) => {
+                if (uid === userId) return 'You';
+                if (uid === peerKey) return peerUsername || 'Peer';
+                return uid;
+              })
+              .join(', ');
             return (
               <button
                 key={emoji}
@@ -556,6 +564,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                     ? 'border-ui-accent bg-ui-accent-subtle'
                     : 'border-ui-border bg-ui-panel'
                 )}
+                title={who ? `${who} reacted` : undefined}
                 onClick={() => handleToggleDmReaction(m._id, emoji)}
               >
                 <span>{emoji}</span>
@@ -1983,6 +1992,7 @@ export default function ChatDashboardPage() {
                           canEditDelete={canEditDelete}
                           isPinned={isPinned}
                           peerKey={peerKey}
+                          peerUsername={peerUsername}
                           userId={user?.id}
                           openMessageMenuId={openMessageMenuId}
                           deletingMessageId={deletingMessageId}
