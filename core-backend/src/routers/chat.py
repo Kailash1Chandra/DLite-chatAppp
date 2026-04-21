@@ -490,6 +490,14 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
                 params={"select": "chat_id", "user_id": f"eq.{uid}", "limit": "200"},
             )
             if r_gm.status_code >= 400:
+                if r_gm.status_code in (401, 403):
+                    return JSONResponse(
+                        status_code=503,
+                        content={
+                            "success": False,
+                            "message": "Supabase rejected service-role requests. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on core-backend.",
+                        },
+                    )
                 return JSONResponse(status_code=_status_map(r_gm.status_code), content={"success": False, "message": _supabase_hint(r_gm)})
             gm_rows = await safe_json_list(r_gm)
             chat_ids = [str(r.get("chat_id") or "").strip() for r in gm_rows if str(r.get("chat_id") or "").strip()]
@@ -503,6 +511,14 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
                 params={"select": "id,type", "id": f"in.({','.join(chat_ids)})", "type": "eq.direct", "limit": "200"},
             )
             if r_chats.status_code >= 400:
+                if r_chats.status_code in (401, 403):
+                    return JSONResponse(
+                        status_code=503,
+                        content={
+                            "success": False,
+                            "message": "Supabase rejected service-role requests. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on core-backend.",
+                        },
+                    )
                 return JSONResponse(status_code=_status_map(r_chats.status_code), content={"success": False, "message": _supabase_hint(r_chats)})
             chats = await safe_json_list(r_chats)
             direct_ids = [str(c.get("id") or "").strip() for c in chats if str(c.get("id") or "").strip()]
@@ -516,6 +532,14 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
                 params={"select": "chat_id,user_id", "chat_id": f"in.({','.join(direct_ids)})", "limit": "400"},
             )
             if r_peers.status_code >= 400:
+                if r_peers.status_code in (401, 403):
+                    return JSONResponse(
+                        status_code=503,
+                        content={
+                            "success": False,
+                            "message": "Supabase rejected service-role requests. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on core-backend.",
+                        },
+                    )
                 return JSONResponse(status_code=_status_map(r_peers.status_code), content={"success": False, "message": _supabase_hint(r_peers)})
             peer_rows = await safe_json_list(r_peers)
             members_by_chat: dict[str, list[str]] = {}

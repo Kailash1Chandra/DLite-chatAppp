@@ -822,7 +822,11 @@ export function subscribeRecentDirectChats(_userId, callback) {
     const res = await fetch(`${API_BASE_URL}/chat/dm/recent`, { headers: { Authorization: `Bearer ${snapshot.token}` } })
     const json = await res.json().catch(() => ({}))
     if (disposed) return
-    if (!res.ok || json?.success === false) return cb([])
+    if (!res.ok || json?.success === false) {
+      // eslint-disable-next-line no-console
+      console.warn('[recent-dm] load failed', { status: res.status, message: json?.message })
+      return cb([])
+    }
     cb(dedupeRecentChats(json?.chats || []))
   }
 
