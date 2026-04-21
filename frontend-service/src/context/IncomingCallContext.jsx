@@ -52,17 +52,18 @@ export function IncomingCallProvider({ children }) {
         beeper.current.stop();
         return;
       }
-      setOffer((prev) => {
-        if (prev?.createdAt === incoming.createdAt && prev?.fromUserId === incoming.fromUserId) return prev;
-        return incoming;
-      });
-      beeper.current.start();
+      // Auto-open call screen on incoming call.
+      // (User asked to skip the green accept button overlay.)
+      try { sessionStorage.setItem('dlite-auto-accept-from', incoming.fromUserId); } catch { /* ignore */ }
+      beeper.current.stop();
+      setOffer(null);
+      router.push(`/call?callee=${encodeURIComponent(incoming.fromUserId)}&mode=${incoming.mode || 'audio'}&ready=1`);
     });
     return () => {
       unsub();
       beeper.current.stop();
     };
-  }, [user?.id, isOnCallPage]);
+  }, [user?.id, isOnCallPage, router]);
 
   // When navigating to /call page, hide global overlay
   useEffect(() => {
