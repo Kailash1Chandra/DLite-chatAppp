@@ -941,7 +941,7 @@ export default function ChatDashboardPage() {
     const peerId = activeUserId.trim();
     // FIX: Mark messages as read when opening a chat (DB read receipts).
     markDirectThreadRead({ userId: user.id, peerId }).catch(() => undefined);
-    markRecentDirectChatRead(user.id, peerId)
+    markRecentDirectChatRead({ peerId })
       .then(() => {
         // Keep UI consistent: unread badge should disappear immediately.
         setRecentChats((prev) => prev.map((chat) => (chat.peerId === peerId ? { ...chat, unreadCount: 0 } : chat)));
@@ -978,7 +978,7 @@ export default function ChatDashboardPage() {
           if (msg.senderId && msg.senderId !== user.id) {
             // FIX: If chat is open, mark as read immediately on receive.
             markDirectThreadRead({ userId: user.id, peerId }).catch(() => undefined);
-            markRecentDirectChatRead(user.id, activeUserId.trim())
+            markRecentDirectChatRead({ peerId: activeUserId.trim() })
               .then(() => {
                 setRecentChats((prev) =>
                   prev.map((chat) => (chat.peerId === activeUserId.trim() ? { ...chat, unreadCount: 0 } : chat))
@@ -1220,6 +1220,15 @@ export default function ChatDashboardPage() {
           return { ...msg, reactions: nextReactions };
         })
       );
+
+      // Ensure the other user sees reactions too: refresh thread messages (backend is source of truth).
+      // This also picks up any server-computed reaction aggregation if/when added.
+      try {
+        const fresh = await listDirectMessages(user.id, activeUserId.trim());
+        if (Array.isArray(fresh) && fresh.length) setMessages(fresh);
+      } catch {
+        /* ignore */
+      }
     } catch {
       setActionError('Could not update reaction.');
     }

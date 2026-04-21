@@ -815,7 +815,24 @@ export function subscribeUserPresence(_userId, callback) {
 export async function markRecentDirectChatRead() {
   const snapshot = await getCurrentAuthSnapshot()
   if (!snapshot?.token) return
-  const threadId = String(arguments?.[1] || arguments?.[0]?.threadId || arguments?.[0] || '').trim()
+  const arg0 = arguments?.[0] || {}
+  const arg1 = arguments?.[1]
+  const threadIdRaw = String(arg0?.threadId || arg1 || arg0 || '').trim()
+  const peerId = String(arg0?.peerId || '').trim()
+
+  let threadId = threadIdRaw
+  if (!threadId && peerId) {
+    // Resolve DM threadId/chatId from peerId (same API used elsewhere).
+    const r = await fetch(`${API_BASE_URL}/chat/dm/ensure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+      body: JSON.stringify({ peerId }),
+    }).catch(() => null)
+    const j = r ? await r.json().catch(() => ({})) : {}
+    if (!r || !r.ok || j?.success === false) return
+    threadId = String(j?.chatId || '').trim()
+  }
+
   if (!threadId) return
   await fetch(`${API_BASE_URL}/chat/dm/recent/read`, {
     method: 'POST',
