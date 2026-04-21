@@ -547,30 +547,41 @@ const ChatMessageRow = memo(function ChatMessageRow({
             const count = Object.keys(users || {}).length;
             if (!count) return null;
             const reacted = !!(users || {})[userId];
-            const who = Object.keys(users || {})
-              .map((uid) => {
-                if (uid === userId) return 'You';
-                if (uid === peerKey) return peerUsername || 'Peer';
-                return uid;
-              })
-              .join(', ');
+            const labels = Object.keys(users || {}).map((uid) => {
+              if (uid === userId) return 'You';
+              if (uid === peerKey) return peerUsername || 'Peer';
+              return 'Someone';
+            });
+            const unique = Array.from(new Set(labels));
+            const whoShort =
+              unique.length <= 1
+                ? unique[0] || ''
+                : unique.length === 2
+                  ? `${unique[0]}, ${unique[1]}`
+                  : `${unique[0]}, ${unique[1]} +${unique.length - 2}`;
+            const whoFull = labels.join(', ');
             return (
               <button
                 key={emoji}
                 type="button"
                 className={cn(
-                  'flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition',
+                  'flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition',
                   reacted
                     ? 'border-ui-accent bg-ui-accent-subtle'
                     : 'border-ui-border bg-ui-panel'
                 )}
-                title={who ? `${who} reacted` : undefined}
+                title={whoFull ? `${whoFull} reacted` : undefined}
                 onClick={() => handleToggleDmReaction(m._id, emoji)}
               >
                 <span>{emoji}</span>
                 <span className={reacted ? 'text-ui-accent dark:text-ui-accent-text' : 'text-slate-600 dark:text-slate-400'}>
                   {count}
                 </span>
+                {whoShort ? (
+                  <span className={cn('text-[10px] font-medium', reacted ? 'text-ui-accent' : 'text-slate-500 dark:text-slate-400')}>
+                    {whoShort}
+                  </span>
+                ) : null}
               </button>
             );
           })}
