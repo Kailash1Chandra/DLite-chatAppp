@@ -20,13 +20,19 @@ def _parse_origins(value: str) -> list[str]:
 
 app = FastAPI()
 
+# IMPORTANT:
+# - When behind a proxy (Render), errors may be returned without CORS headers unless middleware is configured broadly.
+# - Set `CORS_ORIGINS` on the server to include your frontend, e.g.:
+#   CORS_ORIGINS="https://frontend-dlite.vercel.app,http://localhost:3000"
 cors_origins = _parse_origins(os.getenv("CORS_ORIGINS", "http://localhost:3000"))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    # Keep credentials enabled unless wildcard origin is used.
     allow_credentials=("*" not in cors_origins),
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
