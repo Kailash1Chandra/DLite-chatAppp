@@ -593,8 +593,8 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
     gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
     svc = _service_headers()
     usr = postgrest_user_headers(access_token)
-    svc_rep = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=representation"})
-    usr_rep = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=representation"})
+    svc_rep = _service_headers(extra={"prefer": "return=representation"})
+    usr_rep = postgrest_user_headers(access_token, extra={"prefer": "return=representation"})
     svc_merge = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
     usr_merge = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=minimal"})
 
