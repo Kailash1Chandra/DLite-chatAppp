@@ -350,8 +350,23 @@ alter table public.hidden_messages enable row level security;
 -- =========================================
 -- COLUMN PRIVILEGES (avoid leaking email)
 -- =========================================
+grant usage on schema public to anon, authenticated;
+
 revoke all on table public.users from anon, authenticated;
 grant select (id, username, avatar_url, created_at) on table public.users to authenticated;
+
+-- Allow authenticated clients to query/write through RLS-protected tables.
+-- RLS still controls row access; these grants only remove Postgres-level permission errors.
+grant select, insert, update, delete on table public.chats to authenticated;
+grant select, insert, update, delete on table public.group_members to authenticated;
+grant select, insert, update, delete on table public.messages to authenticated;
+grant select, insert, update, delete on table public.message_reactions to authenticated;
+grant select, insert, update, delete on table public.pinned_messages to authenticated;
+grant select, insert, update, delete on table public.chat_settings to authenticated;
+grant select, insert, update, delete on table public.hidden_messages to authenticated;
+grant select, insert, update, delete on table public.message_reads to authenticated;
+grant select, insert, update, delete on table public.typing_status to authenticated;
+grant select, insert, update, delete on table public.presence to authenticated;
 
 -- =========================================
 -- USERS POLICIES

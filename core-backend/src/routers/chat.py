@@ -294,6 +294,42 @@ def _dm_key(a: str, b: str) -> str:
     return f"dm:{x}:{y}"
 
 
+async def _resolve_dm_chat_id(
+    client: httpx.AsyncClient,
+    *,
+    uid: str,
+    access_token: str,
+    chat_id: str = "",
+    peer_id: str = "",
+) -> str:
+    direct_chat_id = str(chat_id or "").strip()
+    if direct_chat_id:
+        return direct_chat_id
+
+    peer = str(peer_id or "").strip()
+    if not peer or peer == uid:
+        return ""
+
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+    params = {
+        "select": "id",
+        "type": "eq.direct",
+        "name": f"eq.{_dm_key(uid, peer)}",
+        "limit": "1",
+    }
+    r = await _pg_get(
+        client,
+        url,
+        params,
+        svc_headers=_service_headers(),
+        user_headers=postgrest_user_headers(access_token),
+    )
+    if r.status_code >= 400:
+        return ""
+    rows = await safe_json_list(r)
+    return str((rows[0] or {}).get("id") or "").strip() if rows else ""
+
+
 def _now_iso() -> str:
     # PostgREST accepts ISO timestamps for timestamptz columns.
     import datetime as _dt
@@ -805,15 +841,22 @@ async def mark_recent_read(req: Request, authorization: Optional[str] = Header(d
 
     body = await req.json()
     chat_id = str((body or {}).get("threadId") or (body or {}).get("chatId") or "").strip()
-    if not chat_id:
+    peer_id = str((body or {}).get("peerId") or (body or {}).get("receiverId") or "").strip()
+
+    if not chat_id and not peer_id:
         return JSONResponse(status_code=400, content={"success": False, "message": "threadId is required"})
 
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chat_settings"
-    payload = {"chat_id": chat_id, "user_id": uid, "last_read_at": _now_iso(), "updated_at": _now_iso()}
-    svc = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
-    usr = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=minimal"})
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
+            chat_id = await _resolve_dm_chat_id(client, uid=uid, access_token=access_token, chat_id=chat_id, peer_id=peer_id)
+            if not chat_id:
+                # No existing DM thread yet; nothing to mark as read.
+                return {"success": True, "skipped": True}
+
+            payload = {"chat_id": chat_id, "user_id": uid, "last_read_at": _now_iso(), "updated_at": _now_iso()}
+            svc = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
+            usr = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=minimal"})
             r = await _pg_post(client, url, json_body=payload, svc_headers=svc, user_headers=usr)
     except Exception as e:
         return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
@@ -834,25 +877,31 @@ async def set_recent_settings(req: Request, authorization: Optional[str] = Heade
 
     body = await req.json()
     chat_id = str((body or {}).get("threadId") or (body or {}).get("chatId") or "").strip()
-    if not chat_id:
+    peer_id = str((body or {}).get("peerId") or (body or {}).get("receiverId") or "").strip()
+    if not chat_id and not peer_id:
         return JSONResponse(status_code=400, content={"success": False, "message": "threadId is required"})
     archived = body.get("archived")
     locked = body.get("locked")
     hidden = body.get("hidden")
 
-    patch: dict[str, object] = {"chat_id": chat_id, "user_id": uid, "updated_at": _now_iso()}
-    if archived is not None:
-        patch["archived"] = bool(archived)
-    if locked is not None:
-        patch["locked"] = bool(locked)
-    if hidden is not None:
-        patch["hidden"] = bool(hidden)
-
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chat_settings"
-    svc = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
-    usr = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=minimal"})
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
+            chat_id = await _resolve_dm_chat_id(client, uid=uid, access_token=access_token, chat_id=chat_id, peer_id=peer_id)
+            if not chat_id:
+                # No existing DM thread yet; nothing to update.
+                return {"success": True, "skipped": True}
+
+            patch: dict[str, object] = {"chat_id": chat_id, "user_id": uid, "updated_at": _now_iso()}
+            if archived is not None:
+                patch["archived"] = bool(archived)
+            if locked is not None:
+                patch["locked"] = bool(locked)
+            if hidden is not None:
+                patch["hidden"] = bool(hidden)
+
+            svc = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
+            usr = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=minimal"})
             r = await _pg_post(client, url, json_body=patch, svc_headers=svc, user_headers=usr)
     except Exception as e:
         return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
@@ -1166,12 +1215,16 @@ async def send_message(req: Request, authorization: Optional[str] = Header(defau
     if not chat_id or not content:
         return JSONResponse(status_code=400, content={"success": False, "message": "chatId and content are required"})
 
-    gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+    base = SUPABASE_URL.rstrip('/')
+    gm_url = f"{base}/rest/v1/group_members"
+    chats_url = f"{base}/rest/v1/chats"
     msg_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/messages"
     svc = _service_headers()
     usr = postgrest_user_headers(access_token)
     svc_rep = _service_headers(extra={"prefer": "return=representation"})
     usr_rep = postgrest_user_headers(access_token, extra={"prefer": "return=representation"})
+    svc_merge = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
+    usr_merge = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=minimal"})
 
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
@@ -1186,7 +1239,51 @@ async def send_message(req: Request, authorization: Optional[str] = Header(defau
                 return JSONResponse(status_code=_status_map(r_mem.status_code), content={"success": False, "message": _supabase_hint(r_mem)})
             rows = await safe_json_list(r_mem)
             if not rows:
-                return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this chat"})
+                # Self-heal legacy/inconsistent DM memberships.
+                r_chat = await _pg_get(
+                    client,
+                    chats_url,
+                    {"select": "id,type,name,created_by", "id": f"eq.{chat_id}", "limit": "1"},
+                    svc_headers=svc,
+                    user_headers=usr,
+                )
+                if r_chat.status_code < 400:
+                    chat_rows = await safe_json_list(r_chat)
+                    chat = chat_rows[0] if chat_rows else None
+                    ctype = str((chat or {}).get("type") or "").strip()
+                    cname = str((chat or {}).get("name") or "").strip()
+                    created_by = str((chat or {}).get("created_by") or "").strip()
+
+                    allowed_join = False
+                    if ctype == "direct":
+                        if created_by and created_by == uid:
+                            allowed_join = True
+                        elif cname.startswith("dm:"):
+                            parts = cname.split(":")
+                            if len(parts) == 3 and uid in (parts[1], parts[2]):
+                                allowed_join = True
+
+                    if allowed_join:
+                        r_join = await _pg_post(
+                            client,
+                            gm_url,
+                            json_body={"chat_id": chat_id, "user_id": uid, "role": "member"},
+                            svc_headers=svc_merge,
+                            user_headers=usr_merge,
+                        )
+                        if r_join.status_code in (200, 201, 204, 409):
+                            r_mem_retry = await _pg_get(
+                                client,
+                                gm_url,
+                                {"select": "chat_id,user_id", "chat_id": f"eq.{chat_id}", "user_id": f"eq.{uid}", "limit": "1"},
+                                svc_headers=svc,
+                                user_headers=usr,
+                            )
+                            if r_mem_retry.status_code < 400:
+                                rows = await safe_json_list(r_mem_retry)
+
+                if not rows:
+                    return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this chat"})
 
             r_ins = await _pg_post(
                 client,

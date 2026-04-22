@@ -1060,8 +1060,9 @@ export default function ChatDashboardPage() {
         content: input.trim()
       });
       setInput('');
-    } catch {
-      setActionError('Could not send message. Please try again.');
+    } catch (err) {
+      const msg = String(err?.message || '').trim();
+      setActionError(msg || 'Could not send message. Please try again.');
     } finally {
       setSendingMessage(false);
     }
@@ -1084,8 +1085,9 @@ export default function ChatDashboardPage() {
         content: text
       });
       setInput('');
-    } catch {
-      setActionError('Could not send message. Please try again.');
+    } catch (err) {
+      const msg = String(err?.message || '').trim();
+      setActionError(msg || 'Could not send message. Please try again.');
     } finally {
       setSendingMessage(false);
     }
