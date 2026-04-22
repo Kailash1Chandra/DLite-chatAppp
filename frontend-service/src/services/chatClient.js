@@ -314,6 +314,11 @@ export function subscribeDirectMessages(_userId, chatId, callback) {
 
 export async function sendDirectMessage({ chatId, senderId, content, type }) {
   const receiverId = String(arguments?.[0]?.receiverId || arguments?.[0]?.peerId || '').trim()
+  const onLocalEvent = typeof arguments?.[0]?.onLocalEvent === 'function' ? arguments[0].onLocalEvent : null
+  const providedOptimisticId = String(arguments?.[0]?.optimisticId || '').trim()
+  const providedOptimisticCreatedAt = Number(arguments?.[0]?.optimisticCreatedAt || 0)
+  const optimisticAlreadyAdded = Boolean(arguments?.[0]?.optimisticAlreadyAdded)
+  const initialChatId = String(chatId || arguments?.[0]?.chatId || '').trim()
   const sender = String(senderId || '').trim()
   const text = String(content || '').trim()
   if (!sender || !receiverId || !text) return
@@ -322,6 +327,24 @@ export async function sendDirectMessage({ chatId, senderId, content, type }) {
   const snapshot = await getCurrentAuthSnapshot()
   if (!snapshot?.token) throw new Error('Not authenticated')
 
+  const optimisticId = providedOptimisticId || `tmp-${sender}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const optimisticCreatedAt = providedOptimisticCreatedAt > 0 ? providedOptimisticCreatedAt : Date.now()
+  if (onLocalEvent && !optimisticAlreadyAdded) {
+    onLocalEvent({
+      changeType: 'added',
+      message: {
+        _id: optimisticId,
+        chatId: initialChatId,
+        senderId: sender,
+        content: text,
+        type: msgType,
+        createdAt: optimisticCreatedAt,
+        isDeleted: false,
+        isPending: true,
+      },
+    })
+  }
+
   // Ensure DM chat exists and both members are linked in Supabase
   const rEnsure = await fetch(`${API_BASE_URL}/chat/dm/ensure`, {
     method: 'POST',
@@ -329,9 +352,29 @@ export async function sendDirectMessage({ chatId, senderId, content, type }) {
     body: JSON.stringify({ peerId: receiverId }),
   })
   const jEnsure = await rEnsure.json().catch(() => ({}))
-  if (!rEnsure.ok || jEnsure?.success === false) throw new Error(jEnsure?.message || 'Could not open chat')
+  if (!rEnsure.ok || jEnsure?.success === false) {
+    if (onLocalEvent) {
+      onLocalEvent({ changeType: 'removed', message: { _id: optimisticId } })
+    }
+    throw new Error(jEnsure?.message || 'Could not open chat')
+  }
   const realChatId = String(jEnsure?.chatId || '').trim()
-  if (!realChatId) throw new Error('Could not open chat')
+  if (!realChatId) {
+    if (onLocalEvent) {
+      onLocalEvent({ changeType: 'removed', message: { _id: optimisticId } })
+    }
+    throw new Error('Could not open chat')
+  }
+  if (onLocalEvent && !initialChatId) {
+    const patch = { _id: optimisticId, chatId: realChatId, isPending: true }
+    if (!optimisticAlreadyAdded) {
+      patch.content = text
+      patch.type = msgType
+      patch.senderId = sender
+      patch.createdAt = optimisticCreatedAt
+    }
+    onLocalEvent({ changeType: 'changed', message: patch })
+  }
 
   // Persist first (history + canonical ids), then broadcast realtime
   const rSend = await fetch(`${API_BASE_URL}/chat/messages/send`, {
@@ -340,8 +383,33 @@ export async function sendDirectMessage({ chatId, senderId, content, type }) {
     body: JSON.stringify({ chatId: realChatId, content: text, type: msgType }),
   })
   const jSend = await rSend.json().catch(() => ({}))
-  if (!rSend.ok || jSend?.success === false) throw new Error(jSend?.message || 'Could not send')
+  if (!rSend.ok || jSend?.success === false) {
+    if (onLocalEvent) {
+      onLocalEvent({ changeType: 'removed', message: { _id: optimisticId, chatId: realChatId } })
+    }
+    throw new Error(jSend?.message || 'Could not send')
+  }
   const saved = jSend?.message || {}
+  const savedId = String(saved.id || '').trim()
+
+  if (onLocalEvent) {
+    const savedMessage = {
+      _id: savedId || optimisticId,
+      chatId: realChatId,
+      senderId: String(saved.sender_id || sender),
+      content: String(saved.content || text),
+      type: String(saved.type || msgType || 'text'),
+      createdAt: saved.created_at ? Date.parse(saved.created_at) : optimisticCreatedAt,
+      isDeleted: Boolean(saved.is_deleted),
+      isPending: false,
+    }
+    if (savedId && savedId !== optimisticId) {
+      onLocalEvent({ changeType: 'removed', message: { _id: optimisticId, chatId: realChatId } })
+      onLocalEvent({ changeType: 'added', message: savedMessage })
+    } else {
+      onLocalEvent({ changeType: 'changed', message: savedMessage })
+    }
+  }
 
   let s
   try {
@@ -355,7 +423,7 @@ export async function sendDirectMessage({ chatId, senderId, content, type }) {
     senderId: sender,
     content: saved.content || text,
     type: saved.type || msgType || 'text',
-    _id: saved.id || undefined,
+    _id: savedId || undefined,
     createdAt: saved.created_at ? Date.parse(saved.created_at) : Date.now(),
   })
 }
@@ -363,10 +431,29 @@ export async function sendDirectMessage({ chatId, senderId, content, type }) {
 export async function sendDirectMedia() {
   const snapshot = await getCurrentAuthSnapshot()
   if (!snapshot?.token) throw new Error('Not authenticated')
+  const onLocalEvent = typeof arguments?.[0]?.onLocalEvent === 'function' ? arguments[0].onLocalEvent : null
   const senderId = String(arguments?.[0]?.senderId || '').trim()
   const receiverId = String(arguments?.[0]?.receiverId || '').trim()
   const file = arguments?.[0]?.file
   if (!senderId || !receiverId || !file) throw new Error('senderId, receiverId, and file are required')
+
+  const optimisticId = `tmp-media-${senderId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const optimisticCreatedAt = Date.now()
+  if (onLocalEvent) {
+    onLocalEvent({
+      changeType: 'added',
+      message: {
+        _id: optimisticId,
+        chatId: '',
+        senderId,
+        content: 'Uploading media…',
+        type: String(file?.type || '').startsWith('audio/') ? 'audio' : 'file',
+        createdAt: optimisticCreatedAt,
+        isDeleted: false,
+        isPending: true,
+      },
+    })
+  }
 
   const fd = new FormData()
   fd.append('file', file)
@@ -376,11 +463,30 @@ export async function sendDirectMedia() {
     body: fd,
   })
   const j = await r.json().catch(() => ({}))
-  if (!r.ok || j?.success === false) throw new Error(j?.message || 'Could not upload media')
+  if (!r.ok || j?.success === false) {
+    if (onLocalEvent) {
+      onLocalEvent({ changeType: 'removed', message: { _id: optimisticId } })
+    }
+    throw new Error(j?.message || 'Could not upload media')
+  }
   const url = String(j?.url || '').trim()
   const msgType = String(j?.type || 'file').trim() || 'file'
-  if (!url) throw new Error('Upload returned empty url')
-  await sendDirectMessage({ senderId, receiverId, content: url, type: msgType })
+  if (!url) {
+    if (onLocalEvent) {
+      onLocalEvent({ changeType: 'removed', message: { _id: optimisticId } })
+    }
+    throw new Error('Upload returned empty url')
+  }
+  await sendDirectMessage({
+    senderId,
+    receiverId,
+    content: url,
+    type: msgType,
+    onLocalEvent,
+    optimisticId,
+    optimisticCreatedAt,
+    optimisticAlreadyAdded: true,
+  })
 }
 
 export async function editDirectMessage() {

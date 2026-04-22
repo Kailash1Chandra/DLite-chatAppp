@@ -952,17 +952,15 @@ export default function ChatDashboardPage() {
     ).trim();
     // FIX: Mark messages as read when opening a chat (DB read receipts).
     markDirectThreadRead({ userId: user.id, peerId }).catch(() => undefined);
+    // Keep UI consistent: unread badge should disappear immediately.
+    if (threadIdForPeer) {
+      setRecentChats((prev) =>
+        prev.map((chat) => (String(chat.threadId || '').trim() === threadIdForPeer ? { ...chat, unreadCount: 0 } : chat))
+      );
+    } else {
+      setRecentChats((prev) => prev.map((chat) => (chat.peerId === peerId ? { ...chat, unreadCount: 0 } : chat)));
+    }
     markRecentDirectChatRead(threadIdForPeer ? { threadId: threadIdForPeer } : { peerId })
-      .then(() => {
-        // Keep UI consistent: unread badge should disappear immediately.
-        if (threadIdForPeer) {
-          setRecentChats((prev) =>
-            prev.map((chat) => (String(chat.threadId || '').trim() === threadIdForPeer ? { ...chat, unreadCount: 0 } : chat))
-          );
-        } else {
-          setRecentChats((prev) => prev.map((chat) => (chat.peerId === peerId ? { ...chat, unreadCount: 0 } : chat)));
-        }
-      })
       .catch(() => undefined);
     setMessagesLoading(true);
     setMessageLoadError('');
@@ -991,7 +989,7 @@ export default function ChatDashboardPage() {
 
           if (seen.has(msg._id)) return;
           seen.add(msg._id);
-          setMessages((prev) => [...prev, msg]);
+          setMessages((prev) => (prev.some((item) => item._id === msg._id) ? prev : [...prev, msg]));
           if (msg.senderId && msg.senderId !== user.id) {
             // FIX: If chat is open, mark as read immediately on receive.
             markDirectThreadRead({ userId: user.id, peerId }).catch(() => undefined);
@@ -999,20 +997,18 @@ export default function ChatDashboardPage() {
             const activeThreadId = String(
               recentChats.find((c) => String(c?.peerId || '').trim() === activePeerId)?.threadId || ''
             ).trim();
+            if (activeThreadId) {
+              setRecentChats((prev) =>
+                prev.map((chat) =>
+                  String(chat.threadId || '').trim() === activeThreadId ? { ...chat, unreadCount: 0 } : chat
+                )
+              );
+            } else {
+              setRecentChats((prev) =>
+                prev.map((chat) => (chat.peerId === activePeerId ? { ...chat, unreadCount: 0 } : chat))
+              );
+            }
             markRecentDirectChatRead(activeThreadId ? { threadId: activeThreadId } : { peerId: activePeerId })
-              .then(() => {
-                if (activeThreadId) {
-                  setRecentChats((prev) =>
-                    prev.map((chat) =>
-                      String(chat.threadId || '').trim() === activeThreadId ? { ...chat, unreadCount: 0 } : chat
-                    )
-                  );
-                } else {
-                  setRecentChats((prev) =>
-                    prev.map((chat) => (chat.peerId === activePeerId ? { ...chat, unreadCount: 0 } : chat))
-                  );
-                }
-              })
               .catch(() => undefined);
           }
         });
@@ -1029,6 +1025,28 @@ export default function ChatDashboardPage() {
       unsubscribe();
     };
   }, [user?.id, activeUserId, historyRefreshTick, recentChats]);
+
+  const applyLocalMessageEvent = useCallback(({ changeType, message }) => {
+    const id = String(message?._id || '').trim();
+    if (!id) return;
+    if (changeType === 'removed') {
+      setMessages((prev) => prev.filter((item) => item._id !== id));
+      return;
+    }
+    if (changeType === 'changed') {
+      setMessages((prev) => prev.map((item) => (item._id === id ? { ...item, ...message } : item)));
+      return;
+    }
+    setMessages((prev) => {
+      const idx = prev.findIndex((item) => item._id === id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], ...message };
+        return copy;
+      }
+      return [...prev, message];
+    });
+  }, []);
 
   useLayoutEffect(() => {
     if (!shouldAutoScrollRef.current) return;
@@ -1051,16 +1069,19 @@ export default function ChatDashboardPage() {
       setActionError('Select a user from search (peerId must be a UUID).');
       return;
     }
+    const currentInput = input.trim();
+    setInput('');
     setSendingMessage(true);
     setActionError('');
     try {
       await sendDirectMessage({
         senderId: user.id,
         receiverId: activeUserId.trim(),
-        content: input.trim()
+        content: currentInput,
+        onLocalEvent: applyLocalMessageEvent
       });
-      setInput('');
     } catch (err) {
+      setInput(currentInput);
       const msg = String(err?.message || '').trim();
       setActionError(msg || 'Could not send message. Please try again.');
     } finally {
@@ -1082,7 +1103,8 @@ export default function ChatDashboardPage() {
       await sendDirectMessage({
         senderId: user.id,
         receiverId: activeUserId.trim(),
-        content: text
+        content: text,
+        onLocalEvent: applyLocalMessageEvent
       });
       setInput('');
     } catch (err) {
@@ -1109,19 +1131,20 @@ export default function ChatDashboardPage() {
       return;
     }
     const body = `${DM_POLL_PREFIX}${JSON.stringify({ q, o: opts })}`;
+    setPollModalOpen(false);
+    setPollQuestion('');
+    setPollOpt1('Option A');
+    setPollOpt2('Option B');
+    setPollOpt3('Option C');
     setSendingMessage(true);
     setActionError('');
     try {
       await sendDirectMessage({
         senderId: user.id,
         receiverId: activeUserId.trim(),
-        content: body
+        content: body,
+        onLocalEvent: applyLocalMessageEvent
       });
-      setPollModalOpen(false);
-      setPollQuestion('');
-      setPollOpt1('Option A');
-      setPollOpt2('Option B');
-      setPollOpt3('Option C');
     } catch {
       setActionError('Could not send poll. Please try again.');
     } finally {
@@ -1144,7 +1167,8 @@ export default function ChatDashboardPage() {
       await sendDirectMedia({
         senderId: user.id,
         receiverId: activeUserId.trim(),
-        file
+        file,
+        onLocalEvent: applyLocalMessageEvent
       });
     } catch (err) {
       setActionError(err?.message || 'Could not send media. Please try again.');
@@ -1170,8 +1194,11 @@ export default function ChatDashboardPage() {
     if (next === null) return; // cancelled
     const newContent = next.trim();
     if (!newContent) return;
+    const previousContent = String(message.content || '');
 
     setActionError('');
+    setMessages((prev) => prev.map((m) => (m._id === message._id ? { ...m, content: newContent } : m)));
+    setOpenMessageMenuId(null);
     try {
       await editDirectMessage({
         userId: user.id,
@@ -1179,9 +1206,8 @@ export default function ChatDashboardPage() {
         messageId: message._id,
         newContent
       });
-      setMessages((prev) => prev.map((m) => (m._id === message._id ? { ...m, content: newContent } : m)));
-      setOpenMessageMenuId(null);
     } catch (err) {
+      setMessages((prev) => prev.map((m) => (m._id === message._id ? { ...m, content: previousContent } : m)));
       setActionError(err?.message || 'Could not edit message. Please try again.');
     }
   };
@@ -1195,15 +1221,31 @@ export default function ChatDashboardPage() {
       return;
     setDeletingMessageId(messageId);
     setActionError('');
+    let removedItem = null;
+    let removedIndex = -1;
+    setMessages((prev) => {
+      removedIndex = prev.findIndex((item) => item._id === messageId);
+      if (removedIndex < 0) return prev;
+      removedItem = prev[removedIndex];
+      return prev.filter((item) => item._id !== messageId);
+    });
+    setOpenMessageMenuId(null);
     try {
       await deleteDirectMessage({
         userId: user.id,
         peerId: activeUserId.trim(),
         messageId
       });
-      setMessages((prev) => prev.filter((item) => item._id !== messageId));
-      setOpenMessageMenuId(null);
     } catch {
+      if (removedItem) {
+        setMessages((prev) => {
+          if (prev.some((item) => item._id === messageId)) return prev;
+          const copy = [...prev];
+          const idx = Math.min(Math.max(removedIndex, 0), copy.length);
+          copy.splice(idx, 0, removedItem);
+          return copy;
+        });
+      }
       setActionError('Could not delete message. Please try again.');
     } finally {
       setDeletingMessageId('');
@@ -1214,15 +1256,31 @@ export default function ChatDashboardPage() {
     if (!messageId || !user?.id || !activeUserId.trim()) return;
     if (typeof window !== 'undefined' && !window.confirm('Delete this message only for you?')) return;
     setActionError('');
+    let removedItem = null;
+    let removedIndex = -1;
+    setMessages((prev) => {
+      removedIndex = prev.findIndex((item) => item._id === messageId);
+      if (removedIndex < 0) return prev;
+      removedItem = prev[removedIndex];
+      return prev.filter((item) => item._id !== messageId);
+    });
+    setOpenMessageMenuId(null);
     try {
       await hideDirectMessageForMe({
         userId: user.id,
         peerId: activeUserId.trim(),
         messageId
       });
-      setMessages((prev) => prev.filter((item) => item._id !== messageId));
-      setOpenMessageMenuId(null);
     } catch {
+      if (removedItem) {
+        setMessages((prev) => {
+          if (prev.some((item) => item._id === messageId)) return prev;
+          const copy = [...prev];
+          const idx = Math.min(Math.max(removedIndex, 0), copy.length);
+          copy.splice(idx, 0, removedItem);
+          return copy;
+        });
+      }
       setActionError('Could not delete message for you. Please try again.');
     }
   };
@@ -1230,37 +1288,49 @@ export default function ChatDashboardPage() {
   const handleToggleDmReaction = async (messageId, emoji) => {
     if (!user?.id || !activeUserId.trim() || !messageId) return;
     setOpenReactionPickerId(null);
+    let previousReactions = null;
+    let optimisticOn = false;
+
+    const applyReactionForUser = (reactions, on) => {
+      const nextReactions = { ...(reactions || {}) };
+      const bucket = { ...(nextReactions[emoji] || {}) };
+      if (on) {
+        bucket[user.id] = true;
+      } else {
+        delete bucket[user.id];
+      }
+      if (Object.keys(bucket).length === 0) {
+        delete nextReactions[emoji];
+      } else {
+        nextReactions[emoji] = bucket;
+      }
+      return nextReactions;
+    };
+
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg._id !== messageId) return msg;
+        previousReactions = { ...(msg.reactions || {}) };
+        const currentlyOn = Boolean(previousReactions?.[emoji]?.[user.id]);
+        optimisticOn = !currentlyOn;
+        return { ...msg, reactions: applyReactionForUser(msg.reactions, optimisticOn) };
+      })
+    );
+
     try {
       const result = await toggleDmReaction({ userId: user.id, peerId: activeUserId.trim(), messageId, emoji });
       const on = result?.active === true;
-      setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg._id !== messageId) return msg;
-          const nextReactions = { ...(msg.reactions || {}) };
-          const bucket = { ...(nextReactions[emoji] || {}) };
-          if (on) {
-            bucket[user.id] = true;
-          } else {
-            delete bucket[user.id];
-          }
-          if (Object.keys(bucket).length === 0) {
-            delete nextReactions[emoji];
-          } else {
-            nextReactions[emoji] = bucket;
-          }
-          return { ...msg, reactions: nextReactions };
-        })
-      );
-
-      // Ensure the other user sees reactions too: refresh thread messages (backend is source of truth).
-      // This also picks up any server-computed reaction aggregation if/when added.
-      try {
-        const fresh = await listDirectMessages(user.id, activeUserId.trim());
-        if (Array.isArray(fresh) && fresh.length) setMessages(fresh);
-      } catch {
-        /* ignore */
+      if (on !== optimisticOn) {
+        setMessages((prev) =>
+          prev.map((msg) => (msg._id === messageId ? { ...msg, reactions: applyReactionForUser(msg.reactions, on) } : msg))
+        );
       }
     } catch {
+      if (previousReactions) {
+        setMessages((prev) =>
+          prev.map((msg) => (msg._id === messageId ? { ...msg, reactions: previousReactions } : msg))
+        );
+      }
       setActionError('Could not update reaction.');
     }
   };
@@ -1268,16 +1338,131 @@ export default function ChatDashboardPage() {
   const handlePinDmMessage = async (message) => {
     if (!user?.id || !activeUserId.trim()) return;
     setOpenMessageMenuId(null);
+    let added = false;
+    const optimisticPin = {
+      messageId: message._id,
+      content: String(message.content || ''),
+      createdAt: Date.now()
+    };
+    setPinnedMessages((prev) => {
+      if (prev.some((p) => p.messageId === message._id)) return prev;
+      added = true;
+      return [optimisticPin, ...prev];
+    });
     try {
       await pinDmMessage({ userId: user.id, peerId: activeUserId.trim(), messageId: message._id, content: message.content || '' });
-    } catch { setActionError('Could not pin message.'); }
+    } catch {
+      if (added) {
+        setPinnedMessages((prev) => prev.filter((p) => p.messageId !== message._id));
+      }
+      setActionError('Could not pin message.');
+    }
   };
 
   const handleUnpinDmMessage = async (messageId) => {
     if (!user?.id || !activeUserId.trim()) return;
+    let removed = null;
+    let removedIndex = -1;
+    setPinnedMessages((prev) => {
+      removedIndex = prev.findIndex((p) => p.messageId === messageId);
+      if (removedIndex < 0) return prev;
+      removed = prev[removedIndex];
+      return prev.filter((p) => p.messageId !== messageId);
+    });
     try {
       await unpinDmMessage({ userId: user.id, peerId: activeUserId.trim(), messageId });
-    } catch { setActionError('Could not unpin message.'); }
+    } catch {
+      if (removed) {
+        setPinnedMessages((prev) => {
+          if (prev.some((p) => p.messageId === messageId)) return prev;
+          const copy = [...prev];
+          const idx = Math.min(Math.max(removedIndex, 0), copy.length);
+          copy.splice(idx, 0, removed);
+          return copy;
+        });
+      }
+      setActionError('Could not unpin message.');
+    }
+  };
+
+  const handleToggleRecentLocked = async (chat) => {
+    if (!chat?.threadId) return;
+    const nextLocked = !Boolean(chat.locked);
+    const threadId = String(chat.threadId || '').trim();
+    setRecentChats((prev) => prev.map((c) => (String(c.threadId || '').trim() === threadId ? { ...c, locked: nextLocked } : c)));
+    try {
+      await setRecentDirectChatLocked({
+        userId: user?.id,
+        threadId,
+        locked: nextLocked
+      });
+    } catch {
+      setRecentChats((prev) => prev.map((c) => (String(c.threadId || '').trim() === threadId ? { ...c, locked: !nextLocked } : c)));
+      setActionError('Could not update chat lock setting.');
+    } finally {
+      setRecentMenu(null);
+    }
+  };
+
+  const handleToggleRecentArchived = async (chat) => {
+    if (!chat?.threadId) return;
+    const nextArchived = !Boolean(chat.archived);
+    const threadId = String(chat.threadId || '').trim();
+    setRecentChats((prev) => prev.map((c) => (String(c.threadId || '').trim() === threadId ? { ...c, archived: nextArchived } : c)));
+    try {
+      await setRecentDirectChatArchived({
+        userId: user?.id,
+        threadId,
+        archived: nextArchived
+      });
+    } catch {
+      setRecentChats((prev) => prev.map((c) => (String(c.threadId || '').trim() === threadId ? { ...c, archived: !nextArchived } : c)));
+      setActionError('Could not update chat archive setting.');
+    } finally {
+      setRecentMenu(null);
+    }
+  };
+
+  const handleDeleteRecentChat = async (chat) => {
+    if (!chat?.threadId) return;
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm('Delete this chat from recent list? This will not delete message history.')
+    )
+      return;
+
+    const threadId = String(chat.threadId || '').trim();
+    const peerId = String(chat.peerId || '').trim();
+    let removed = null;
+    let removedIndex = -1;
+    setRecentChats((prev) => {
+      removedIndex = prev.findIndex((c) => String(c.threadId || '').trim() === threadId);
+      if (removedIndex < 0) return prev;
+      removed = prev[removedIndex];
+      return prev.filter((c) => String(c.threadId || '').trim() !== threadId);
+    });
+    try {
+      await deleteRecentDirectChat({
+        userId: user?.id,
+        threadId
+      });
+      if (activeUserId.trim() === peerId) {
+        clearPeer();
+      }
+    } catch {
+      if (removed) {
+        setRecentChats((prev) => {
+          if (prev.some((c) => String(c.threadId || '').trim() === threadId)) return prev;
+          const copy = [...prev];
+          const idx = Math.min(Math.max(removedIndex, 0), copy.length);
+          copy.splice(idx, 0, removed);
+          return copy;
+        });
+      }
+      setActionError('Could not delete recent chat.');
+    } finally {
+      setRecentMenu(null);
+    }
   };
 
   const handleTypingInput = (e) => {
@@ -1305,7 +1490,12 @@ export default function ChatDashboardPage() {
         setSendingMessage(true);
         setActionError('');
         try {
-          await sendDirectMedia({ senderId: user.id, receiverId: activeUserId.trim(), file });
+          await sendDirectMedia({
+            senderId: user.id,
+            receiverId: activeUserId.trim(),
+            file,
+            onLocalEvent: applyLocalMessageEvent
+          });
         } catch { setActionError('Could not send voice note.'); }
         finally { setSendingMessage(false); }
       };
@@ -1679,17 +1869,7 @@ export default function ChatDashboardPage() {
                   type="button"
                   role="menuitem"
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
-                  onClick={async () => {
-                    try {
-                      await setRecentDirectChatLocked({
-                        userId: user?.id,
-                        threadId: recentMenu.chat.threadId,
-                        locked: !recentMenu.chat.locked
-                      });
-                    } finally {
-                      setRecentMenu(null);
-                    }
-                  }}
+                  onClick={() => handleToggleRecentLocked(recentMenu.chat)}
                 >
                   <Lock className="h-4 w-4 shrink-0 opacity-80" />
                   {recentMenu.chat.locked ? 'Unlock chat' : 'Lock chat'}
@@ -1699,17 +1879,7 @@ export default function ChatDashboardPage() {
                   type="button"
                   role="menuitem"
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
-                  onClick={async () => {
-                    try {
-                      await setRecentDirectChatArchived({
-                        userId: user?.id,
-                        threadId: recentMenu.chat.threadId,
-                        archived: !recentMenu.chat.archived
-                      });
-                    } finally {
-                      setRecentMenu(null);
-                    }
-                  }}
+                  onClick={() => handleToggleRecentArchived(recentMenu.chat)}
                 >
                   <Archive className="h-4 w-4 shrink-0 opacity-80" />
                   {recentMenu.chat.archived ? 'Unarchive chat' : 'Archive chat'}
@@ -1719,24 +1889,7 @@ export default function ChatDashboardPage() {
                   type="button"
                   role="menuitem"
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-700 transition-colors duration-150 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50"
-                  onClick={async () => {
-                    if (
-                      typeof window !== 'undefined' &&
-                      !window.confirm('Delete this chat from recent list? This will not delete message history.')
-                    )
-                      return;
-                    try {
-                      await deleteRecentDirectChat({
-                        userId: user?.id,
-                        threadId: recentMenu.chat.threadId
-                      });
-                      if (activeUserId.trim() === recentMenu.chat.peerId) {
-                        clearPeer();
-                      }
-                    } finally {
-                      setRecentMenu(null);
-                    }
-                  }}
+                  onClick={() => handleDeleteRecentChat(recentMenu.chat)}
                 >
                   <Trash2 className="h-4 w-4 shrink-0" />
                   Delete chat

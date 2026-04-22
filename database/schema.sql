@@ -371,12 +371,14 @@ grant select, insert, update, delete on table public.presence to authenticated;
 -- =========================================
 -- USERS POLICIES
 -- =========================================
+drop policy if exists "Users can view own profile" on public.users;
 create policy "Users can view own profile"
 on public.users
 for select
 to authenticated
 using (auth.uid() = id);
 
+drop policy if exists "Users can update own profile" on public.users;
 create policy "Users can update own profile"
 on public.users
 for update
@@ -384,6 +386,7 @@ to authenticated
 using (auth.uid() = id)
 with check (auth.uid() = id);
 
+drop policy if exists "Users can search directory" on public.users;
 create policy "Users can search directory"
 on public.users
 for select
@@ -415,17 +418,24 @@ $$;
 revoke all on function public.is_chat_member(uuid, uuid) from public;
 grant execute on function public.is_chat_member(uuid, uuid) to authenticated;
 
+drop policy if exists "Users can view chats" on public.chats;
 create policy "Users can view chats"
 on public.chats
 for select
 to authenticated
 using (
   created_by = auth.uid()
+  or (
+    chats.type = 'direct'
+    and chats.name like 'dm:%:%'
+    and auth.uid()::text in (split_part(chats.name, ':', 2), split_part(chats.name, ':', 3))
+  )
   or exists (
     select 1 where public.is_chat_member(chats.id, auth.uid())
   )
 );
 
+drop policy if exists "Users can create chats" on public.chats;
 create policy "Users can create chats"
 on public.chats
 for insert
@@ -435,6 +445,7 @@ with check (created_by = auth.uid());
 -- =========================================
 -- GROUP MEMBERS POLICIES
 -- =========================================
+drop policy if exists "Users can view members" on public.group_members;
 create policy "Users can view members"
 on public.group_members
 for select
@@ -443,6 +454,7 @@ using (
   public.is_chat_member(group_members.chat_id, auth.uid())
 );
 
+drop policy if exists "Creator can add members" on public.group_members;
 create policy "Creator can add members"
 on public.group_members
 for insert
@@ -454,28 +466,55 @@ with check (
     where c.id = chat_id
       and c.created_by = auth.uid()
   )
+  or exists (
+    select 1 from public.chats c
+    where c.id = chat_id
+      and c.type = 'direct'
+      and c.name like 'dm:%:%'
+      and auth.uid()::text in (split_part(c.name, ':', 2), split_part(c.name, ':', 3))
+      and user_id::text in (split_part(c.name, ':', 2), split_part(c.name, ':', 3))
+  )
 );
 
 -- =========================================
 -- MESSAGES POLICIES
 -- =========================================
+drop policy if exists "Insert messages" on public.messages;
 create policy "Insert messages"
 on public.messages
 for insert
 to authenticated
 with check (
   auth.uid() = sender_id
-  and public.is_chat_member(chat_id, auth.uid())
+  and (
+    public.is_chat_member(chat_id, auth.uid())
+    or exists (
+      select 1 from public.chats c
+      where c.id = messages.chat_id
+        and c.type = 'direct'
+        and c.name like 'dm:%:%'
+        and auth.uid()::text in (split_part(c.name, ':', 2), split_part(c.name, ':', 3))
+    )
+  )
 );
 
+drop policy if exists "Read messages" on public.messages;
 create policy "Read messages"
 on public.messages
 for select
 to authenticated
 using (
   public.is_chat_member(messages.chat_id, auth.uid())
+  or exists (
+    select 1 from public.chats c
+    where c.id = messages.chat_id
+      and c.type = 'direct'
+      and c.name like 'dm:%:%'
+      and auth.uid()::text in (split_part(c.name, ':', 2), split_part(c.name, ':', 3))
+  )
 );
 
+drop policy if exists "Delete own messages" on public.messages;
 create policy "Delete own messages"
 on public.messages
 for delete
@@ -483,6 +522,7 @@ to authenticated
 using (auth.uid() = sender_id);
 
 -- Allow soft-delete (update) by sender only
+drop policy if exists "Update own messages" on public.messages;
 create policy "Update own messages"
 on public.messages
 for update
@@ -493,6 +533,7 @@ with check (auth.uid() = sender_id);
 -- =========================================
 -- REACTIONS POLICIES
 -- =========================================
+drop policy if exists "React in member chats" on public.message_reactions;
 create policy "React in member chats"
 on public.message_reactions
 for all
@@ -516,6 +557,7 @@ with check (
 -- =========================================
 -- PINS POLICIES
 -- =========================================
+drop policy if exists "Pin in member chats" on public.pinned_messages;
 create policy "Pin in member chats"
 on public.pinned_messages
 for all
@@ -526,18 +568,21 @@ with check (public.is_chat_member(pinned_messages.chat_id, auth.uid()) and auth.
 -- =========================================
 -- CHAT SETTINGS POLICIES
 -- =========================================
+drop policy if exists "Chat settings read" on public.chat_settings;
 create policy "Chat settings read"
 on public.chat_settings
 for select
 to authenticated
 using (auth.uid() = user_id and public.is_chat_member(chat_settings.chat_id, auth.uid()));
 
+drop policy if exists "Chat settings write" on public.chat_settings;
 create policy "Chat settings write"
 on public.chat_settings
 for insert
 to authenticated
 with check (auth.uid() = user_id and public.is_chat_member(chat_settings.chat_id, auth.uid()));
 
+drop policy if exists "Chat settings update" on public.chat_settings;
 create policy "Chat settings update"
 on public.chat_settings
 for update
@@ -548,12 +593,14 @@ with check (auth.uid() = user_id and public.is_chat_member(chat_settings.chat_id
 -- =========================================
 -- MESSAGE READS POLICIES
 -- =========================================
+drop policy if exists "Insert reads" on public.message_reads;
 create policy "Insert reads"
 on public.message_reads
 for insert
 to authenticated
 with check (auth.uid() = user_id);
 
+drop policy if exists "Read receipts" on public.message_reads;
 create policy "Read receipts"
 on public.message_reads
 for select
@@ -570,6 +617,7 @@ using (
 -- =========================================
 -- TYPING STATUS POLICIES
 -- =========================================
+drop policy if exists "Typing update" on public.typing_status;
 create policy "Typing update"
 on public.typing_status
 for all
@@ -577,6 +625,7 @@ to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
+drop policy if exists "Typing read" on public.typing_status;
 create policy "Typing read"
 on public.typing_status
 for select
@@ -588,6 +637,7 @@ using (
 -- =========================================
 -- PRESENCE POLICIES
 -- =========================================
+drop policy if exists "Presence update" on public.presence;
 create policy "Presence update"
 on public.presence
 for all
@@ -595,6 +645,7 @@ to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
+drop policy if exists "Presence read" on public.presence;
 create policy "Presence read"
 on public.presence
 for select
@@ -612,6 +663,7 @@ using (
 -- HIDDEN MESSAGES POLICIES (delete for me)
 -- NEW SCHEMA: required for PostgREST with user JWT (no service_role)
 -- =========================================
+drop policy if exists "hidden_messages insert own rows" on public.hidden_messages;
 create policy "hidden_messages insert own rows"
 on public.hidden_messages
 for insert
@@ -621,6 +673,7 @@ with check (
   and public.is_chat_member(hidden_messages.chat_id, auth.uid())
 );
 
+drop policy if exists "hidden_messages read own rows" on public.hidden_messages;
 create policy "hidden_messages read own rows"
 on public.hidden_messages
 for select

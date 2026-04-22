@@ -623,7 +623,8 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
                 user_headers=usr_merge,
             )
             if r_m2.status_code not in (200, 201, 204, 409):
-                return JSONResponse(status_code=_status_map(r_m2.status_code), content={"success": False, "message": _supabase_hint(r_m2)})
+                # For 1:1 chats, this is best-effort only. The peer can self-join when opening DM.
+                pass
     except Exception as e:
         return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
 
@@ -1238,6 +1239,7 @@ async def send_message(req: Request, authorization: Optional[str] = Header(defau
             if r_mem.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_mem.status_code), content={"success": False, "message": _supabase_hint(r_mem)})
             rows = await safe_json_list(r_mem)
+            allowed_direct_send = False
             if not rows:
                 # Self-heal legacy/inconsistent DM memberships.
                 r_chat = await _pg_get(
@@ -1258,10 +1260,12 @@ async def send_message(req: Request, authorization: Optional[str] = Header(defau
                     if ctype == "direct":
                         if created_by and created_by == uid:
                             allowed_join = True
+                            allowed_direct_send = True
                         elif cname.startswith("dm:"):
                             parts = cname.split(":")
                             if len(parts) == 3 and uid in (parts[1], parts[2]):
                                 allowed_join = True
+                                allowed_direct_send = True
 
                     if allowed_join:
                         r_join = await _pg_post(
@@ -1282,7 +1286,7 @@ async def send_message(req: Request, authorization: Optional[str] = Header(defau
                             if r_mem_retry.status_code < 400:
                                 rows = await safe_json_list(r_mem_retry)
 
-                if not rows:
+                if not rows and not allowed_direct_send:
                     return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this chat"})
 
             r_ins = await _pg_post(

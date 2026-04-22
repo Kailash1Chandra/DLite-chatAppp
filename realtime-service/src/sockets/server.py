@@ -45,7 +45,9 @@ async def _user_is_chat_member(chat_id: str, user_id: str, access_token: str) ->
             ok = isinstance(rows, list) and len(rows) > 0
     except Exception:
         ok = False
-    _member_ok_cache[cache_key] = (now + _MEMBER_CACHE_TTL_SEC, ok)
+    # Cache negative results for a much shorter time so new DM memberships propagate quickly
+    ttl = _MEMBER_CACHE_TTL_SEC if ok else 2.0
+    _member_ok_cache[cache_key] = (now + ttl, ok)
     return ok
 
 
