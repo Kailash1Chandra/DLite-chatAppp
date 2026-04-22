@@ -448,7 +448,8 @@ on public.group_members
 for insert
 to authenticated
 with check (
-  exists (
+  auth.uid() = user_id
+  or exists (
     select 1 from public.chats c
     where c.id = chat_id
       and c.created_by = auth.uid()
@@ -462,7 +463,10 @@ create policy "Insert messages"
 on public.messages
 for insert
 to authenticated
-with check (auth.uid() = sender_id);
+with check (
+  auth.uid() = sender_id
+  and public.is_chat_member(chat_id, auth.uid())
+);
 
 create policy "Read messages"
 on public.messages

@@ -1209,7 +1209,7 @@ async def send_message(req: Request, authorization: Optional[str] = Header(defau
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
 
     body = await req.json()
-    chat_id = str((body or {}).get("chatId") or "").strip()
+    chat_id = str((body or {}).get("chatId") or (body or {}).get("threadId") or (body or {}).get("groupId") or "").strip()
     content = str((body or {}).get("content") or "").strip()
     msg_type = str((body or {}).get("type") or "text").strip() or "text"
     if not chat_id or not content:
@@ -1468,7 +1468,7 @@ async def edit_message(message_id: str, req: Request, authorization: Optional[st
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
 
     body = await req.json()
-    content = str((body or {}).get("content") or "").strip()
+    content = str((body or {}).get("content") or (body or {}).get("newContent") or (body or {}).get("text") or "").strip()
     if not content:
         return JSONResponse(status_code=400, content={"success": False, "message": "content is required"})
 
@@ -1625,7 +1625,7 @@ async def pin_message(chat_id: str, req: Request, authorization: Optional[str] =
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
 
     body = await req.json()
-    message_id = str((body or {}).get("messageId") or "").strip()
+    message_id = str((body or {}).get("messageId") or (body or {}).get("message_id") or (body or {}).get("id") or (body or {}).get("_id") or "").strip()
     if not message_id:
         return JSONResponse(status_code=400, content={"success": False, "message": "messageId is required"})
 
@@ -1652,7 +1652,7 @@ async def unpin_message(chat_id: str, req: Request, authorization: Optional[str]
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
 
     body = await req.json()
-    message_id = str((body or {}).get("messageId") or "").strip()
+    message_id = str((body or {}).get("messageId") or (body or {}).get("message_id") or (body or {}).get("id") or (body or {}).get("_id") or "").strip()
     if not message_id:
         return JSONResponse(status_code=400, content={"success": False, "message": "messageId is required"})
 
@@ -1683,7 +1683,7 @@ async def toggle_reaction(req: Request, authorization: Optional[str] = Header(de
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
 
     body = await req.json()
-    message_id = str((body or {}).get("messageId") or "").strip()
+    message_id = str((body or {}).get("messageId") or (body or {}).get("message_id") or (body or {}).get("id") or (body or {}).get("_id") or "").strip()
     emoji = str((body or {}).get("emoji") or "").strip()
     if not message_id or not emoji:
         return JSONResponse(status_code=400, content={"success": False, "message": "messageId and emoji are required"})
