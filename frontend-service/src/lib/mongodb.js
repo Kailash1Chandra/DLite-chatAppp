@@ -1,9 +1,12 @@
 import { MongoClient } from 'mongodb';
 
 // Prefer server-only env vars; keep NEXT_PUBLIC_* for backward compatibility.
-const uri = process.env.MONGODB_URI || process.env.NEXT_PUBLIC_MONGODB_URI;
+const uriRaw = process.env.MONGODB_URI || process.env.NEXT_PUBLIC_MONGODB_URI;
+const uri = uriRaw ? String(uriRaw).trim() : undefined;
 
-const dbName = process.env.MONGODB_DB_NAME || process.env.NEXT_PUBLIC_MONGODB_DB_NAME || 'd_lite_backup';
+const dbName = String(
+  process.env.MONGODB_DB_NAME || process.env.NEXT_PUBLIC_MONGODB_DB_NAME || 'd_lite_backup',
+).trim() || 'd_lite_backup';
 
 let client;
 let clientPromise; // may be reset on transient failures

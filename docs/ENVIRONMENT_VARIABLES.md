@@ -59,19 +59,10 @@ Uploads are stored under folder `d_lite_chat/<user_id>/`.
 - **Socket.IO**: Set `NEXT_PUBLIC_CHAT_SOCKET_URL` / `NEXT_PUBLIC_CALL_SOCKET_URL` to your Render **HTTPS** origin (e.g. `https://dlite-chatapp.onrender.com`). On Render, set **`SOCKET_IO_CORS_ORIGINS`** to include your Vercel URL (e.g. `https://frontend-dlite.vercel.app`) so polling and WebSocket upgrades are allowed.
 - **TURN “appears broken” in Firefox**: Usually means relay candidates failed (not missing). Verify: **valid TLS** for `turns:` (no self-signed without trust), **static username/password** match `coturn`, **listening ports** reachable from the public internet, and **both peers** get the same `NEXT_PUBLIC_ICE_SERVERS_JSON` after redeploy. Use **about:webrtc** → connection log for `relay` / error lines.
 
-## `worker-service` (backups)
+### Optional: Mongo message mirror (`frontend-service`)
 
-This service periodically exports messages from Supabase and writes them to disk (JSON files).
+If you use `POST /api/message-backup`, set:
 
-### Required
-- **`SUPABASE_URL`**
-- **`SUPABASE_SERVICE_ROLE_KEY`** (required)
-
-### Worker settings
-- **`PORT`**: default `10000` (only for the status server)
-- **`WORKER_HTTP_ENABLED`**: `1` to expose `/health` + `/status` (default `1`)
-- **`BACKUP_INTERVAL_SECONDS`**: default `300`
-- **`BACKUP_BATCH_SIZE`**: default `500`
-- **`BACKUP_OUTPUT_DIR`**: default `/data`
-- **`BACKUP_STATE_FILE`**: default `/data/state.json`
+- **`MONGODB_URI`** (server-side; optional `NEXT_PUBLIC_MONGODB_URI` for legacy)
+- **`MONGODB_DB_NAME`** (optional)
 

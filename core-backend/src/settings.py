@@ -8,6 +8,9 @@ def _env(name: str, default: str | None = None) -> str | None:
     if v is None:
         return default
     v = v.strip()
+    # Copy/paste from dashboards sometimes wraps values in quotes.
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
+        v = v[1:-1].strip()
     return v if v else default
 
 

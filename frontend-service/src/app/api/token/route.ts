@@ -20,7 +20,8 @@ function generateToken04(params: {
 
   if (!appId || typeof appId !== "number") throw new Error("ZEGO appId invalid");
   if (!userId || typeof userId !== "string") throw new Error("ZEGO userId invalid");
-  if (!secret || typeof secret !== "string" || secret.length !== 32) throw new Error("ZEGO secret invalid");
+  if (!secret || typeof secret !== "string" || secret.length !== 32)
+    throw new Error("ZEGO Server Secret must be exactly 32 characters (check ZEGOCLOUD console; trim whitespace in env)");
   if (!effectiveTimeInSeconds || typeof effectiveTimeInSeconds !== "number")
     throw new Error("effectiveTimeInSeconds invalid");
 
@@ -63,16 +64,30 @@ export async function POST(req: Request) {
     const userId = String(body?.userId || "").trim();
     const roomId = String(body?.roomId || "").trim();
 
-    const appIdRaw = process.env.NEXT_PUBLIC_ZEGO_APP_ID;
-    const secret = String(process.env.ZEGO_SERVER_SECRET || "");
-    const appId = Number(appIdRaw);
+    // App ID is public; accept server-only or NEXT_PUBLIC so Vercel "Production / Preview" env layouts both work.
+    const appIdRaw =
+      process.env.NEXT_PUBLIC_ZEGO_APP_ID || process.env.ZEGO_APP_ID || process.env.ZEGOCLOUD_APP_ID;
+    const secret = String(
+      process.env.ZEGO_SERVER_SECRET || process.env.ZEGOCLOUD_SERVER_SECRET || "",
+    ).trim();
+    const appId = Number(String(appIdRaw ?? "").trim());
 
     if (!userId) return NextResponse.json({ success: false, message: "userId is required" }, { status: 400 });
     if (!roomId) return NextResponse.json({ success: false, message: "roomId is required" }, { status: 400 });
     if (!appId || Number.isNaN(appId))
-      return NextResponse.json({ success: false, message: "NEXT_PUBLIC_ZEGO_APP_ID is invalid" }, { status: 500 });
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Zego App ID missing or invalid. Set NEXT_PUBLIC_ZEGO_APP_ID or ZEGO_APP_ID (numeric) on the Next.js service.",
+        },
+        { status: 500 },
+      );
     if (!secret)
-      return NextResponse.json({ success: false, message: "ZEGO_SERVER_SECRET is missing" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, message: "ZEGO_SERVER_SECRET (or ZEGOCLOUD_SERVER_SECRET) is missing on the Next.js server" },
+        { status: 500 },
+      );
 
     const effectiveTimeInSeconds = 60 * 60; // 1 hour
 

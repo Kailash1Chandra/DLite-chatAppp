@@ -24,6 +24,25 @@ def postgrest_headers(*, use_service_role: bool, extra: Optional[Dict[str, str]]
     return headers
 
 
+def postgrest_user_headers(access_token: str, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """
+    PostgREST as the signed-in user: anon API key + user's JWT.
+    RLS in Supabase applies; use when service_role is missing or misconfigured.
+    """
+    require_supabase()
+    tok = (access_token or "").strip()
+    if not tok:
+        raise ValueError("access_token is required")
+    headers: Dict[str, str] = {
+        "apikey": SUPABASE_ANON_KEY or "",
+        "authorization": f"Bearer {tok}",
+        "content-type": "application/json",
+    }
+    if extra:
+        headers.update(extra)
+    return headers
+
+
 async def safe_json_dict(r: httpx.Response) -> Dict[str, Any]:
     try:
         parsed = r.json()

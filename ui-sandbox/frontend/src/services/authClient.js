@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient'
-const GATEWAY_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000'
+import { API_BASE_URL as GATEWAY_BASE_URL } from './appClient'
 
 function sanitizeUsername(value) {
   const raw = String(value || '').trim()
@@ -20,7 +20,7 @@ function validateUsernameOrThrow(usernameLower) {
 function parseAuthResponse(data) {
   const accessToken = data?.accessToken || data?.access_token || null
   const user = data?.user || null
-  // D-LITE frontend expects `user.username` for display. Supabase user may not have it.
+  const meta = user?.user_metadata || {}
   return {
     token: accessToken,
     user: user
@@ -28,8 +28,14 @@ function parseAuthResponse(data) {
           id: user.id,
           uid: user.id,
           email: user.email || '',
-          username: user.user_metadata?.username || user.email?.split('@')[0] || 'User',
-          photoURL: user.user_metadata?.avatar_url || '',
+          username:
+            meta.username ||
+            meta.full_name ||
+            meta.name ||
+            meta.preferred_username ||
+            user.email?.split('@')[0] ||
+            'User',
+          photoURL: meta.avatar_url || meta.picture || '',
         }
       : null,
   }
@@ -128,8 +134,11 @@ export async function loginWithGoogle() {
     provider: 'google',
     options: { redirectTo },
   })
-  if (error) throw error
-  // Redirect happens automatically in browser; return a noop snapshot.
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error('[auth] Google sign-in failed:', error)
+    throw error
+  }
   return { token: null, user: null, url: data?.url }
 }
 
@@ -156,15 +165,14 @@ export async function getCurrentAuthSnapshot() {
   return parseAuthResponse({ accessToken: session.access_token, user: session.user })
 }
 
+/** @param {(user: object | null, event?: string) => void} handler */
 export function subscribeToAuthState(handler) {
   if (!supabase) {
     handler(null)
     return () => undefined
   }
-  // Emit initial
-  supabase.auth.getSession().then(({ data }) => handler(data?.session?.user || null)).catch(() => handler(null))
-  const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-    handler(session?.user || null)
+  const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+    handler(session?.user || null, event)
   })
   return () => sub?.subscription?.unsubscribe?.()
 }

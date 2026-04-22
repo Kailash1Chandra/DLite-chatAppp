@@ -74,7 +74,7 @@ export default function RegisterPage() {
     setError('');
     try {
       await loginWithGoogle();
-      router.push('/dashboard');
+      // OAuth redirects the full page to Google; do not client-navigate here.
     } catch (err) {
       setError(toAuthErrorMessage(err, 'google'));
     } finally {

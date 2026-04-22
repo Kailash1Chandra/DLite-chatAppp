@@ -44,7 +44,7 @@ function readIceServersFromEnv(): RTCIceServer[] | null {
   // Accept JSON to support TURN credentials without complex parsing.
   // Example:
   // NEXT_PUBLIC_ICE_SERVERS_JSON='[{"urls":["stun:stun.l.google.com:19302"]},{"urls":["turn:turn.example.com:3478"],"username":"u","credential":"p"}]'
-  const raw = process.env.NEXT_PUBLIC_ICE_SERVERS_JSON;
+  const raw = (process.env.NEXT_PUBLIC_ICE_SERVERS_JSON || "").trim();
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);

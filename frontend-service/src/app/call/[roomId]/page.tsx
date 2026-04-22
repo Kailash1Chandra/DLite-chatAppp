@@ -40,6 +40,7 @@ export default function ZegoCallRoomPage() {
   const [error, setError] = useState<string>("");
   const [remoteJoined, setRemoteJoined] = useState(false);
   const [needsUserGesture, setNeedsUserGesture] = useState(false);
+  const reconnectingRef = useRef(false);
 
   const server = useMemo(() => "wss://webliveroom-api.zego.im/ws", []);
 
@@ -177,20 +178,43 @@ export default function ZegoCallRoomPage() {
           if (cancelled) return;
           // Best-effort reconnection: if disconnected, re-login with a fresh token.
           if (String(reason).toUpperCase() === "DISCONNECTED") {
-            setStatus("logging_in");
-            try {
-              const r = await fetch("/api/token", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userId, roomId }),
-              });
-              const j = await r.json().catch(() => ({}));
-              const nextToken = String(j?.token || "");
-              if (nextToken) {
-                await zg.renewToken(roomId, nextToken);
+            if (!reconnectingRef.current) {
+              reconnectingRef.current = true;
+              setStatus("logging_in");
+              try {
+                const r = await fetch("/api/token", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ userId, roomId }),
+                });
+                const j = await r.json().catch(() => ({}));
+                const nextToken = String(j?.token || "");
+                if (nextToken) {
+                  try {
+                    await zg.renewToken(roomId, nextToken);
+                  } catch {
+                    /* ignore */
+                  }
+                  try {
+                    zg.logoutRoom(roomId);
+                  } catch {
+                    /* ignore */
+                  }
+                  await zg.loginRoom(roomId, nextToken, { userID: userId, userName }, { userUpdate: true });
+                  // Re-publish our local stream if it exists.
+                  if (localStreamRef.current && publishedStreamIdRef.current) {
+                    try {
+                      await zg.startPublishingStream(publishedStreamIdRef.current, localStreamRef.current);
+                    } catch {
+                      /* ignore */
+                    }
+                  }
+                }
+              } catch {
+                /* ignore */
+              } finally {
+                reconnectingRef.current = false;
               }
-            } catch {
-              /* ignore */
             }
           }
           if (errorCode && errorCode !== 0) {

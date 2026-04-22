@@ -22,20 +22,32 @@ function jwtClaimsUserId(token) {
 
 async function authedSocketOptions({ userId } = {}) {
   const snapshot = await getCurrentAuthSnapshot().catch(() => null)
-  const token = snapshot?.token || ''
+  const token = String(snapshot?.token || '').trim()
   const uid = String(userId || snapshot?.user?.id || snapshot?.user?.uid || '').trim()
-  const tokenUid = token ? jwtClaimsUserId(token) : null
-  return {
-    userId: uid || undefined,
-    // realtime-service rejects mismatched tokens; omit token if it doesn't belong to this userId.
-    token: token && (!tokenUid || tokenUid === uid) ? token : undefined,
+  if (!uid) {
+    return { userId: undefined, token: undefined }
   }
+  if (!token) {
+    return { userId: uid, token: undefined }
+  }
+  const tokenUid = jwtClaimsUserId(token)
+  if (tokenUid && tokenUid !== uid) {
+    throw new Error('Auth token does not match socket userId; sign in again.')
+  }
+  return { userId: uid, token }
 }
 
 function chatSocketAuthKey(auth) {
   const uid = String(auth?.userId || '')
   const tok = String(auth?.token || '')
   return `${uid}|${tok}`
+}
+
+function parseChatSocketKey(key) {
+  const k = String(key || '')
+  const i = k.indexOf('|')
+  if (i <= 0) return { uid: '', token: '' }
+  return { uid: k.slice(0, i), token: k.slice(i + 1) }
 }
 
 async function getSocket({ userId } = {}) {
@@ -53,10 +65,37 @@ async function getSocket({ userId } = {}) {
     lastChatSocketAuthKey = ''
     throw new Error('Chat socket requires userId')
   }
+  if (!auth?.token) {
+    throw new Error('Chat socket requires auth token')
+  }
   const key = chatSocketAuthKey(auth)
   if (socketInstance && lastChatSocketAuthKey === key) {
     return socketInstance
   }
+
+  const prev = lastChatSocketAuthKey ? parseChatSocketKey(lastChatSocketAuthKey) : { uid: '', token: '' }
+  const sameUserTokenRefresh =
+    socketInstance && prev.uid && prev.uid === auth.userId && prev.token !== auth.token
+
+  if (sameUserTokenRefresh) {
+    try {
+      socketInstance.auth = { userId: auth.userId, token: auth.token }
+      socketInstance.disconnect()
+      socketInstance.connect()
+      lastChatSocketAuthKey = key
+      return socketInstance
+    } catch {
+      try {
+        socketInstance.removeAllListeners()
+        socketInstance.disconnect()
+      } catch {
+        /* ignore */
+      }
+      socketInstance = null
+      lastChatSocketAuthKey = ''
+    }
+  }
+
   if (socketInstance) {
     try {
       socketInstance.removeAllListeners()
@@ -86,18 +125,50 @@ function safeUserProfile(userId) {
 
 export function initializeMyPresence() {
   let cancelled = false
+  let detach = () => undefined
+
   ;(async () => {
     const snapshot = await getCurrentAuthSnapshot().catch(() => null)
     const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
     if (!uid || cancelled) return
+
+    let s
     try {
-      await getSocket({ userId: uid })
+      s = await getSocket({ userId: uid })
     } catch {
-      /* ignore */
+      return
+    }
+    if (!s || cancelled) return
+
+    // Make online/offline reliable on tab close / navigation.
+    const disconnectNow = () => {
+      try {
+        s.disconnect()
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const onPageHide = () => disconnectNow()
+    const onBeforeUnload = () => disconnectNow()
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', onPageHide)
+      window.addEventListener('beforeunload', onBeforeUnload)
+    }
+
+    detach = () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('pagehide', onPageHide)
+        window.removeEventListener('beforeunload', onBeforeUnload)
+      }
+      disconnectNow()
     }
   })()
+
   return () => {
     cancelled = true
+    detach()
   }
 }
 
@@ -192,8 +263,50 @@ export function subscribeDirectMessages(_userId, chatId, callback) {
         'added'
       )
     }
+    const onUpdated = (p) => {
+      const cid = String(p?.chatId || '').trim()
+      if (cid !== activeChatId) return
+      const m = p?.message || {}
+      const id = String(m?._id || m?.id || '').trim()
+      if (!id) return
+      callback(
+        {
+          _id: id,
+          chatId: activeChatId,
+          senderId: m.senderId || m.sender_id || '',
+          content: m.content || '',
+          type: m.type || 'text',
+          createdAt: Number(m.createdAt || m.created_at || Date.now()),
+          reactions: m.reactions || undefined,
+          isDeleted: Boolean(m.isDeleted || m.is_deleted),
+        },
+        'changed'
+      )
+    }
+    const onDeleted = (p) => {
+      const cid = String(p?.chatId || '').trim()
+      if (cid !== activeChatId) return
+      const id = String(p?.messageId || p?._id || '').trim()
+      if (!id) return
+      callback({ _id: id, chatId: activeChatId }, 'removed')
+    }
+    const onReaction = (p) => {
+      const cid = String(p?.chatId || '').trim()
+      if (cid !== activeChatId) return
+      const id = String(p?.messageId || '').trim()
+      if (!id) return
+      callback({ _id: id, chatId: activeChatId, reactions: p?.reactions || {} }, 'changed')
+    }
     s.on('receive_message', handler)
-    unsub = () => s.off('receive_message', handler)
+    s.on('message_updated', onUpdated)
+    s.on('message_deleted', onDeleted)
+    s.on('reaction_updated', onReaction)
+    unsub = () => {
+      s.off('receive_message', handler)
+      s.off('message_updated', onUpdated)
+      s.off('message_deleted', onDeleted)
+      s.off('reaction_updated', onReaction)
+    }
   })()
 
   return () => unsub()
@@ -283,7 +396,30 @@ export async function editDirectMessage() {
   })
   const json = await res.json().catch(() => ({}))
   if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not edit message')
-  return json?.message
+  const msg = json?.message || null
+  // Best-effort realtime: broadcast edit to members.
+  try {
+    const cid = String(msg?.chat_id || msg?.chatId || '').trim()
+    const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
+    if (cid && uid) {
+      const s = await getSocket({ userId: uid })
+      s.emit('join_chat', { chatId: cid })
+      s.emit('message_updated', {
+        chatId: cid,
+        message: {
+          _id: String(msg?.id || messageId),
+          chatId: cid,
+          senderId: String(msg?.sender_id || ''),
+          content: String(msg?.content || ''),
+          type: String(msg?.type || 'text'),
+          createdAt: msg?.created_at ? Date.parse(msg.created_at) : Date.now(),
+        },
+      })
+    }
+  } catch {
+    /* ignore */
+  }
+  return msg
 }
 
 export async function deleteDirectMessage() {
@@ -297,7 +433,19 @@ export async function deleteDirectMessage() {
   })
   const json = await res.json().catch(() => ({}))
   if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not delete message')
-  return json?.message
+  const msg = json?.message || null
+  try {
+    const cid = String(msg?.chat_id || msg?.chatId || '').trim()
+    const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
+    if (cid && uid) {
+      const s = await getSocket({ userId: uid })
+      s.emit('join_chat', { chatId: cid })
+      s.emit('message_deleted', { chatId: cid, messageId: String(msg?.id || messageId) })
+    }
+  } catch {
+    /* ignore */
+  }
+  return msg
 }
 
 export async function hideDirectMessageForMe() {
@@ -312,7 +460,14 @@ export async function hideDirectMessageForMe() {
 }
 
 export async function markDirectThreadRead() {
-  return
+  // This is a semantic helper used across the UI.
+  // Today unread counts are driven by `/chat/dm/recent/read` (chat_settings.last_read_at),
+  // so we map this call onto the same API.
+  const arg0 = arguments?.[0] || {}
+  const threadId = String(arg0?.threadId || arg0?.chatId || '').trim()
+  const peerId = String(arg0?.peerId || '').trim()
+  if (!threadId && !peerId) return
+  await markRecentDirectChatRead(threadId ? { threadId } : { peerId }).catch(() => undefined)
 }
 
 export async function exportDirectChatHistory() {
@@ -632,6 +787,19 @@ export async function toggleDmReaction() {
   })
   const json = await res.json().catch(() => ({}))
   if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not react')
+  // If API provides chatId + reactions snapshot, broadcast it.
+  try {
+    const cid = String(json?.chatId || '').trim()
+    const mid = String(json?.messageId || messageId).trim()
+    const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
+    if (cid && mid && uid && json?.reactions) {
+      const s = await getSocket({ userId: uid })
+      s.emit('join_chat', { chatId: cid })
+      s.emit('reaction_updated', { chatId: cid, messageId: mid, reactions: json.reactions })
+    }
+  } catch {
+    /* ignore */
+  }
   return json
 }
 export async function setDmTyping() {
@@ -994,6 +1162,27 @@ export async function setRecentDirectChatLocked() {
   }).catch(() => undefined)
 }
 export async function setMyPresence() {
-  return
+  const snapshot = await getCurrentAuthSnapshot().catch(() => null)
+  const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
+  if (!uid) return
+
+  const arg0 = arguments?.[0] || {}
+  const status = String(arg0?.status || arg0?.state || '').toLowerCase()
+
+  if (status === 'offline') {
+    try {
+      if (socketInstance) socketInstance.disconnect()
+    } catch {
+      /* ignore */
+    }
+    return
+  }
+
+  // Default: ensure we are connected so realtime-service can persist presence.
+  try {
+    await getSocket({ userId: uid })
+  } catch {
+    /* ignore */
+  }
 }
 

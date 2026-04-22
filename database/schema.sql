@@ -145,6 +145,140 @@ create table if not exists public.presence (
 -- =========================================
 -- INDEXES
 -- =========================================
+-- ============================================================================
+-- ONE-TIME DATA FIX (optional, but recommended before adding uniqueness)
+-- ============================================================================
+-- If your database already has duplicate chats with the same (type, name),
+-- creating the unique index below will fail. This block deduplicates by keeping
+-- the newest chat (by created_at) per (type, name), and repoints dependent rows.
+--
+-- Safe to run multiple times (no-ops when no duplicates exist).
+-- ============================================================================
+do $$
+declare
+  moved_count bigint;
+begin
+  -- Build a mapping of duplicate chat_ids -> keep_chat_id
+  create temporary table if not exists _chat_dedupe_map (
+    old_chat_id uuid primary key,
+    keep_chat_id uuid not null
+  ) on commit drop;
+
+  insert into _chat_dedupe_map (old_chat_id, keep_chat_id)
+  with ranked as (
+    select
+      c.id as chat_id,
+      c.type,
+      c.name,
+      c.created_at,
+      first_value(c.id) over (partition by c.type, c.name order by c.created_at desc, c.id desc) as keep_id,
+      count(*) over (partition by c.type, c.name) as cnt
+    from public.chats c
+    where c.name is not null
+  )
+  select r.chat_id, r.keep_id
+  from ranked r
+  where r.cnt > 1
+    and r.chat_id <> r.keep_id
+  on conflict (old_chat_id) do nothing;
+
+  get diagnostics moved_count = row_count;
+  if moved_count = 0 then
+    return;
+  end if;
+
+  -- group_members: avoid PK conflicts when merging into keep_chat_id
+  delete from public.group_members gm
+  using _chat_dedupe_map m
+  where gm.chat_id = m.old_chat_id
+    and exists (
+      select 1 from public.group_members gm2
+      where gm2.chat_id = m.keep_chat_id
+        and gm2.user_id = gm.user_id
+    );
+  update public.group_members gm
+  set chat_id = m.keep_chat_id
+  from _chat_dedupe_map m
+  where gm.chat_id = m.old_chat_id;
+
+  -- chat_settings: avoid PK conflicts
+  delete from public.chat_settings cs
+  using _chat_dedupe_map m
+  where cs.chat_id = m.old_chat_id
+    and exists (
+      select 1 from public.chat_settings cs2
+      where cs2.chat_id = m.keep_chat_id
+        and cs2.user_id = cs.user_id
+    );
+  update public.chat_settings cs
+  set chat_id = m.keep_chat_id
+  from _chat_dedupe_map m
+  where cs.chat_id = m.old_chat_id;
+
+  -- typing_status: avoid PK conflicts
+  delete from public.typing_status ts
+  using _chat_dedupe_map m
+  where ts.chat_id = m.old_chat_id
+    and exists (
+      select 1 from public.typing_status ts2
+      where ts2.chat_id = m.keep_chat_id
+        and ts2.user_id = ts.user_id
+    );
+  update public.typing_status ts
+  set chat_id = m.keep_chat_id
+  from _chat_dedupe_map m
+  where ts.chat_id = m.old_chat_id;
+
+  -- pinned_messages: avoid PK conflicts
+  delete from public.pinned_messages pm
+  using _chat_dedupe_map m
+  where pm.chat_id = m.old_chat_id
+    and exists (
+      select 1 from public.pinned_messages pm2
+      where pm2.chat_id = m.keep_chat_id
+        and pm2.user_id = pm.user_id
+        and pm2.message_id = pm.message_id
+    );
+  update public.pinned_messages pm
+  set chat_id = m.keep_chat_id
+  from _chat_dedupe_map m
+  where pm.chat_id = m.old_chat_id;
+
+  -- hidden_messages: avoid PK conflicts
+  delete from public.hidden_messages hm
+  using _chat_dedupe_map m
+  where hm.chat_id = m.old_chat_id
+    and exists (
+      select 1 from public.hidden_messages hm2
+      where hm2.chat_id = m.keep_chat_id
+        and hm2.user_id = hm.user_id
+        and hm2.message_id = hm.message_id
+    );
+  update public.hidden_messages hm
+  set chat_id = m.keep_chat_id
+  from _chat_dedupe_map m
+  where hm.chat_id = m.old_chat_id;
+
+  -- messages: safe to repoint (message PK stays same)
+  update public.messages msg
+  set chat_id = m.keep_chat_id
+  from _chat_dedupe_map m
+  where msg.chat_id = m.old_chat_id;
+
+  -- Finally remove the duplicate chat rows themselves.
+  delete from public.chats c
+  using _chat_dedupe_map m
+  where c.id = m.old_chat_id;
+end $$;
+
+-- Enforce deterministic chat keys:
+-- - DMs: `core-backend` stores a deterministic `_dm_key()` in `chats.name`
+-- - Groups: `core-backend` can also look up by `name` when it uses a key-like value
+-- Without uniqueness, duplicate threads lead to unread/presence/membership inconsistencies.
+create unique index if not exists idx_chats_type_name_unique
+on public.chats(type, name)
+where name is not null;
+
 create index if not exists idx_group_members_user_id on public.group_members(user_id);
 create index if not exists idx_group_members_chat_id on public.group_members(chat_id);
 
@@ -454,4 +588,23 @@ using (
       and public.is_chat_member(gm.chat_id, presence.user_id)
   )
 );
+
+-- =========================================
+-- HIDDEN MESSAGES POLICIES (delete for me)
+-- NEW SCHEMA: required for PostgREST with user JWT (no service_role)
+-- =========================================
+create policy "hidden_messages insert own rows"
+on public.hidden_messages
+for insert
+to authenticated
+with check (
+  auth.uid() = user_id
+  and public.is_chat_member(hidden_messages.chat_id, auth.uid())
+);
+
+create policy "hidden_messages read own rows"
+on public.hidden_messages
+for select
+to authenticated
+using (auth.uid() = user_id);
 

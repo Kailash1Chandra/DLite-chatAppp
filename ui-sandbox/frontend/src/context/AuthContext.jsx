@@ -41,16 +41,20 @@ export function AuthProvider({ children }) {
   }, [token, user]);
 
   useEffect(() => {
-    const unsubscribe = subscribeToAuthState(async (authUser) => {
+    const unsubscribe = subscribeToAuthState(async (_authUser, event) => {
       try {
         stopPresenceRef.current();
-        const snapshot = await getCurrentAuthSnapshot(authUser);
+        const snapshot = await getCurrentAuthSnapshot();
         setToken(snapshot.token);
         setUser(snapshot.user);
         if (snapshot.user?.id) {
           stopPresenceRef.current = initializeMyPresence(snapshot.user.id);
         } else {
           stopPresenceRef.current = () => undefined;
+        }
+        if (process.env.NODE_ENV === 'development' && event === 'SIGNED_IN' && snapshot.user) {
+          // eslint-disable-next-line no-console
+          console.log('[auth] SIGNED_IN', snapshot.user);
         }
       } finally {
         setLoading(false);

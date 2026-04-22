@@ -13,13 +13,23 @@ from src.settings import (
     CLOUDINARY_API_KEY,
     CLOUDINARY_API_SECRET,
     CLOUDINARY_CLOUD_NAME,
+    SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_URL,
     require_supabase,
 )
-from src.supabase import postgrest_headers, safe_json_list, validate_access_token
+from src.supabase import gotrue_headers, postgrest_headers, postgrest_user_headers, safe_json_list, validate_access_token
 
 router = APIRouter()
+
+
+def _mask_secret(v: Optional[str]) -> str:
+    s = (v or "").strip()
+    if not s:
+        return ""
+    if len(s) <= 10:
+        return "*" * len(s)
+    return f"{s[:6]}…{s[-4:]}"
 
 
 def _cloudinary_signature(params: Dict[str, str], api_secret: str) -> str:
@@ -126,6 +136,72 @@ async def upload_chat_media(file: UploadFile = File(...), authorization: Optiona
     return {"success": True, "url": public_url, "type": kind, "contentType": content_type}
 
 
+@router.get("/debug/supabase")
+async def debug_supabase(authorization: Optional[str] = Header(default=None)):
+    """
+    Minimal diagnostic endpoint for Supabase configuration.
+    Requires a valid user token and returns only masked secrets.
+    """
+    require_supabase()
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    base = (SUPABASE_URL or "").rstrip("/")
+    result: dict[str, Any] = {
+        "success": True,
+        "supabaseUrl": base,
+        "anonKey": {"present": bool(SUPABASE_ANON_KEY), "masked": _mask_secret(SUPABASE_ANON_KEY), "len": len((SUPABASE_ANON_KEY or "").strip())},
+        "serviceRoleKey": {
+            "present": bool(SUPABASE_SERVICE_ROLE_KEY),
+            "masked": _mask_secret(SUPABASE_SERVICE_ROLE_KEY),
+            "len": len((SUPABASE_SERVICE_ROLE_KEY or "").strip()),
+        },
+        "tests": {},
+        "note": "If service-role probe fails but user-JWT probe succeeds, core-backend can still serve DM/recent via RLS; fix or remove the bad SERVICE_ROLE key on the server.",
+    }
+
+    if not base:
+        result["success"] = False
+        result["message"] = "SUPABASE_URL is missing"
+        return JSONResponse(status_code=503, content=result)
+
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            # GoTrue health (anon key)
+            r_health = await client.get(f"{base}/auth/v1/health", headers=gotrue_headers())
+            result["tests"]["gotrueHealth"] = {"status": r_health.status_code}
+
+            # PostgREST probe (service role) against a common table.
+            # If your schema doesn't have `users`, change it to any existing table.
+            probe_url = f"{base}/rest/v1/users"
+            if SUPABASE_SERVICE_ROLE_KEY:
+                r_probe = await client.get(
+                    probe_url,
+                    headers=postgrest_headers(use_service_role=True),
+                    params={"select": "id", "limit": "1"},
+                )
+                result["tests"]["postgrestUsersProbeServiceRole"] = {
+                    "url": "/rest/v1/users?select=id&limit=1",
+                    "status": r_probe.status_code,
+                    "hint": _supabase_hint(r_probe) if r_probe.status_code >= 400 else "",
+                }
+            r_user_probe = await client.get(
+                probe_url,
+                headers=postgrest_user_headers(access_token),
+                params={"select": "id", "limit": "1"},
+            )
+            result["tests"]["postgrestUsersProbeUserJwt"] = {
+                "url": "/rest/v1/users?select=id&limit=1",
+                "status": r_user_probe.status_code,
+                "hint": _supabase_hint(r_user_probe) if r_user_probe.status_code >= 400 else "",
+            }
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e), "details": result})
+
+    return result
+
+
 def _supabase_hint(r: httpx.Response) -> str:
     upstream_text = (r.text or "").strip()
     if len(upstream_text) > 300:
@@ -159,6 +235,58 @@ async def _require_user(authorization: Optional[str]) -> tuple[Optional[dict], O
         return None, None
     user = await validate_access_token(token)
     return user, token
+
+
+def _service_headers(extra: Optional[Dict[str, str]] = None) -> Optional[Dict[str, str]]:
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        return None
+    return postgrest_headers(use_service_role=True, extra=extra)
+
+
+async def _pg_get(
+    client: httpx.AsyncClient,
+    url: str,
+    params: Dict[str, str],
+    *,
+    svc_headers: Optional[Dict[str, str]],
+    user_headers: Dict[str, str],
+) -> httpx.Response:
+    if svc_headers:
+        r = await client.get(url, headers=svc_headers, params=params)
+        if r.status_code not in (401, 403):
+            return r
+    return await client.get(url, headers=user_headers, params=params)
+
+
+async def _pg_post(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    json_body: Any,
+    svc_headers: Optional[Dict[str, str]],
+    user_headers: Dict[str, str],
+) -> httpx.Response:
+    if svc_headers:
+        r = await client.post(url, headers=svc_headers, json=json_body)
+        if r.status_code not in (401, 403):
+            return r
+    return await client.post(url, headers=user_headers, json=json_body)
+
+
+async def _pg_patch(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    params: Dict[str, str],
+    json_body: Any,
+    svc_headers: Optional[Dict[str, str]],
+    user_headers: Dict[str, str],
+) -> httpx.Response:
+    if svc_headers:
+        r = await client.patch(url, headers=svc_headers, params=params, json=json_body)
+        if r.status_code not in (401, 403):
+            return r
+    return await client.patch(url, headers=user_headers, params=params, json=json_body)
 
 
 def _dm_key(a: str, b: str) -> str:
@@ -203,17 +331,12 @@ async def search_users(username: str = "", exclude: str = "", authorization: Opt
     if exclude:
         params["id"] = f"neq.{exclude}"
 
-    # Use service role for directory search so it works even if RLS/GRANTs are restrictive.
-    # Auth is still enforced by validating the caller's access token above.
-    use_service_role = bool(SUPABASE_SERVICE_ROLE_KEY)
-    if use_service_role:
-        headers = postgrest_headers(use_service_role=True)
-    else:
-        # Fallback: anon key + user access token so RLS is enforced.
-        headers = {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
+    # Prefer service role when configured; fall back to user JWT + anon key if the key is wrong (403/401).
+    svc = _service_headers()
+    usr = postgrest_user_headers(access_token)
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            r = await client.get(url, headers=headers, params=params)
+            r = await _pg_get(client, url, params, svc_headers=svc, user_headers=usr)
     except Exception as e:
         return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
     if r.status_code >= 400:
@@ -226,6 +349,8 @@ async def search_users(username: str = "", exclude: str = "", authorization: Opt
             hint = f"{hint}: {upstream_text}"
         if not SUPABASE_SERVICE_ROLE_KEY:
             hint = f"{hint} (note: SUPABASE_SERVICE_ROLE_KEY is not set on core-backend)"
+        elif svc is not None and r.status_code in (401, 403):
+            hint = f"{hint} (service role rejected; verify SUPABASE_SERVICE_ROLE_KEY matches this project)"
         return JSONResponse(status_code=503, content={"success": False, "message": hint})
     return {"success": True, "users": await safe_json_list(r)}
 
@@ -388,8 +513,8 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
 @router.post("/dm/ensure")
 async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=None)):
     require_supabase()
-    user, _access_token = await _require_user(authorization)
-    if not user:
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
 
     uid = str(user.get("id") or "").strip()
@@ -403,19 +528,24 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
     if peer_id == uid:
         return JSONResponse(status_code=400, content={"success": False, "message": "Cannot DM yourself"})
 
-    if not SUPABASE_SERVICE_ROLE_KEY:
-        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required for DM writes"})
-
     dm_key = _dm_key(uid, peer_id)
     chats_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+    svc = _service_headers()
+    usr = postgrest_user_headers(access_token)
+    svc_rep = _service_headers(extra={"prefer": "return=representation"})
+    usr_rep = postgrest_user_headers(access_token, extra={"prefer": "return=representation"})
+    svc_merge = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
+    usr_merge = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=minimal"})
 
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            r_find = await client.get(
+            r_find = await _pg_get(
+                client,
                 chats_url,
-                headers=postgrest_headers(use_service_role=True),
-                params={"select": "id,name,type", "type": "eq.direct", "name": f"eq.{dm_key}", "limit": "1"},
+                {"select": "id,name,type", "type": "eq.direct", "name": f"eq.{dm_key}", "limit": "1"},
+                svc_headers=svc,
+                user_headers=usr,
             )
             if r_find.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_find.status_code), content={"success": False, "message": _supabase_hint(r_find)})
@@ -423,10 +553,12 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
             chat = items[0] if items else None
 
             if not chat:
-                r_create = await client.post(
+                r_create = await _pg_post(
+                    client,
                     chats_url,
-                    headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
-                    json={"type": "direct", "name": dm_key, "created_by": uid},
+                    json_body={"type": "direct", "name": dm_key, "created_by": uid},
+                    svc_headers=svc_rep,
+                    user_headers=usr_rep,
                 )
                 if r_create.status_code >= 400:
                     return JSONResponse(status_code=_status_map(r_create.status_code), content={"success": False, "message": _supabase_hint(r_create)})
@@ -438,17 +570,21 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
                 return JSONResponse(status_code=503, content={"success": False, "message": "Could not open DM chat"})
 
             # Ensure both users are members (we reuse group_members for *all* chat types).
-            r_m1 = await client.post(
+            r_m1 = await _pg_post(
+                client,
                 gm_url,
-                headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
-                json={"chat_id": chat_id, "user_id": uid, "role": "member"},
+                json_body={"chat_id": chat_id, "user_id": uid, "role": "member"},
+                svc_headers=svc_merge,
+                user_headers=usr_merge,
             )
             if r_m1.status_code not in (200, 201, 204, 409):
                 return JSONResponse(status_code=_status_map(r_m1.status_code), content={"success": False, "message": _supabase_hint(r_m1)})
-            r_m2 = await client.post(
+            r_m2 = await _pg_post(
+                client,
                 gm_url,
-                headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
-                json={"chat_id": chat_id, "user_id": peer_id, "role": "member"},
+                json_body={"chat_id": chat_id, "user_id": peer_id, "role": "member"},
+                svc_headers=svc_merge,
+                user_headers=usr_merge,
             )
             if r_m2.status_code not in (200, 201, 204, 409):
                 return JSONResponse(status_code=_status_map(r_m2.status_code), content={"success": False, "message": _supabase_hint(r_m2)})
@@ -462,17 +598,18 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
 async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
     """
     Returns the "Recent chats" list for the current user (direct chats only).
-    Uses service role for aggregation but requires a valid user token.
+
+    Tries PostgREST with the service role when configured; if that is missing or returns 401/403
+    (wrong key / project mismatch), falls back to the caller's JWT so RLS applies — same data
+    plane as the Supabase database, without requiring a working SERVICE_ROLE on the host.
     """
     require_supabase()
-    user, _access_token = await _require_user(authorization)
-    if not user:
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
     uid = str(user.get("id") or "").strip()
     if not uid:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
-    if not SUPABASE_SERVICE_ROLE_KEY:
-        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required"})
 
     base = SUPABASE_URL.rstrip("/")
     gm_url = f"{base}/rest/v1/group_members"
@@ -480,24 +617,20 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
     users_url = f"{base}/rest/v1/users"
     settings_url = f"{base}/rest/v1/chat_settings"
     msgs_url = f"{base}/rest/v1/messages"
+    svc = _service_headers()
+    usr = postgrest_user_headers(access_token)
 
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
             # 1) Fetch direct chat ids where user is member
-            r_gm = await client.get(
+            r_gm = await _pg_get(
+                client,
                 gm_url,
-                headers=postgrest_headers(use_service_role=True),
-                params={"select": "chat_id", "user_id": f"eq.{uid}", "limit": "200"},
+                {"select": "chat_id", "user_id": f"eq.{uid}", "limit": "200"},
+                svc_headers=svc,
+                user_headers=usr,
             )
             if r_gm.status_code >= 400:
-                if r_gm.status_code in (401, 403):
-                    return JSONResponse(
-                        status_code=503,
-                        content={
-                            "success": False,
-                            "message": "Supabase rejected service-role requests. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on core-backend.",
-                        },
-                    )
                 return JSONResponse(status_code=_status_map(r_gm.status_code), content={"success": False, "message": _supabase_hint(r_gm)})
             gm_rows = await safe_json_list(r_gm)
             chat_ids = [str(r.get("chat_id") or "").strip() for r in gm_rows if str(r.get("chat_id") or "").strip()]
@@ -505,20 +638,14 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
                 return {"success": True, "chats": []}
 
             # 2) Filter to direct chats
-            r_chats = await client.get(
+            r_chats = await _pg_get(
+                client,
                 chats_url,
-                headers=postgrest_headers(use_service_role=True),
-                params={"select": "id,type", "id": f"in.({','.join(chat_ids)})", "type": "eq.direct", "limit": "200"},
+                {"select": "id,type", "id": f"in.({','.join(chat_ids)})", "type": "eq.direct", "limit": "200"},
+                svc_headers=svc,
+                user_headers=usr,
             )
             if r_chats.status_code >= 400:
-                if r_chats.status_code in (401, 403):
-                    return JSONResponse(
-                        status_code=503,
-                        content={
-                            "success": False,
-                            "message": "Supabase rejected service-role requests. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on core-backend.",
-                        },
-                    )
                 return JSONResponse(status_code=_status_map(r_chats.status_code), content={"success": False, "message": _supabase_hint(r_chats)})
             chats = await safe_json_list(r_chats)
             direct_ids = [str(c.get("id") or "").strip() for c in chats if str(c.get("id") or "").strip()]
@@ -526,20 +653,14 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
                 return {"success": True, "chats": []}
 
             # 3) For each direct chat, find the peer (other member)
-            r_peers = await client.get(
+            r_peers = await _pg_get(
+                client,
                 gm_url,
-                headers=postgrest_headers(use_service_role=True),
-                params={"select": "chat_id,user_id", "chat_id": f"in.({','.join(direct_ids)})", "limit": "400"},
+                {"select": "chat_id,user_id", "chat_id": f"in.({','.join(direct_ids)})", "limit": "400"},
+                svc_headers=svc,
+                user_headers=usr,
             )
             if r_peers.status_code >= 400:
-                if r_peers.status_code in (401, 403):
-                    return JSONResponse(
-                        status_code=503,
-                        content={
-                            "success": False,
-                            "message": "Supabase rejected service-role requests. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on core-backend.",
-                        },
-                    )
                 return JSONResponse(status_code=_status_map(r_peers.status_code), content={"success": False, "message": _supabase_hint(r_peers)})
             peer_rows = await safe_json_list(r_peers)
             members_by_chat: dict[str, list[str]] = {}
@@ -566,17 +687,26 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
             async def _fetch_peer_profiles() -> Optional[httpx.Response]:
                 if not peer_ids:
                     return None
-                return await client.get(
+                return await _pg_get(
+                    client,
                     users_url,
-                    headers=postgrest_headers(use_service_role=True),
-                    params={"select": "id,username,avatar_url", "id": f"in.({','.join(sorted(set(peer_ids)))})", "limit": "200"},
+                    {"select": "id,username,avatar_url", "id": f"in.({','.join(sorted(set(peer_ids)))})", "limit": "200"},
+                    svc_headers=svc,
+                    user_headers=usr,
                 )
 
             async def _fetch_chat_settings() -> httpx.Response:
-                return await client.get(
+                return await _pg_get(
+                    client,
                     settings_url,
-                    headers=postgrest_headers(use_service_role=True),
-                    params={"select": "chat_id,archived,locked,hidden,last_read_at", "user_id": f"eq.{uid}", "chat_id": f"in.({','.join(direct_ids)})", "limit": "200"},
+                    {
+                        "select": "chat_id,archived,locked,hidden,last_read_at",
+                        "user_id": f"eq.{uid}",
+                        "chat_id": f"in.({','.join(direct_ids)})",
+                        "limit": "200",
+                    },
+                    svc_headers=svc,
+                    user_headers=usr,
                 )
 
             r_users, r_set = await asyncio.gather(_fetch_peer_profiles(), _fetch_chat_settings())
@@ -605,26 +735,32 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
                 last_read = s.get("last_read_at") or "1970-01-01T00:00:00Z"
                 async with sem:
                     r_last, r_unread = await asyncio.gather(
-                        client.get(
+                        _pg_get(
+                            client,
                             msgs_url,
-                            headers=postgrest_headers(use_service_role=True),
-                            params={
+                            {
                                 "select": "id,content,sender_id,created_at,is_deleted",
                                 "chat_id": f"eq.{cid}",
                                 "order": "created_at.desc",
                                 "limit": "1",
                             },
+                            svc_headers=svc,
+                            user_headers=usr,
                         ),
-                        client.get(
+                        _pg_get(
+                            client,
                             msgs_url,
-                            headers=postgrest_headers(use_service_role=True),
-                            params={
+                            {
                                 "select": "id",
                                 "chat_id": f"eq.{cid}",
                                 "sender_id": f"neq.{uid}",
+                                # Do not count soft-deleted messages as unread.
+                                "is_deleted": "eq.false",
                                 "created_at": f"gt.{last_read}",
                                 "limit": "200",
                             },
+                            svc_headers=svc,
+                            user_headers=usr,
                         ),
                     )
                 if r_last.status_code >= 400:
@@ -660,14 +796,12 @@ async def list_recent_dms(authorization: Optional[str] = Header(default=None)):
 @router.post("/dm/recent/read")
 async def mark_recent_read(req: Request, authorization: Optional[str] = Header(default=None)):
     require_supabase()
-    user, _access_token = await _require_user(authorization)
-    if not user:
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
     uid = str(user.get("id") or "").strip()
     if not uid:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
-    if not SUPABASE_SERVICE_ROLE_KEY:
-        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required"})
 
     body = await req.json()
     chat_id = str((body or {}).get("threadId") or (body or {}).get("chatId") or "").strip()
@@ -676,13 +810,11 @@ async def mark_recent_read(req: Request, authorization: Optional[str] = Header(d
 
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chat_settings"
     payload = {"chat_id": chat_id, "user_id": uid, "last_read_at": _now_iso(), "updated_at": _now_iso()}
+    svc = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
+    usr = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=minimal"})
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            r = await client.post(
-                url,
-                headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
-                json=payload,
-            )
+            r = await _pg_post(client, url, json_body=payload, svc_headers=svc, user_headers=usr)
     except Exception as e:
         return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
     if r.status_code not in (200, 201, 204, 409):
@@ -693,14 +825,12 @@ async def mark_recent_read(req: Request, authorization: Optional[str] = Header(d
 @router.post("/dm/recent/settings")
 async def set_recent_settings(req: Request, authorization: Optional[str] = Header(default=None)):
     require_supabase()
-    user, _access_token = await _require_user(authorization)
-    if not user:
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
     uid = str(user.get("id") or "").strip()
     if not uid:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
-    if not SUPABASE_SERVICE_ROLE_KEY:
-        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required"})
 
     body = await req.json()
     chat_id = str((body or {}).get("threadId") or (body or {}).get("chatId") or "").strip()
@@ -719,13 +849,11 @@ async def set_recent_settings(req: Request, authorization: Optional[str] = Heade
         patch["hidden"] = bool(hidden)
 
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chat_settings"
+    svc = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
+    usr = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=minimal"})
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            r = await client.post(
-                url,
-                headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
-                json=patch,
-            )
+            r = await _pg_post(client, url, json_body=patch, svc_headers=svc, user_headers=usr)
     except Exception as e:
         return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
     if r.status_code not in (200, 201, 204, 409):
@@ -748,20 +876,21 @@ async def list_group_members(group_id: str, authorization: Optional[str] = Heade
     if not gid:
         return JSONResponse(status_code=400, content={"success": False, "message": "groupId is required"})
 
-    if not SUPABASE_SERVICE_ROLE_KEY:
-        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required"})
-
     base = SUPABASE_URL.rstrip("/")
     gm_url = f"{base}/rest/v1/group_members"
     users_url = f"{base}/rest/v1/users"
+    svc = _service_headers()
+    usr = postgrest_user_headers(access_token)
 
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
-            # 1) Fetch membership rows for this group (service role).
-            r_gm = await client.get(
+            # 1) Fetch membership rows for this group (RLS: only visible if caller is a member).
+            r_gm = await _pg_get(
+                client,
                 gm_url,
-                headers=postgrest_headers(use_service_role=True),
-                params={"select": "user_id,role", "chat_id": f"eq.{gid}", "limit": "200"},
+                {"select": "user_id,role", "chat_id": f"eq.{gid}", "limit": "200"},
+                svc_headers=svc,
+                user_headers=usr,
             )
             if r_gm.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_gm.status_code), content={"success": False, "message": _supabase_hint(r_gm)})
@@ -774,10 +903,12 @@ async def list_group_members(group_id: str, authorization: Optional[str] = Heade
             user_ids = [str((r or {}).get("user_id") or "").strip() for r in rows if str((r or {}).get("user_id") or "").strip()]
             profiles_by_id: dict[str, dict] = {}
             if user_ids:
-                r_users = await client.get(
+                r_users = await _pg_get(
+                    client,
                     users_url,
-                    headers=postgrest_headers(use_service_role=True),
-                    params={"select": "id,username,avatar_url,created_at", "id": f"in.({','.join(sorted(set(user_ids)))})", "limit": "200"},
+                    {"select": "id,username,avatar_url,created_at", "id": f"in.({','.join(sorted(set(user_ids)))})", "limit": "200"},
+                    svc_headers=svc,
+                    user_headers=usr,
                 )
                 if r_users.status_code >= 400:
                     return JSONResponse(status_code=_status_map(r_users.status_code), content={"success": False, "message": _supabase_hint(r_users)})
@@ -1020,8 +1151,8 @@ async def set_group_member_role(group_id: str, req: Request, authorization: Opti
 @router.post("/messages/send")
 async def send_message(req: Request, authorization: Optional[str] = Header(default=None)):
     require_supabase()
-    user, _access_token = await _require_user(authorization)
-    if not user:
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
 
     uid = str(user.get("id") or "").strip()
@@ -1035,18 +1166,21 @@ async def send_message(req: Request, authorization: Optional[str] = Header(defau
     if not chat_id or not content:
         return JSONResponse(status_code=400, content={"success": False, "message": "chatId and content are required"})
 
-    if not SUPABASE_SERVICE_ROLE_KEY:
-        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required for message writes"})
-
     gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
     msg_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/messages"
+    svc = _service_headers()
+    usr = postgrest_user_headers(access_token)
+    svc_rep = _service_headers(extra={"prefer": "return=representation"})
+    usr_rep = postgrest_user_headers(access_token, extra={"prefer": "return=representation"})
 
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            r_mem = await client.get(
+            r_mem = await _pg_get(
+                client,
                 gm_url,
-                headers=postgrest_headers(use_service_role=True),
-                params={"select": "chat_id,user_id", "chat_id": f"eq.{chat_id}", "user_id": f"eq.{uid}", "limit": "1"},
+                {"select": "chat_id,user_id", "chat_id": f"eq.{chat_id}", "user_id": f"eq.{uid}", "limit": "1"},
+                svc_headers=svc,
+                user_headers=usr,
             )
             if r_mem.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_mem.status_code), content={"success": False, "message": _supabase_hint(r_mem)})
@@ -1054,10 +1188,12 @@ async def send_message(req: Request, authorization: Optional[str] = Header(defau
             if not rows:
                 return JSONResponse(status_code=403, content={"success": False, "message": "You are not a member of this chat"})
 
-            r_ins = await client.post(
+            r_ins = await _pg_post(
+                client,
                 msg_url,
-                headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
-                json={"chat_id": chat_id, "sender_id": uid, "content": content, "type": msg_type},
+                json_body={"chat_id": chat_id, "sender_id": uid, "content": content, "type": msg_type},
+                svc_headers=svc_rep,
+                user_headers=usr_rep,
             )
             if r_ins.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_ins.status_code), content={"success": False, "message": _supabase_hint(r_ins)})
@@ -1112,11 +1248,8 @@ async def get_messages(chat_id: str, authorization: Optional[str] = Header(defau
     try:
         if messages:
             hide_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/hidden_messages"
-            headers_hide = (
-                postgrest_headers(use_service_role=True)
-                if SUPABASE_SERVICE_ROLE_KEY
-                else {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
-            )
+            svc = _service_headers()
+            usr = postgrest_user_headers(access_token)
             params_hide = {
                 "select": "message_id",
                 "user_id": f"eq.{uid}",
@@ -1124,7 +1257,7 @@ async def get_messages(chat_id: str, authorization: Optional[str] = Header(defau
                 "limit": "2000",
             }
             async with httpx.AsyncClient(timeout=20.0) as client:
-                r_hide = await client.get(hide_url, headers=headers_hide, params=params_hide)
+                r_hide = await _pg_get(client, hide_url, params_hide, svc_headers=svc, user_headers=usr)
             if r_hide.status_code < 400:
                 hidden_rows = await safe_json_list(r_hide)
                 hidden_ids = {str((row or {}).get("message_id") or "").strip() for row in hidden_rows}
@@ -1141,28 +1274,25 @@ async def get_messages(chat_id: str, authorization: Optional[str] = Header(defau
         ids = [i for i in ids if i]
         if ids:
             rx_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/message_reactions"
-            headers_rx = (
-                postgrest_headers(use_service_role=True)
-                if SUPABASE_SERVICE_ROLE_KEY
-                else {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}"}
-            )
+            svc = _service_headers()
+            usr = postgrest_user_headers(access_token)
             params_rx = {
                 "select": "message_id,user_id,emoji",
                 "message_id": f"in.({','.join(ids)})",
                 "limit": "2000",
             }
             async with httpx.AsyncClient(timeout=20.0) as client:
-                r_rx = await client.get(rx_url, headers=headers_rx, params=params_rx)
+                r_rx = await _pg_get(client, rx_url, params_rx, svc_headers=svc, user_headers=usr)
             if r_rx.status_code < 400:
                 rows = await safe_json_list(r_rx)
                 agg: Dict[str, Dict[str, Dict[str, bool]]] = {}
                 for row in rows:
                     mid = str((row or {}).get("message_id") or "").strip()
-                    uid = str((row or {}).get("user_id") or "").strip()
+                    r_uid = str((row or {}).get("user_id") or "").strip()
                     emoji = str((row or {}).get("emoji") or "").strip()
-                    if not mid or not uid or not emoji:
+                    if not mid or not r_uid or not emoji:
                         continue
-                    agg.setdefault(mid, {}).setdefault(emoji, {})[uid] = True
+                    agg.setdefault(mid, {}).setdefault(emoji, {})[r_uid] = True
                 for m in messages:
                     mid = str((m or {}).get("id") or "").strip()
                     if mid:
@@ -1180,26 +1310,28 @@ async def delete_message_for_everyone(message_id: str, authorization: Optional[s
     Soft-delete a message (delete for everyone).
     """
     require_supabase()
-    user, _access_token = await _require_user(authorization)
-    if not user:
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
     uid = str(user.get("id") or "").strip()
     if not uid:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
 
-    if not SUPABASE_SERVICE_ROLE_KEY:
-        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required"})
-
     base = SUPABASE_URL.rstrip("/")
     msg_url = f"{base}/rest/v1/messages"
-    headers = postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"})
+    svc = _service_headers()
+    usr = postgrest_user_headers(access_token)
+    svc_rep = _service_headers(extra={"prefer": "return=representation"})
+    usr_rep = postgrest_user_headers(access_token, extra={"prefer": "return=representation"})
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             # Ensure sender owns the message
-            r_get = await client.get(
+            r_get = await _pg_get(
+                client,
                 msg_url,
-                headers=postgrest_headers(use_service_role=True),
-                params={"select": "id,sender_id,chat_id,is_deleted", "id": f"eq.{message_id}", "limit": "1"},
+                {"select": "id,sender_id,chat_id,is_deleted", "id": f"eq.{message_id}", "limit": "1"},
+                svc_headers=svc,
+                user_headers=usr,
             )
             if r_get.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_get.status_code), content={"success": False, "message": _supabase_hint(r_get)})
@@ -1212,11 +1344,13 @@ async def delete_message_for_everyone(message_id: str, authorization: Optional[s
             if msg.get("is_deleted") is True:
                 return {"success": True, "message": msg}
 
-            r_upd = await client.patch(
+            r_upd = await _pg_patch(
+                client,
                 msg_url,
-                headers=headers,
                 params={"id": f"eq.{message_id}"},
-                json={"is_deleted": True, "deleted_by": uid, "deleted_at": _now_iso()},
+                json_body={"is_deleted": True, "deleted_by": uid, "deleted_at": _now_iso()},
+                svc_headers=svc_rep,
+                user_headers=usr_rep,
             )
             if r_upd.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_upd.status_code), content={"success": False, "message": _supabase_hint(r_upd)})
@@ -1229,14 +1363,12 @@ async def delete_message_for_everyone(message_id: str, authorization: Optional[s
 @router.post("/messages/{message_id}/edit")
 async def edit_message(message_id: str, req: Request, authorization: Optional[str] = Header(default=None)):
     require_supabase()
-    user, _access_token = await _require_user(authorization)
-    if not user:
+    user, access_token = await _require_user(authorization)
+    if not user or not access_token:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
     uid = str(user.get("id") or "").strip()
     if not uid:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
-    if not SUPABASE_SERVICE_ROLE_KEY:
-        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required"})
 
     body = await req.json()
     content = str((body or {}).get("content") or "").strip()
@@ -1245,12 +1377,18 @@ async def edit_message(message_id: str, req: Request, authorization: Optional[st
 
     base = SUPABASE_URL.rstrip("/")
     msg_url = f"{base}/rest/v1/messages"
+    svc = _service_headers()
+    usr = postgrest_user_headers(access_token)
+    svc_rep = _service_headers(extra={"prefer": "return=representation"})
+    usr_rep = postgrest_user_headers(access_token, extra={"prefer": "return=representation"})
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            r_get = await client.get(
+            r_get = await _pg_get(
+                client,
                 msg_url,
-                headers=postgrest_headers(use_service_role=True),
-                params={"select": "id,sender_id,is_deleted", "id": f"eq.{message_id}", "limit": "1"},
+                {"select": "id,chat_id,sender_id,is_deleted", "id": f"eq.{message_id}", "limit": "1"},
+                svc_headers=svc,
+                user_headers=usr,
             )
             if r_get.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_get.status_code), content={"success": False, "message": _supabase_hint(r_get)})
@@ -1263,16 +1401,22 @@ async def edit_message(message_id: str, req: Request, authorization: Optional[st
             if msg.get("is_deleted") is True:
                 return JSONResponse(status_code=409, content={"success": False, "message": "Message was deleted and cannot be edited"})
 
-            r_upd = await client.patch(
+            r_upd = await _pg_patch(
+                client,
                 msg_url,
-                headers=postgrest_headers(use_service_role=True, extra={"prefer": "return=representation"}),
                 params={"id": f"eq.{message_id}"},
-                json={"content": content},
+                json_body={"content": content},
+                svc_headers=svc_rep,
+                user_headers=usr_rep,
             )
             if r_upd.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_upd.status_code), content={"success": False, "message": _supabase_hint(r_upd)})
             updated = await safe_json_list(r_upd)
-            return {"success": True, "message": (updated[0] if updated else msg)}
+            out = updated[0] if updated else msg
+            # Ensure chat_id is present for clients that need to broadcast changes.
+            if out is not None and (out.get("chat_id") is None) and msg is not None and msg.get("chat_id") is not None:
+                out["chat_id"] = msg.get("chat_id")
+            return {"success": True, "message": out}
     except Exception as e:
         return JSONResponse(status_code=503, content={"success": False, "message": _net_err_hint(e)})
 
@@ -1291,18 +1435,21 @@ async def hide_message_for_me(message_id: str, authorization: Optional[str] = He
     if not uid:
         return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
 
-    if not SUPABASE_SERVICE_ROLE_KEY:
-        return JSONResponse(status_code=503, content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required"})
-
     base = SUPABASE_URL.rstrip("/")
     msg_url = f"{base}/rest/v1/messages"
     hide_url = f"{base}/rest/v1/hidden_messages"
+    svc = _service_headers()
+    usr = postgrest_user_headers(access_token)
+    svc_merge = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
+    usr_merge = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=minimal"})
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            r_get = await client.get(
+            r_get = await _pg_get(
+                client,
                 msg_url,
-                headers=postgrest_headers(use_service_role=True),
-                params={"select": "id,chat_id", "id": f"eq.{message_id}", "limit": "1"},
+                {"select": "id,chat_id", "id": f"eq.{message_id}", "limit": "1"},
+                svc_headers=svc,
+                user_headers=usr,
             )
             if r_get.status_code >= 400:
                 return JSONResponse(status_code=_status_map(r_get.status_code), content={"success": False, "message": _supabase_hint(r_get)})
@@ -1314,10 +1461,12 @@ async def hide_message_for_me(message_id: str, authorization: Optional[str] = He
             if not chat_id:
                 return JSONResponse(status_code=503, content={"success": False, "message": "Message chat_id missing"})
 
-            r_ins = await client.post(
+            r_ins = await _pg_post(
+                client,
                 hide_url,
-                headers=postgrest_headers(use_service_role=True, extra={"prefer": "resolution=merge-duplicates,return=minimal"}),
-                json={"user_id": uid, "chat_id": chat_id, "message_id": message_id, "created_at": _now_iso()},
+                json_body={"user_id": uid, "chat_id": chat_id, "message_id": message_id, "created_at": _now_iso()},
+                svc_headers=svc_merge,
+                user_headers=usr_merge,
             )
             if r_ins.status_code not in (200, 201, 204, 409):
                 return JSONResponse(status_code=_status_map(r_ins.status_code), content={"success": False, "message": _supabase_hint(r_ins)})
@@ -1442,11 +1591,27 @@ async def toggle_reaction(req: Request, authorization: Optional[str] = Header(de
     if not message_id or not emoji:
         return JSONResponse(status_code=400, content={"success": False, "message": "messageId and emoji are required"})
 
-    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/message_reactions"
+    base = SUPABASE_URL.rstrip("/")
+    url = f"{base}/rest/v1/message_reactions"
+    msg_url = f"{base}/rest/v1/messages"
     headers = {"apikey": postgrest_headers(use_service_role=False).get("apikey", ""), "authorization": f"Bearer {access_token}", "content-type": "application/json"}
     r_ins: Optional[httpx.Response] = None
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
+            # Fetch chat_id so clients can broadcast reaction updates to the right room.
+            r_msg = await client.get(
+                msg_url,
+                headers=headers,
+                params={"select": "id,chat_id", "id": f"eq.{message_id}", "limit": "1"},
+            )
+            if r_msg.status_code >= 400:
+                return JSONResponse(status_code=_status_map(r_msg.status_code), content={"success": False, "message": _supabase_hint(r_msg)})
+            msg_rows = await safe_json_list(r_msg)
+            msg_row = msg_rows[0] if msg_rows else None
+            if not msg_row:
+                return JSONResponse(status_code=404, content={"success": False, "message": "Message not found"})
+            chat_id = str((msg_row or {}).get("chat_id") or "").strip()
+
             # PostgREST DELETE can succeed with 204 even when 0 rows match; don't use "delete-first" blindly.
             r_get = await client.get(
                 url,
@@ -1470,7 +1635,21 @@ async def toggle_reaction(req: Request, authorization: Optional[str] = Header(de
                 )
                 if r_del.status_code >= 400:
                     return JSONResponse(status_code=_status_map(r_del.status_code), content={"success": False, "message": _supabase_hint(r_del)})
-                return {"success": True, "active": False}
+                # Return updated reactions snapshot for realtime sync.
+                r_all = await client.get(
+                    url,
+                    headers=headers,
+                    params={"select": "message_id,user_id,emoji", "message_id": f"eq.{message_id}", "limit": "2000"},
+                )
+                reactions: Dict[str, Dict[str, bool]] = {}
+                if r_all.status_code < 400:
+                    rows = await safe_json_list(r_all)
+                    for row in rows:
+                        r_uid = str((row or {}).get("user_id") or "").strip()
+                        r_emoji = str((row or {}).get("emoji") or "").strip()
+                        if r_uid and r_emoji:
+                            reactions.setdefault(r_emoji, {})[r_uid] = True
+                return {"success": True, "active": False, "chatId": chat_id, "messageId": message_id, "reactions": reactions}
 
             r_ins = await client.post(
                 url,
@@ -1483,48 +1662,29 @@ async def toggle_reaction(req: Request, authorization: Optional[str] = Header(de
         return JSONResponse(status_code=500, content={"success": False, "message": "Reaction toggle failed"})
     if r_ins.status_code not in (200, 201, 204, 409):
         return JSONResponse(status_code=_status_map(r_ins.status_code), content={"success": False, "message": _supabase_hint(r_ins)})
-    return {"success": True, "active": True}
-
-
-@router.get("/debug/supabase")
-async def debug_supabase(authorization: Optional[str] = Header(default=None)):
-    """
-    Production-safe debugging endpoint:
-    - Requires a valid user access token (so it's not public)
-    - Does NOT return secrets
-    - Checks whether Supabase PostgREST is reachable and expected tables exist
-    """
-    require_supabase()
-    user, _access_token = await _require_user(authorization)
-    if not user:
-        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
-
-    base = SUPABASE_URL.rstrip("/")
-    rest = f"{base}/rest/v1"
-
-    checks: Dict[str, Any] = {
-        "supabaseUrl": base,
-        "hasServiceRoleKey": bool(SUPABASE_SERVICE_ROLE_KEY),
-        "tables": {},
-    }
-
-    # Prefer service role to bypass RLS for existence checks.
-    headers = postgrest_headers(use_service_role=bool(SUPABASE_SERVICE_ROLE_KEY))
-
-    async def _check_table(name: str) -> Dict[str, Any]:
-        url = f"{rest}/{name}"
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                r = await client.get(url, headers=headers, params={"select": "*", "limit": "1"})
-        except Exception as e:
-            return {"ok": False, "status": 0, "message": _net_err_hint(e)}
-        if r.status_code >= 400:
-            return {"ok": False, "status": r.status_code, "message": _supabase_hint(r)}
-        return {"ok": True, "status": r.status_code}
-
-    for table in ("users", "chats", "group_members", "messages"):
-        checks["tables"][table] = await _check_table(table)
-
-    ok = all(bool((checks["tables"][t] or {}).get("ok")) for t in checks["tables"])
-    return JSONResponse(status_code=200 if ok else 503, content={"success": ok, "checks": checks})
-
+    # Return updated reactions snapshot for realtime sync.
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r_msg = await client.get(
+                msg_url,
+                headers=headers,
+                params={"select": "id,chat_id", "id": f"eq.{message_id}", "limit": "1"},
+            )
+            msg_rows = await safe_json_list(r_msg) if r_msg.status_code < 400 else []
+            chat_id = str((msg_rows[0] or {}).get("chat_id") or "").strip() if msg_rows else ""
+            r_all = await client.get(
+                url,
+                headers=headers,
+                params={"select": "message_id,user_id,emoji", "message_id": f"eq.{message_id}", "limit": "2000"},
+            )
+            reactions: Dict[str, Dict[str, bool]] = {}
+            if r_all.status_code < 400:
+                rows = await safe_json_list(r_all)
+                for row in rows:
+                    r_uid = str((row or {}).get("user_id") or "").strip()
+                    r_emoji = str((row or {}).get("emoji") or "").strip()
+                    if r_uid and r_emoji:
+                        reactions.setdefault(r_emoji, {})[r_uid] = True
+            return {"success": True, "active": True, "chatId": chat_id, "messageId": message_id, "reactions": reactions}
+    except Exception:
+        return {"success": True, "active": True}

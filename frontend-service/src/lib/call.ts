@@ -22,13 +22,50 @@ function jwtClaimsUserId(token: string): string | null {
   }
 }
 
+function parseCallSocketKey(key: string | null) {
+  const k = String(key || '')
+  const i = k.indexOf('|')
+  if (i <= 0) return { uid: '', token: '' }
+  return { uid: k.slice(0, i), token: k.slice(i + 1) }
+}
+
 async function ensureCallSocket(userId: string): Promise<CallSocket> {
   const snap = await getCurrentAuthSnapshot().catch(() => null)
-  const token = String(snap?.token || '')
-  const key = `${userId}|${token}`
+  const t = String(snap?.token || '').trim()
+  if (!t) {
+    throw new Error('Call socket requires auth token')
+  }
+  const tokenUid = jwtClaimsUserId(t)
+  if (tokenUid && tokenUid !== String(userId)) {
+    throw new Error('Auth token does not match userId; sign in again.')
+  }
+  const key = `${userId}|${t}`
 
   if (socketInstance && callSocketKey === key) {
     return socketInstance
+  }
+
+  const prev = callSocketKey ? parseCallSocketKey(callSocketKey) : { uid: '', token: '' }
+  const sameUserTokenRefresh =
+    socketInstance && prev.uid && prev.uid === String(userId) && prev.token !== t
+
+  if (sameUserTokenRefresh) {
+    try {
+      socketInstance.auth = { userId, token: t } as any
+      socketInstance.disconnect()
+      socketInstance.connect()
+      callSocketKey = key
+      return socketInstance
+    } catch {
+      try {
+        socketInstance.removeAllListeners()
+        socketInstance.disconnect()
+      } catch {
+        /* ignore */
+      }
+      socketInstance = null
+      callSocketKey = null
+    }
   }
 
   if (socketInstance) {
@@ -42,17 +79,7 @@ async function ensureCallSocket(userId: string): Promise<CallSocket> {
     callSocketKey = null
   }
 
-  callSocketKey = key
-  const auth: Record<string, string> = { userId }
-  // Socket server accepts unauthenticated sockets, but rejects mismatched tokens.
-  // Some auth providers rotate tokens; if the token does not belong to this userId,
-  // omit it so calls still work.
-  if (token) {
-    const tokenUid = jwtClaimsUserId(token)
-    if (!tokenUid || tokenUid === String(userId)) {
-      auth.token = token
-    }
-  }
+  const auth: Record<string, string> = { userId, token: t }
 
   await waitForDomReady()
   socketInstance = io(CALL_SOCKET_URL, createSocketIoClientOptions(auth))
@@ -60,6 +87,7 @@ async function ensureCallSocket(userId: string): Promise<CallSocket> {
     // eslint-disable-next-line no-console
     console.warn('[call-socket] server error', e)
   })
+  callSocketKey = key
   return socketInstance
 }
 

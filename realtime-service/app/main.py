@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +37,40 @@ async def root():
 @app.get("/health")
 async def health():
     return {"success": True, "service": "realtime-service", "status": "ok"}
+
+
+@app.get("/health/integration")
+async def health_integration():
+    """
+    Safe deploy checklist for Socket.IO + Supabase token validation (no secret values).
+    Frontend NEXT_PUBLIC_CHAT_SOCKET_URL should point to this service origin (https, no /socket.io path).
+    """
+    from src.settings import SUPABASE_ANON_KEY, SUPABASE_URL
+
+    rest_host = ""
+    if SUPABASE_URL:
+        try:
+            rest_host = urlparse(SUPABASE_URL).netloc or ""
+        except Exception:
+            rest_host = ""
+    sio_raw = (os.getenv("SOCKET_IO_CORS_ORIGINS") or "").strip()
+    if sio_raw in ("", "*"):
+        sio_summary = {"mode": "wildcard"}
+    else:
+        parts = [o.strip() for o in sio_raw.split(",") if o.strip()]
+        sio_summary = {"mode": "origins", "count": len(parts)}
+
+    return {
+        "success": True,
+        "service": "realtime-service",
+        "supabase": {
+            "restApiHost": rest_host,
+            "hasUrl": bool(SUPABASE_URL),
+            "hasAnonKey": bool(SUPABASE_ANON_KEY),
+            "tokenValidationOk": bool(SUPABASE_URL and SUPABASE_ANON_KEY),
+        },
+        "socketIoCors": sio_summary,
+    }
 
 
 @app.get("/favicon.ico", include_in_schema=False)

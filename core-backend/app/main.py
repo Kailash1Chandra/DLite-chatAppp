@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,6 +49,53 @@ async def root():
 @app.get("/health")
 async def health():
     return {"success": True, "service": "core-backend", "status": "ok"}
+
+
+@app.get("/health/integration")
+async def health_integration():
+    """
+    Safe deploy checklist: which integration env vars are present (no secret values).
+    Pair with frontend Vercel: NEXT_PUBLIC_API_BASE_URL should point to this service.
+    """
+    from src.settings import (
+        CLOUDINARY_API_KEY,
+        CLOUDINARY_API_SECRET,
+        CLOUDINARY_CLOUD_NAME,
+        SUPABASE_ANON_KEY,
+        SUPABASE_SERVICE_ROLE_KEY,
+        SUPABASE_URL,
+    )
+
+    rest_host = ""
+    if SUPABASE_URL:
+        try:
+            rest_host = urlparse(SUPABASE_URL).netloc or ""
+        except Exception:
+            rest_host = ""
+    cors_raw = (os.getenv("CORS_ORIGINS") or "").strip()
+    if cors_raw == "*":
+        cors_summary = {"mode": "wildcard"}
+    elif not cors_raw:
+        cors_summary = {"mode": "default", "hint": "CORS_ORIGINS unset; using localhost:3000 only in code default"}
+    else:
+        parts = [o.strip() for o in cors_raw.split(",") if o.strip()]
+        cors_summary = {"mode": "origins", "count": len(parts)}
+
+    return {
+        "success": True,
+        "service": "core-backend",
+        "supabase": {
+            "restApiHost": rest_host,
+            "hasUrl": bool(SUPABASE_URL),
+            "hasAnonKey": bool(SUPABASE_ANON_KEY),
+            "hasServiceRoleKey": bool(SUPABASE_SERVICE_ROLE_KEY),
+            "authProxyOk": bool(SUPABASE_URL and SUPABASE_ANON_KEY),
+        },
+        "cloudinary": {
+            "mediaUploadOk": bool(CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET),
+        },
+        "cors": cors_summary,
+    }
 
 
 @app.get("/favicon.ico", include_in_schema=False)

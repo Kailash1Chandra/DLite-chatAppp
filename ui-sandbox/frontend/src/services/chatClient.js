@@ -7,20 +7,47 @@ let socketInstance = null
 let lastChatSocketAuthKey = ''
 const unsubRef = new Map()
 
+function jwtClaimsUserId(token) {
+  try {
+    const parts = String(token || '').split('.')
+    if (parts.length < 2) return null
+    const payload = parts[1]
+    const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
+    const uid = json?.id ?? json?.sub ?? json?.user_id ?? json?.userId
+    return uid ? String(uid).trim() : null
+  } catch {
+    return null
+  }
+}
+
 async function authedSocketOptions({ userId } = {}) {
   const snapshot = await getCurrentAuthSnapshot().catch(() => null)
-  const token = snapshot?.token || ''
+  const token = String(snapshot?.token || '').trim()
   const uid = String(userId || snapshot?.user?.id || snapshot?.user?.uid || '').trim()
-  return {
-    userId: uid || undefined,
-    token: token || undefined,
+  if (!uid) {
+    return { userId: undefined, token: undefined }
   }
+  if (!token) {
+    return { userId: uid, token: undefined }
+  }
+  const tokenUid = jwtClaimsUserId(token)
+  if (tokenUid && tokenUid !== uid) {
+    throw new Error('Auth token does not match socket userId; sign in again.')
+  }
+  return { userId: uid, token }
 }
 
 function chatSocketAuthKey(auth) {
   const uid = String(auth?.userId || '')
   const tok = String(auth?.token || '')
   return `${uid}|${tok}`
+}
+
+function parseChatSocketKey(key) {
+  const k = String(key || '')
+  const i = k.indexOf('|')
+  if (i <= 0) return { uid: '', token: '' }
+  return { uid: k.slice(0, i), token: k.slice(i + 1) }
 }
 
 async function getSocket({ userId } = {}) {
@@ -38,10 +65,37 @@ async function getSocket({ userId } = {}) {
     lastChatSocketAuthKey = ''
     throw new Error('Chat socket requires userId')
   }
+  if (!auth?.token) {
+    throw new Error('Chat socket requires auth token')
+  }
   const key = chatSocketAuthKey(auth)
   if (socketInstance && lastChatSocketAuthKey === key) {
     return socketInstance
   }
+
+  const prev = lastChatSocketAuthKey ? parseChatSocketKey(lastChatSocketAuthKey) : { uid: '', token: '' }
+  const sameUserTokenRefresh =
+    socketInstance && prev.uid && prev.uid === auth.userId && prev.token !== auth.token
+
+  if (sameUserTokenRefresh) {
+    try {
+      socketInstance.auth = { userId: auth.userId, token: auth.token }
+      socketInstance.disconnect()
+      socketInstance.connect()
+      lastChatSocketAuthKey = key
+      return socketInstance
+    } catch {
+      try {
+        socketInstance.removeAllListeners()
+        socketInstance.disconnect()
+      } catch {
+        /* ignore */
+      }
+      socketInstance = null
+      lastChatSocketAuthKey = ''
+    }
+  }
+
   if (socketInstance) {
     try {
       socketInstance.removeAllListeners()
@@ -57,6 +111,10 @@ async function getSocket({ userId } = {}) {
     CHAT_SOCKET_URL,
     createSocketIoClientOptions(auth?.userId ? auth : undefined),
   )
+  socketInstance.on('socket_error', (e) => {
+    // eslint-disable-next-line no-console
+    console.warn('[chat-socket] server error', e)
+  })
   return socketInstance
 }
 

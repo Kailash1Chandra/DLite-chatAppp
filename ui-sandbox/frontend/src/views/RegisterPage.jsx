@@ -74,7 +74,6 @@ export default function RegisterPage() {
     setError('');
     try {
       await loginWithGoogle();
-      router.push('/dashboard');
     } catch (err) {
       setError(toAuthErrorMessage(err, 'google'));
     } finally {

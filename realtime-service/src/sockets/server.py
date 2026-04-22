@@ -1,10 +1,79 @@
 from __future__ import annotations
 
+import asyncio
+import datetime
+import time
 from typing import Any, Dict, Optional
 
+import httpx
 import socketio
 
+from src.settings import SUPABASE_ANON_KEY, SUPABASE_URL
 from src.supabase import validate_access_token
+
+# Short TTL cache to avoid PostgREST on every typing event (membership rarely changes).
+_MEMBER_CACHE_TTL_SEC = 45.0
+_member_ok_cache: dict[tuple[str, str], tuple[float, bool]] = {}
+
+
+async def _user_is_chat_member(chat_id: str, user_id: str, access_token: str) -> bool:
+    """RLS-enforced: caller's JWT must match user_id row in group_members."""
+    cid = (chat_id or "").strip()
+    uid = (user_id or "").strip()
+    tok = (access_token or "").strip()
+    if not cid or not uid or not tok or not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        return False
+    now = time.monotonic()
+    cache_key = (cid, uid)
+    hit = _member_ok_cache.get(cache_key)
+    if hit and now < hit[0]:
+        return hit[1]
+
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+    params = {"select": "chat_id", "chat_id": f"eq.{cid}", "user_id": f"eq.{uid}", "limit": "1"}
+    headers = {
+        "apikey": SUPABASE_ANON_KEY,
+        "authorization": f"Bearer {tok}",
+        "content-type": "application/json",
+    }
+    ok = False
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            r = await client.get(url, headers=headers, params=params)
+        if r.status_code < 400:
+            rows = r.json()
+            ok = isinstance(rows, list) and len(rows) > 0
+    except Exception:
+        ok = False
+    _member_ok_cache[cache_key] = (now + _MEMBER_CACHE_TTL_SEC, ok)
+    return ok
+
+
+async def _persist_presence_row(user_id: str, status: str, access_token: Optional[str]) -> None:
+    """
+    Mirror socket online/offline into Supabase `public.presence` so REST `/chat/presence/:id` matches.
+    Uses the client's JWT (RLS: users may only write their own row).
+    """
+    tok = (access_token or "").strip()
+    if not tok or not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        return
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/presence"
+    headers = {
+        "apikey": SUPABASE_ANON_KEY,
+        "authorization": f"Bearer {tok}",
+        "content-type": "application/json",
+        "prefer": "resolution=merge-duplicates,return=minimal",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            await client.post(
+                url,
+                headers=headers,
+                json={"user_id": user_id, "status": status, "last_seen": now},
+            )
+    except Exception:
+        return
 
 
 def _claims_user_id(claims: Optional[dict]) -> Optional[str]:
@@ -61,44 +130,58 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
         if not user_id:
             await sio.emit("socket_error", {"message": "Missing userId"}, to=sid)
             return False
+        if not token:
+            await sio.emit("socket_error", {"message": "Missing token"}, to=sid)
+            return False
 
-        if token:
-            claims = await validate_access_token(str(token).strip())
-            token_uid = _claims_user_id(claims)
-            if not token_uid:
-                await sio.emit("socket_error", {"message": "Invalid token"}, to=sid)
-                return False
-            if token_uid != str(user_id):
-                await sio.emit("socket_error", {"message": "userId does not match token"}, to=sid)
-                return False
+        claims = await validate_access_token(str(token).strip())
+        token_uid = _claims_user_id(claims)
+        if not token_uid:
+            await sio.emit("socket_error", {"message": "Invalid token"}, to=sid)
+            return False
+        if token_uid != str(user_id):
+            await sio.emit("socket_error", {"message": "userId does not match token"}, to=sid)
+            return False
 
         uid = str(user_id)
         connections_by_user.setdefault(uid, set()).add(sid)
-        await sio.save_session(sid, {"userId": uid})
+        await sio.save_session(sid, {"userId": uid, "accessToken": (token or "").strip()})
         await sio.enter_room(sid, user_room(uid))
 
         if len(connections_by_user[uid]) == 1:
             await broadcast_user_status(uid, "online")
+            asyncio.create_task(_persist_presence_row(uid, "online", token))
         await sio.emit("connected", {"userId": uid, "socketId": sid}, to=sid)
 
     @sio.event
     async def disconnect(sid):
         session = await sio.get_session(sid)
         uid = (session or {}).get("userId")
+        access_token = (session or {}).get("accessToken")
         if not uid:
             return
         conns = connections_by_user.get(uid)
         if conns and sid in conns:
             conns.remove(sid)
-        if not conns:
+        if not connections_by_user.get(uid):
             connections_by_user.pop(uid, None)
             await broadcast_user_status(uid, "offline")
+            asyncio.create_task(_persist_presence_row(str(uid), "offline", access_token))
 
     @sio.event
     async def join_chat(sid, data):
+        session = await sio.get_session(sid)
+        user_id = (session or {}).get("userId")
+        token = (session or {}).get("accessToken")
         chat_id = str((data or {}).get("chatId") or "").strip()
         if not chat_id:
             await sio.emit("socket_error", {"message": "chatId is required"}, to=sid)
+            return
+        if not user_id or not token:
+            await sio.emit("socket_error", {"message": "Not authenticated"}, to=sid)
+            return
+        if not await _user_is_chat_member(chat_id, str(user_id), str(token)):
+            await sio.emit("socket_error", {"message": "Not a member of this chat"}, to=sid)
             return
         await sio.enter_room(sid, chat_room(chat_id))
 
@@ -106,9 +189,13 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
     async def send_message(sid, data):
         session = await sio.get_session(sid)
         user_id = (session or {}).get("userId")
+        access_token = (session or {}).get("accessToken")
+        if not user_id:
+            return
 
         chat_id = str((data or {}).get("chatId") or "").strip()
-        sender_id = str((data or {}).get("senderId") or user_id or "").strip()
+        # Never trust client-supplied senderId (spoofing). Socket session is authoritative.
+        sender_id = str(user_id).strip()
         content = str((data or {}).get("content") or "").strip()
         msg_type = str((data or {}).get("type") or "text").strip()
         message_id = (data or {}).get("_id") or (data or {}).get("id")
@@ -116,6 +203,9 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
 
         if not chat_id or not sender_id or not content:
             await sio.emit("socket_error", {"message": "chatId, senderId, and content are required"}, to=sid)
+            return
+        if not access_token or not await _user_is_chat_member(chat_id, sender_id, str(access_token)):
+            await sio.emit("socket_error", {"message": "Not a member of this chat"}, to=sid)
             return
 
         # Realtime service doesn't write to DB; core-backend does that.
@@ -133,12 +223,67 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
         )
 
     @sio.event
+    async def message_updated(sid, data):
+        session = await sio.get_session(sid)
+        user_id = (session or {}).get("userId")
+        access_token = (session or {}).get("accessToken")
+        if not user_id:
+            return
+        chat_id = str((data or {}).get("chatId") or "").strip()
+        message = (data or {}).get("message") or {}
+        if not chat_id:
+            return
+        if not access_token or not await _user_is_chat_member(chat_id, str(user_id), str(access_token)):
+            return
+        await sio.emit("message_updated", {"chatId": chat_id, "message": message}, room=chat_room(chat_id))
+
+    @sio.event
+    async def message_deleted(sid, data):
+        session = await sio.get_session(sid)
+        user_id = (session or {}).get("userId")
+        access_token = (session or {}).get("accessToken")
+        if not user_id:
+            return
+        chat_id = str((data or {}).get("chatId") or "").strip()
+        message_id = str((data or {}).get("messageId") or (data or {}).get("_id") or "").strip()
+        if not chat_id or not message_id:
+            return
+        if not access_token or not await _user_is_chat_member(chat_id, str(user_id), str(access_token)):
+            return
+        await sio.emit("message_deleted", {"chatId": chat_id, "messageId": message_id}, room=chat_room(chat_id))
+
+    @sio.event
+    async def reaction_updated(sid, data):
+        session = await sio.get_session(sid)
+        user_id = (session or {}).get("userId")
+        access_token = (session or {}).get("accessToken")
+        if not user_id:
+            return
+        chat_id = str((data or {}).get("chatId") or "").strip()
+        message_id = str((data or {}).get("messageId") or "").strip()
+        reactions = (data or {}).get("reactions") or {}
+        if not chat_id or not message_id:
+            return
+        if not access_token or not await _user_is_chat_member(chat_id, str(user_id), str(access_token)):
+            return
+        await sio.emit(
+            "reaction_updated",
+            {"chatId": chat_id, "messageId": message_id, "reactions": reactions},
+            room=chat_room(chat_id),
+        )
+
+    @sio.event
     async def typing(sid, data):
         session = await sio.get_session(sid)
         user_id = (session or {}).get("userId")
+        access_token = (session or {}).get("accessToken")
+        if not user_id:
+            return
         chat_id = str((data or {}).get("chatId") or "").strip()
-        sender_id = str((data or {}).get("senderId") or user_id or "").strip()
+        sender_id = str(user_id).strip()
         if not chat_id:
+            return
+        if not access_token or not await _user_is_chat_member(chat_id, sender_id, str(access_token)):
             return
         await sio.emit("typing", {"chatId": chat_id, "senderId": sender_id}, room=chat_room(chat_id), skip_sid=sid)
 
@@ -146,9 +291,14 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
     async def stop_typing(sid, data):
         session = await sio.get_session(sid)
         user_id = (session or {}).get("userId")
+        access_token = (session or {}).get("accessToken")
+        if not user_id:
+            return
         chat_id = str((data or {}).get("chatId") or "").strip()
-        sender_id = str((data or {}).get("senderId") or user_id or "").strip()
+        sender_id = str(user_id).strip()
         if not chat_id:
+            return
+        if not access_token or not await _user_is_chat_member(chat_id, sender_id, str(access_token)):
             return
         await sio.emit("stop_typing", {"chatId": chat_id, "senderId": sender_id}, room=chat_room(chat_id), skip_sid=sid)
 
