@@ -520,18 +520,36 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
             if not chat:
                 r_create = await client.post(
                     chats_url,
-                    # Idempotent create: enforce 1 chat per (type,name).
                     headers=postgrest_headers(
                         use_service_role=True,
                         extra={"prefer": "resolution=merge-duplicates,return=representation"},
                     ),
-                    params={"on_conflict": "type,name"},
                     json={"type": "group", "name": group_key, "created_by": uid},
                 )
                 if r_create.status_code >= 400:
-                    return JSONResponse(status_code=_status_map(r_create.status_code), content={"success": False, "message": _supabase_hint(r_create)})
-                created = await safe_json_list(r_create)
-                chat = created[0] if created else None
+                    # Some PostgREST/Supabase setups can't use ON CONFLICT with our partial unique index.
+                    # If another request created the row concurrently, re-fetch and proceed.
+                    if r_create.status_code == 409 or ('"code":"42P10"' in (r_create.text or "")):
+                        r_find2 = await client.get(
+                            chats_url,
+                            headers=postgrest_headers(use_service_role=True),
+                            params={"select": "id,name,type", "type": "eq.group", "name": f"eq.{group_key}", "limit": "1"},
+                        )
+                        if r_find2.status_code >= 400:
+                            return JSONResponse(
+                                status_code=_status_map(r_find2.status_code),
+                                content={"success": False, "message": _supabase_hint(r_find2)},
+                            )
+                        items2 = await safe_json_list(r_find2)
+                        chat = items2[0] if items2 else None
+                    else:
+                        return JSONResponse(
+                            status_code=_status_map(r_create.status_code),
+                            content={"success": False, "message": _supabase_hint(r_create)},
+                        )
+                else:
+                    created = await safe_json_list(r_create)
+                    chat = created[0] if created else None
 
             chat_id = (chat or {}).get("id")
             if not chat_id:
@@ -575,7 +593,6 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
     gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
     svc = _service_headers()
     usr = postgrest_user_headers(access_token)
-    # Idempotent create: enforce 1 chat per (type,name) even under concurrency.
     svc_rep = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=representation"})
     usr_rep = postgrest_user_headers(access_token, extra={"prefer": "resolution=merge-duplicates,return=representation"})
     svc_merge = _service_headers(extra={"prefer": "resolution=merge-duplicates,return=minimal"})
@@ -599,15 +616,35 @@ async def ensure_dm(req: Request, authorization: Optional[str] = Header(default=
                 r_create = await _pg_post(
                     client,
                     chats_url,
-                    params={"on_conflict": "type,name"},
                     json_body={"type": "direct", "name": dm_key, "created_by": uid},
                     svc_headers=svc_rep,
                     user_headers=usr_rep,
                 )
                 if r_create.status_code >= 400:
-                    return JSONResponse(status_code=_status_map(r_create.status_code), content={"success": False, "message": _supabase_hint(r_create)})
-                created = await safe_json_list(r_create)
-                chat = created[0] if created else None
+                    # Race-safe: if insert conflicted, re-fetch existing DM.
+                    if r_create.status_code == 409 or ('"code":"42P10"' in (r_create.text or "")):
+                        r_find2 = await _pg_get(
+                            client,
+                            chats_url,
+                            {"select": "id,name,type", "type": "eq.direct", "name": f"eq.{dm_key}", "limit": "1"},
+                            svc_headers=svc,
+                            user_headers=usr,
+                        )
+                        if r_find2.status_code >= 400:
+                            return JSONResponse(
+                                status_code=_status_map(r_find2.status_code),
+                                content={"success": False, "message": _supabase_hint(r_find2)},
+                            )
+                        items2 = await safe_json_list(r_find2)
+                        chat = items2[0] if items2 else None
+                    else:
+                        return JSONResponse(
+                            status_code=_status_map(r_create.status_code),
+                            content={"success": False, "message": _supabase_hint(r_create)},
+                        )
+                else:
+                    created = await safe_json_list(r_create)
+                    chat = created[0] if created else None
 
             chat_id = (chat or {}).get("id")
             if not chat_id:
