@@ -350,6 +350,7 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
             {
                 "fromUserId": str(from_uid),
                 "callType": payload.get("callType") or "audio",
+                "roomId": payload.get("roomId"),
                 "offer": payload.get("offer"),
             },
             room=user_room(to_uid),
@@ -429,4 +430,3 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
         )
 
     return socketio.ASGIApp(sio, other_asgi_app=other_asgi_app, socketio_path="socket.io")
-

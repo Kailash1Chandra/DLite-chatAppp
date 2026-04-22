@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client'
 import { createSocketIoClientOptions, waitForDomReady } from '@/lib/socketIoClientOptions'
 import { CALL_SOCKET_URL } from '@/services/appClient'
 import { getCurrentAuthSnapshot } from '@/services/authClient'
-import { AnswerPayload, IceCandidatePayload, OfferPayload } from '@/types/call'
+import { AnswerPayload, HostedCallInvitePayload, IceCandidatePayload, OfferPayload } from '@/types/call'
 
 type CallSocket = Socket
 
@@ -106,6 +106,21 @@ export async function startCall(params: {
   })
 }
 
+export async function startHostedCallInvite(params: {
+  callerId: string
+  calleeId: string
+  mode: 'audio' | 'video'
+  roomId: string
+}) {
+  const { callerId, calleeId, mode, roomId } = params
+  const socket = await ensureCallSocket(callerId)
+  socket.emit('call_user', {
+    toUserId: calleeId,
+    callType: mode,
+    roomId,
+  })
+}
+
 export function listenForIncomingCall(userId: string, onIncoming: (payload: OfferPayload | null) => void) {
   let disposed = false
   let detach: () => void = () => undefined
@@ -131,6 +146,48 @@ export function listenForIncomingCall(userId: string, onIncoming: (payload: Offe
           sdp,
           createdAt: Date.now(),
         } as OfferPayload)
+      }
+
+      socket.on('call_user', handler)
+      detach = () => {
+        socket.off('call_user', handler)
+      }
+    } catch {
+      /* ignore */
+    }
+  })()
+
+  return () => {
+    disposed = true
+    detach()
+  }
+}
+
+export function listenForIncomingHostedCall(
+  userId: string,
+  onIncoming: (payload: HostedCallInvitePayload | null) => void
+) {
+  let disposed = false
+  let detach: () => void = () => undefined
+
+  ;(async () => {
+    try {
+      const socket = await ensureCallSocket(userId)
+      if (disposed) return
+
+      const handler = (payload: any) => {
+        if (!payload) {
+          onIncoming(null)
+          return
+        }
+        const roomId = String(payload.roomId || '').trim()
+        if (!roomId) return
+        onIncoming({
+          fromUserId: String(payload.fromUserId || ''),
+          mode: payload.callType === 'video' ? 'video' : 'audio',
+          roomId,
+          createdAt: Date.now(),
+        })
       }
 
       socket.on('call_user', handler)

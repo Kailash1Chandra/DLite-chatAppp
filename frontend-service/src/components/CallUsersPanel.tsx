@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { Clock, Phone, PhoneIncoming, PhoneOutgoing, Plus, Search, Trash2, Users, Video } from "lucide-react";
+import { startHostedCallInvite } from "@/lib/call";
+import { buildDirectCallRoomId, buildHostedCallUrl } from "@/lib/callRoom";
 import { useAuthContext } from "@/context/AuthContext";
 import { searchUsersByUsername } from "@/services/chatClient";
 import { cn } from "@/lib/utils";
-import { CallHistoryItem, clearCallHistory, readCallHistory } from "@/lib/callHistory";
+import { CALL_HISTORY_UPDATED_EVENT, CallHistoryItem, clearCallHistory, readCallHistory } from "@/lib/callHistory";
 
 type UserResult = { id: string; username: string };
 
@@ -38,6 +40,7 @@ export function CallUsersPanel({ className }: { className?: string }) {
   const [activeTab, setActiveTab] = useState<"users" | "history">("users");
   const [historyItems, setHistoryItems] = useState<CallHistoryItem[]>([]);
   const [searchOpen, setSearchOpen] = useState(true);
+  const [callActionError, setCallActionError] = useState("");
 
   const selectedUsername = useMemo(() => {
     const hit = userResults.find((u) => u.id === calleeId);
@@ -86,12 +89,50 @@ export function CallUsersPanel({ className }: { className?: string }) {
     setTimeout(() => searchInputRef.current?.focus(), 0);
   };
 
+  const startHostedCall = async (targetUserId: string, mode: "audio" | "video") => {
+    if (!currentUserId) return;
+    const calleeId = String(targetUserId || "").trim();
+    if (!calleeId) return;
+
+    const roomId = buildDirectCallRoomId(currentUserId, calleeId);
+    if (!roomId) return;
+
+    try {
+      await startHostedCallInvite({ callerId: currentUserId, calleeId, mode, roomId });
+      setCallActionError("");
+      router.push(buildHostedCallUrl(roomId, mode));
+    } catch (e) {
+      console.warn("Failed to send hosted call invite", e);
+      setCallActionError("Could not start the call right now. Please try again.");
+    }
+  };
+
   useEffect(() => {
     if (!currentUserId) return;
     const load = () => setHistoryItems(readCallHistory(currentUserId));
     load();
-    const t = window.setInterval(load, 1500);
-    return () => window.clearInterval(t);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== `dlite-call-history:${currentUserId}`) return;
+      load();
+    };
+    const onHistoryUpdated = (event: Event) => {
+      const nextUserId = (event as CustomEvent<{ userId?: string }>).detail?.userId;
+      if (nextUserId && nextUserId !== currentUserId) return;
+      load();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(CALL_HISTORY_UPDATED_EVENT, onHistoryUpdated as EventListener);
+    window.addEventListener("focus", load);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(CALL_HISTORY_UPDATED_EVENT, onHistoryUpdated as EventListener);
+      window.removeEventListener("focus", load);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [currentUserId]);
 
   function formatWhen(ts: number) {
@@ -197,6 +238,7 @@ export function CallUsersPanel({ className }: { className?: string }) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-2">
+        {callActionError ? <p className="mb-3 px-2 text-xs text-rose-600 dark:text-rose-300">{callActionError}</p> : null}
         {activeTab === "users" ? (
           userLoading ? (
             <div className="flex items-center gap-2 px-2 py-3 text-xs text-slate-500">Searching…</div>
@@ -252,7 +294,7 @@ export function CallUsersPanel({ className }: { className?: string }) {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          router.push(buildCallUrl(searchParams, { callee: u.id, mode: "audio", ready: "1" }));
+                          startHostedCall(u.id, "audio");
                         }}
                       >
                         <Phone className="h-4 w-4" />
@@ -268,7 +310,7 @@ export function CallUsersPanel({ className }: { className?: string }) {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          router.push(buildCallUrl(searchParams, { callee: u.id, mode: "video", ready: "1" }));
+                          startHostedCall(u.id, "video");
                         }}
                       >
                         <Video className="h-4 w-4" />
@@ -332,4 +374,3 @@ export function CallUsersPanel({ className }: { className?: string }) {
     </aside>
   );
 }
-

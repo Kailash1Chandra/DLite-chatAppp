@@ -39,3 +39,10 @@ export interface IncomingCall {
   calleeUserId: string;
   offer: OfferPayload;
 }
+
+export interface HostedCallInvitePayload {
+  fromUserId: string;
+  mode: CallMode;
+  roomId: string;
+  createdAt: number;
+}

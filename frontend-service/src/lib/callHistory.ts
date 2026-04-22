@@ -14,6 +14,7 @@ export type CallHistoryItem = {
 };
 
 const MAX_ITEMS = 60;
+export const CALL_HISTORY_UPDATED_EVENT = "dlite:call-history-updated";
 
 function keyFor(userId: string) {
   return `dlite-call-history:${userId}`;
@@ -36,6 +37,7 @@ export function writeCallHistory(userId: string, items: CallHistoryItem[]) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(keyFor(userId), JSON.stringify(items.slice(0, MAX_ITEMS)));
+    window.dispatchEvent(new CustomEvent(CALL_HISTORY_UPDATED_EVENT, { detail: { userId } }));
   } catch {
     /* ignore */
   }
@@ -56,4 +58,3 @@ export function clearCallHistory(userId: string) {
 export function createCallHistoryId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
-

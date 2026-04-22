@@ -7,6 +7,8 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { startHostedCallInvite } from '@/lib/call';
+import { buildDirectCallRoomId, buildHostedCallUrl } from '@/lib/callRoom';
 import { formatPeerPresence } from '@/lib/formatPresence';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -638,6 +640,24 @@ export default function ChatDashboardPage() {
   const messagesWrapRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
   const lastDirectMessageCountRef = useRef(0);
+
+  const startHostedCall = useCallback(async (targetUserId, mode) => {
+    const callerId = String(user?.id || '').trim();
+    const calleeId = String(targetUserId || '').trim();
+    if (!callerId || !calleeId) return;
+
+    const roomId = buildDirectCallRoomId(callerId, calleeId);
+    if (!roomId) return;
+
+    try {
+      await startHostedCallInvite({ callerId, calleeId, mode, roomId });
+      setActionError('');
+      router.push(buildHostedCallUrl(roomId, mode));
+    } catch (e) {
+      console.warn('Failed to send hosted call invite', e);
+      setActionError('Could not start the call right now. Please try again.');
+    }
+  }, [router, user?.id]);
   const pendingDirectScrollCountRef = useRef(0);
   const [pendingDirectScrollCount, setPendingDirectScrollCount] = useState(0);
 
@@ -1814,22 +1834,24 @@ export default function ChatDashboardPage() {
                     >
                       <Monitor className="h-4 w-4" />
                     </Link>
-                    <Link
-                      href={`/call?callee=${encodeURIComponent(activeUserId.trim())}&mode=audio&ready=1`}
+                    <button
+                      type="button"
+                      onClick={() => startHostedCall(activeUserId.trim(), 'audio')}
                       className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-ui-muted hover:text-ui-accent dark:text-slate-400"
                       title="Voice call"
                       aria-label="Voice call"
                     >
                       <Phone className="h-4 w-4" />
-                    </Link>
-                    <Link
-                      href={`/call?callee=${encodeURIComponent(activeUserId.trim())}&mode=video&ready=1`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startHostedCall(activeUserId.trim(), 'video')}
                       className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-ui-muted hover:text-ui-accent dark:text-slate-400"
                       title="Video call"
                       aria-label="Video call"
                     >
                       <Video className="h-4 w-4" />
-                    </Link>
+                    </button>
                     <div className="relative" data-chat-header-menu>
                       <button
                         type="button"

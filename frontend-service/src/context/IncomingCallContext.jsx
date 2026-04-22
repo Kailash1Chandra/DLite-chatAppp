@@ -1,10 +1,10 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { getUserProfileById } from '@/services/chatClient';
-import { listenForIncomingCall, rejectCall } from '@/lib/call';
+import { listenForIncomingHostedCall } from '@/lib/call';
+import { buildHostedCallUrl } from '@/lib/callRoom';
 
 const IncomingCallContext = createContext(null);
 
@@ -36,70 +36,39 @@ export function IncomingCallProvider({ children }) {
   const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const [offer, setOffer] = useState(null);
-  const [callerProfile, setCallerProfile] = useState(null);
   const beeper = useRef(createBeeper());
 
-  // When on the /call page, CallUI handles incoming calls itself — don't duplicate
-  const isOnCallPage = pathname?.startsWith('/call') || pathname?.startsWith('/webrtc-call');
+  // /call is now the launcher; only suppress auto-navigation when already inside an active call route.
+  const isOnCallPage = pathname?.startsWith('/call/') || pathname?.startsWith('/webrtc-call');
 
   useEffect(() => {
     if (!user?.id) return;
-    const unsub = listenForIncomingCall(user.id, (incoming) => {
+    const beeperRef = beeper.current;
+    const unsub = listenForIncomingHostedCall(user.id, (incoming) => {
       if (isOnCallPage) return;
       if (!incoming) {
-        setOffer(null);
-        beeper.current.stop();
+        beeperRef.stop();
         return;
       }
-      // Auto-open call screen on incoming call.
-      // (User asked to skip the green accept button overlay.)
-      try { sessionStorage.setItem('dlite-auto-accept-from', incoming.fromUserId); } catch { /* ignore */ }
-      beeper.current.stop();
-      setOffer(null);
-      router.push(`/call?callee=${encodeURIComponent(incoming.fromUserId)}&mode=${incoming.mode || 'audio'}&ready=1`);
+      beeperRef.stop();
+      router.push(buildHostedCallUrl(incoming.roomId, incoming.mode || 'audio'));
     });
     return () => {
       unsub();
-      beeper.current.stop();
+      beeperRef.stop();
     };
   }, [user?.id, isOnCallPage, router]);
 
   // When navigating to /call page, hide global overlay
   useEffect(() => {
+    const beeperRef = beeper.current;
     if (isOnCallPage) {
-      setOffer(null);
-      beeper.current.stop();
+      beeperRef.stop();
     }
   }, [isOnCallPage]);
 
-  useEffect(() => {
-    if (!offer?.fromUserId) { setCallerProfile(null); return; }
-    getUserProfileById(offer.fromUserId)
-      .then(setCallerProfile)
-      .catch(() => setCallerProfile(null));
-  }, [offer?.fromUserId]);
-
-  const accept = useCallback(() => {
-    if (!offer) return;
-    beeper.current.stop();
-    const mode = offer.mode || 'audio';
-    const callerId = offer.fromUserId;
-    setOffer(null);
-    // Store flag so CallUI auto-accepts on mount
-    try { sessionStorage.setItem('dlite-auto-accept-from', callerId); } catch { /* ignore */ }
-    router.push(`/call?callee=${encodeURIComponent(callerId)}&mode=${mode}&ready=1`);
-  }, [offer, router]);
-
-  const reject = useCallback(async () => {
-    if (!offer || !user?.id) return;
-    beeper.current.stop();
-    try { await rejectCall({ userId: user.id, callerId: offer.fromUserId }); } catch { /* ignore */ }
-    setOffer(null);
-  }, [offer, user?.id]);
-
   return (
-    <IncomingCallContext.Provider value={{ offer, callerProfile, accept, reject }}>
+    <IncomingCallContext.Provider value={{ offer: null, callerProfile: null, accept: undefined, reject: undefined }}>
       {children}
     </IncomingCallContext.Provider>
   );
