@@ -606,6 +606,7 @@ export default function ChatDashboardPage() {
   const [activeUserId, setActiveUserId] = useState('');
   const [peerUsername, setPeerUsername] = useState('');
   const [recentChats, setRecentChats] = useState([]);
+  const recentChatsRef = useRef([]);
   const [recentLoading, setRecentLoading] = useState(false);
   const [recentLoadError, setRecentLoadError] = useState('');
   const [recentRefreshTick, setRecentRefreshTick] = useState(0);
@@ -637,6 +638,12 @@ export default function ChatDashboardPage() {
   const [pollOpt1, setPollOpt1] = useState('Option A');
   const [pollOpt2, setPollOpt2] = useState('Option B');
   const [pollOpt3, setPollOpt3] = useState('Option C');
+
+  // Prevent request storms: message-loading effect should not re-run just because we update recentChats unread badges.
+  // Keep a ref so effects/callbacks can read the latest list without including it in dependency arrays.
+  useEffect(() => {
+    recentChatsRef.current = Array.isArray(recentChats) ? recentChats : [];
+  }, [recentChats]);
   const [inboxMailbox, setInboxMailbox] = useState('open');
   const [inboxSort, setInboxSort] = useState('newest');
   /** DIRECT | GROUPS | PUBLIC — Chat-style sidebar tabs */
@@ -948,7 +955,7 @@ export default function ChatDashboardPage() {
 
     const peerId = activeUserId.trim();
     const threadIdForPeer = String(
-      recentChats.find((c) => String(c?.peerId || '').trim() === peerId)?.threadId || ''
+      recentChatsRef.current.find((c) => String(c?.peerId || '').trim() === peerId)?.threadId || ''
     ).trim();
     // FIX: Mark messages as read when opening a chat (DB read receipts).
     markDirectThreadRead({ userId: user.id, peerId }).catch(() => undefined);
@@ -995,7 +1002,7 @@ export default function ChatDashboardPage() {
             markDirectThreadRead({ userId: user.id, peerId }).catch(() => undefined);
             const activePeerId = activeUserId.trim();
             const activeThreadId = String(
-              recentChats.find((c) => String(c?.peerId || '').trim() === activePeerId)?.threadId || ''
+              recentChatsRef.current.find((c) => String(c?.peerId || '').trim() === activePeerId)?.threadId || ''
             ).trim();
             if (activeThreadId) {
               setRecentChats((prev) =>
@@ -1024,7 +1031,7 @@ export default function ChatDashboardPage() {
       cancelled = true;
       unsubscribe();
     };
-  }, [user?.id, activeUserId, historyRefreshTick, recentChats]);
+  }, [user?.id, activeUserId, historyRefreshTick]);
 
   const applyLocalMessageEvent = useCallback(({ changeType, message }) => {
     const id = String(message?._id || '').trim();
