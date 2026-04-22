@@ -20,6 +20,11 @@ def _parse_origins(value: str) -> list[str] | str:
 app = FastAPI()
 
 cors_origins = _parse_origins(os.getenv("SOCKET_IO_CORS_ORIGINS", "*"))
+if isinstance(cors_origins, list) and "https://frontend-dlite.vercel.app" not in cors_origins:
+    cors_origins.append("https://frontend-dlite.vercel.app")
+elif cors_origins != "*":
+    cors_origins = ["*", "https://frontend-dlite.vercel.app"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins if isinstance(cors_origins, list) else ["*"],
