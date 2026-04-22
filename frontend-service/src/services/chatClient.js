@@ -826,41 +826,6 @@ export async function deleteGroup() {
   }
   return json
 }
-
-export function subscribeGroupDeleted() {
-  const cb = typeof arguments?.[0] === 'function' ? arguments[0] : () => undefined
-  let disposed = false
-  let detach = () => undefined
-
-  ;(async () => {
-    const snapshot = await getCurrentAuthSnapshot().catch(() => null)
-    const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
-    if (!snapshot?.token || !uid) return
-    let s
-    try {
-      s = await getSocket({ userId: uid })
-    } catch {
-      return
-    }
-    const handler = (payload) => {
-      if (disposed) return
-      cb(payload || {})
-    }
-    s.on('group_deleted', handler)
-    detach = () => {
-      try {
-        s.off('group_deleted', handler)
-      } catch {
-        /* ignore */
-      }
-    }
-  })()
-
-  return () => {
-    disposed = true
-    detach()
-  }
-}
 export async function addGroupMemberByUsername() {
   const snapshot = await getCurrentAuthSnapshot()
   if (!snapshot?.token) throw new Error('Not authenticated')
