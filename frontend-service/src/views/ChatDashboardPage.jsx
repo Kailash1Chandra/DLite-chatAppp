@@ -954,7 +954,7 @@ export default function ChatDashboardPage() {
     const peerId = activeUserId.trim();
     // FIX: Mark messages as read when opening a chat (DB read receipts).
     markDirectThreadRead({ userId: user.id, peerId }).catch(() => undefined);
-    markRecentDirectChatRead(user.id, peerId)
+    markRecentDirectChatRead({ userId: user.id, peerId })
       .then(() => {
         // Keep UI consistent: unread badge should disappear immediately.
         setRecentChats((prev) => prev.map((chat) => (chat.peerId === peerId ? { ...chat, unreadCount: 0 } : chat)));
@@ -991,7 +991,7 @@ export default function ChatDashboardPage() {
           if (msg.senderId && msg.senderId !== user.id) {
             // FIX: If chat is open, mark as read immediately on receive.
             markDirectThreadRead({ userId: user.id, peerId }).catch(() => undefined);
-            markRecentDirectChatRead(user.id, activeUserId.trim())
+            markRecentDirectChatRead({ userId: user.id, peerId: activeUserId.trim() })
               .then(() => {
                 setRecentChats((prev) =>
                   prev.map((chat) => (chat.peerId === activeUserId.trim() ? { ...chat, unreadCount: 0 } : chat))
@@ -1025,10 +1025,15 @@ export default function ChatDashboardPage() {
       return;
     }
 
-    // Auto-scroll always (DM): keep the view pinned to the latest message.
-    scrollDirectMessagesToLatest();
-    pendingDirectScrollCountRef.current = 0;
-    setPendingDirectScrollCount(0);
+    if (shouldAutoScrollRef.current || previousCount === 0) {
+      scrollDirectMessagesToLatest();
+      pendingDirectScrollCountRef.current = 0;
+      setPendingDirectScrollCount(0);
+    } else if (currentCount > previousCount) {
+      const nextPending = pendingDirectScrollCountRef.current + (currentCount - previousCount);
+      pendingDirectScrollCountRef.current = nextPending;
+      setPendingDirectScrollCount(nextPending);
+    }
 
     lastDirectMessageCountRef.current = currentCount;
   }, [messages.length, activeUserId, scrollDirectMessagesToLatest]);
