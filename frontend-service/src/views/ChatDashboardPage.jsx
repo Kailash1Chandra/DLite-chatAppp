@@ -638,8 +638,6 @@ export default function ChatDashboardPage() {
   const mediaImageInputRef = useRef(null);
   const composerInputRef = useRef(null);
   const messagesWrapRef = useRef(null);
-  const shouldAutoScrollRef = useRef(true);
-  const lastDirectMessageCountRef = useRef(0);
 
   const startHostedCall = useCallback(async (targetUserId, mode) => {
     const callerId = String(user?.id || '').trim();
@@ -658,9 +656,6 @@ export default function ChatDashboardPage() {
       setActionError('Could not start the call right now. Please try again.');
     }
   }, [router, user?.id]);
-  const pendingDirectScrollCountRef = useRef(0);
-  const [pendingDirectScrollCount, setPendingDirectScrollCount] = useState(0);
-
   const peerKey = useMemo(() => activeUserId.trim(), [activeUserId]);
   const peerShort = useMemo(() => {
     if (!peerKey) return '—';
@@ -682,13 +677,6 @@ export default function ChatDashboardPage() {
     overscan: 12,
     getItemKey: (index) => filteredMessages[index]?._id ?? `dm-row-${index}`,
   });
-
-  const scrollDirectMessagesToLatest = useCallback(() => {
-    const el = messagesWrapRef.current;
-    if (!el || el.clientHeight <= 0) return false;
-    el.scrollTop = el.scrollHeight;
-    return true;
-  }, []);
 
   const dmUnreadTotal = useMemo(
     () => recentChats.reduce((s, c) => s + Number(c.unreadCount || 0), 0),
@@ -746,24 +734,6 @@ export default function ChatDashboardPage() {
   }, [activeUserId]);
 
   // Message row is memoized outside component for stability.
-
-  // FIX: auto-scroll only if user is near bottom (don’t interrupt when scrolling up).
-  useEffect(() => {
-    const el = messagesWrapRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      const thresholdPx = 140;
-      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      shouldAutoScrollRef.current = distanceFromBottom < thresholdPx;
-      if (shouldAutoScrollRef.current && pendingDirectScrollCountRef.current > 0) {
-        pendingDirectScrollCountRef.current = 0;
-        setPendingDirectScrollCount(0);
-      }
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
 
   useEffect(() => {
     const onDoc = (e) => {
@@ -1014,43 +984,6 @@ export default function ChatDashboardPage() {
       unsubscribe();
     };
   }, [user?.id, activeUserId, historyRefreshTick]);
-
-  useEffect(() => {
-    const currentCount = messages.length;
-    const previousCount = lastDirectMessageCountRef.current;
-
-    if (!activeUserId.trim()) {
-      lastDirectMessageCountRef.current = currentCount;
-      pendingDirectScrollCountRef.current = 0;
-      setPendingDirectScrollCount(0);
-      return;
-    }
-
-    if (shouldAutoScrollRef.current || previousCount === 0) {
-      const frame = window.requestAnimationFrame(() => {
-        const didScroll = scrollDirectMessagesToLatest();
-        if (didScroll) {
-          pendingDirectScrollCountRef.current = 0;
-          setPendingDirectScrollCount(0);
-        }
-      });
-      lastDirectMessageCountRef.current = currentCount;
-      return () => window.cancelAnimationFrame(frame);
-    } else if (currentCount > previousCount) {
-      const nextPending = pendingDirectScrollCountRef.current + (currentCount - previousCount);
-      pendingDirectScrollCountRef.current = nextPending;
-      setPendingDirectScrollCount(nextPending);
-    }
-
-    lastDirectMessageCountRef.current = currentCount;
-  }, [messages.length, activeUserId, scrollDirectMessagesToLatest]);
-
-  useEffect(() => {
-    lastDirectMessageCountRef.current = 0;
-    pendingDirectScrollCountRef.current = 0;
-    setPendingDirectScrollCount(0);
-    shouldAutoScrollRef.current = true;
-  }, [activeUserId]);
 
   useLayoutEffect(() => {
     const ta = composerInputRef.current;
@@ -1867,14 +1800,15 @@ export default function ChatDashboardPage() {
                 <div className="flex shrink-0 items-center gap-1.5">
                   {activeUserId.trim() && user?.id ? (
                     <>
-                    <Link
-                      href={`/call?callee=${encodeURIComponent(activeUserId.trim())}&mode=video&ready=1&share=1`}
+                    <button
+                      type="button"
+                      onClick={() => startHostedCall(activeUserId.trim(), 'video')}
                       className="hidden h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-ui-muted hover:text-ui-accent sm:flex dark:text-slate-400"
-                      title="Screen share"
-                      aria-label="Screen share"
+                      title="Video room"
+                      aria-label="Video room"
                     >
                       <Monitor className="h-4 w-4" />
-                    </Link>
+                    </button>
                     <button
                       type="button"
                       onClick={() => startHostedCall(activeUserId.trim(), 'audio')}
@@ -2160,16 +2094,6 @@ export default function ChatDashboardPage() {
               )}
               </div>
 
-              {pendingDirectScrollCount > 0 && (
-                <button
-                  type="button"
-                  onClick={scrollDirectMessagesToLatest}
-                  className="absolute bottom-4 right-4 z-20 rounded-full border border-ui-border bg-ui-panel px-3 py-2 text-xs font-medium text-slate-700 shadow-lg shadow-black/10 backdrop-blur hover:border-ui-accent hover:text-ui-accent dark:text-slate-100"
-                  aria-label={`Jump to latest ${pendingDirectScrollCount} new message${pendingDirectScrollCount > 1 ? 's' : ''}`}
-                >
-                  {pendingDirectScrollCount} new message{pendingDirectScrollCount > 1 ? 's' : ''}
-                </button>
-              )}
             </div>
 
             {typingUsers.length > 0 && (

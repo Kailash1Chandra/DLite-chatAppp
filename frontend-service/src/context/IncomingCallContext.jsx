@@ -1,6 +1,6 @@
-'use client';
+ 'use client';
 
-import { createContext, useContext, useEffect, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { listenForIncomingHostedCall } from '@/lib/call';
@@ -37,9 +37,23 @@ export function IncomingCallProvider({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const beeper = useRef(createBeeper());
+  const [incoming, setIncoming] = useState(null);
 
   // /call is now the launcher; only suppress auto-navigation when already inside an active call route.
   const isOnCallPage = pathname?.startsWith('/call/') || pathname?.startsWith('/webrtc-call');
+
+  const accept = useCallback(() => {
+    if (!incoming?.roomId) return;
+    const nextUrl = buildHostedCallUrl(incoming.roomId, incoming.mode || 'audio');
+    setIncoming(null);
+    beeper.current.stop();
+    router.push(nextUrl);
+  }, [incoming, router]);
+
+  const reject = useCallback(() => {
+    setIncoming(null);
+    beeper.current.stop();
+  }, []);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -47,11 +61,12 @@ export function IncomingCallProvider({ children }) {
     const unsub = listenForIncomingHostedCall(user.id, (incoming) => {
       if (isOnCallPage) return;
       if (!incoming) {
+        setIncoming(null);
         beeperRef.stop();
         return;
       }
-      beeperRef.stop();
-      router.push(buildHostedCallUrl(incoming.roomId, incoming.mode || 'audio'));
+      beeperRef.start();
+      setIncoming(incoming);
     });
     return () => {
       unsub();
@@ -64,11 +79,22 @@ export function IncomingCallProvider({ children }) {
     const beeperRef = beeper.current;
     if (isOnCallPage) {
       beeperRef.stop();
+      setIncoming(null);
     }
   }, [isOnCallPage]);
 
+  const value = useMemo(
+    () => ({
+      offer: incoming,
+      callerProfile: incoming ? { id: incoming.fromUserId, username: incoming.fromUserId } : null,
+      accept,
+      reject,
+    }),
+    [accept, incoming, reject]
+  );
+
   return (
-    <IncomingCallContext.Provider value={{ offer: null, callerProfile: null, accept: undefined, reject: undefined }}>
+    <IncomingCallContext.Provider value={value}>
       {children}
     </IncomingCallContext.Provider>
   );
