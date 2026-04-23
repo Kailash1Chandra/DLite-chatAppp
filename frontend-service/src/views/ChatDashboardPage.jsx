@@ -230,24 +230,24 @@ const ChatMessageRow = memo(function ChatMessageRow({
             className={cn(
               'mb-1 max-w-full text-[12px]',
               mine
-                ? 'pr-0.5 text-right text-white/75'
+                ? 'pr-0.5 text-right text-slate-500 dark:text-slate-400'
                 : 'pl-0.5 text-slate-500 dark:text-slate-400'
             )}
           >
             <span
-              className={cn('font-medium', mine ? 'text-white/95' : 'text-slate-600 dark:text-slate-300')}
+              className={cn('font-medium', mine ? 'text-slate-700 dark:text-slate-200' : 'text-slate-600 dark:text-slate-300')}
             >
               {senderLabel}
             </span>
             {m.createdAt ? (
-              <span className={cn('font-normal', mine ? 'text-white/65' : 'text-slate-400 dark:text-slate-500')}>
+              <span className={cn('font-normal', mine ? 'text-slate-400 dark:text-slate-500' : 'text-slate-400 dark:text-slate-500')}>
                 {' '}
                 · {formatMessageMetaTime(m.createdAt)}
               </span>
             ) : null}
             {isPinned ? <Pin className="ml-1 inline h-3 w-3 align-middle opacity-70" /> : null}
             {mine ? (
-              <span className="ml-2 text-[10px] font-semibold tracking-wide text-white/85">
+              <span className="ml-2 text-[10px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
                 {m.readBy?.[peerKey] ? 'Read' : m.deliveredBy?.[peerKey] ? 'Delivered' : 'Sent'}
               </span>
             ) : null}
