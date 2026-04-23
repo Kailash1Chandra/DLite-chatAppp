@@ -613,19 +613,13 @@ export default function GroupChatPage() {
       return;
     }
 
-    if (shouldAutoScrollRef.current || previousCount === 0) {
-      // FIX: Scroll to latest message on send/receive when user is near bottom.
-      scrollGroupMessagesToLatest();
-      pendingGroupScrollCountRef.current = 0;
-      setPendingGroupScrollCount(0);
-    } else if (currentCount > previousCount) {
-      const nextPending = pendingGroupScrollCountRef.current + (currentCount - previousCount);
-      pendingGroupScrollCountRef.current = nextPending;
-      setPendingGroupScrollCount(nextPending);
-    }
+    // Auto-scroll always (Group): keep the view pinned to the latest message.
+    scrollGroupMessagesToLatest();
+    pendingGroupScrollCountRef.current = 0;
+    setPendingGroupScrollCount(0);
 
     lastGroupMessageCountRef.current = currentCount;
-  }, [messages.length]);
+  }, [messages.length, groupId, scrollGroupMessagesToLatest]);
 
   useEffect(() => {
     lastGroupMessageCountRef.current = 0;

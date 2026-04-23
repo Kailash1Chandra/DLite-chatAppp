@@ -1025,16 +1025,10 @@ export default function ChatDashboardPage() {
       return;
     }
 
-    if (shouldAutoScrollRef.current || previousCount === 0) {
-      // FIX: Scroll to latest message on send/receive when user is near bottom.
-      scrollDirectMessagesToLatest();
-      pendingDirectScrollCountRef.current = 0;
-      setPendingDirectScrollCount(0);
-    } else if (currentCount > previousCount) {
-      const nextPending = pendingDirectScrollCountRef.current + (currentCount - previousCount);
-      pendingDirectScrollCountRef.current = nextPending;
-      setPendingDirectScrollCount(nextPending);
-    }
+    // Auto-scroll always (DM): keep the view pinned to the latest message.
+    scrollDirectMessagesToLatest();
+    pendingDirectScrollCountRef.current = 0;
+    setPendingDirectScrollCount(0);
 
     lastDirectMessageCountRef.current = currentCount;
   }, [messages.length, activeUserId, scrollDirectMessagesToLatest]);
