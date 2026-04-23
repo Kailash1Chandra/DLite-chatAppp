@@ -1959,10 +1959,10 @@ export default function ChatDashboardPage() {
               </div>
             )}
 
-            <div className="relative min-h-0 flex-1">
+            <div className="relative flex min-h-0 flex-1 flex-col">
               <div
                 ref={messagesWrapRef}
-                className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain bg-ui-thread px-3 py-3 sm:px-5 sm:py-4"
+                className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-ui-thread px-3 py-3 sm:px-5 sm:py-4"
               >
               {messageLoadError && (
                 <div className="rounded-2xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
