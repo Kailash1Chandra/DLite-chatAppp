@@ -170,7 +170,10 @@ export default function GroupChatPage() {
   const scrollGroupMessagesToLatest = useCallback(() => {
     const el = messagesWrapRef.current;
     if (!el) return;
+    shouldAutoScrollRef.current = true;
     el.scrollTop = el.scrollHeight;
+    pendingGroupScrollCountRef.current = 0;
+    setPendingGroupScrollCount(0);
   }, []);
 
   const MessageRow = useMemo(
@@ -613,10 +616,22 @@ export default function GroupChatPage() {
       return;
     }
 
-    // Auto-scroll always (Group): keep the view pinned to the latest message.
-    scrollGroupMessagesToLatest();
-    pendingGroupScrollCountRef.current = 0;
-    setPendingGroupScrollCount(0);
+    if (previousCount === 0) {
+      scrollGroupMessagesToLatest();
+      lastGroupMessageCountRef.current = currentCount;
+      return;
+    }
+
+    if (currentCount > previousCount) {
+      if (shouldAutoScrollRef.current) {
+        scrollGroupMessagesToLatest();
+      } else {
+        const addedCount = currentCount - previousCount;
+        const nextPending = pendingGroupScrollCountRef.current + addedCount;
+        pendingGroupScrollCountRef.current = nextPending;
+        setPendingGroupScrollCount(nextPending);
+      }
+    }
 
     lastGroupMessageCountRef.current = currentCount;
   }, [messages.length, groupId, scrollGroupMessagesToLatest]);
@@ -1616,7 +1631,7 @@ export default function GroupChatPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  {groupId.trim() ? groupId.trim() : 'No group selected'}
+                  {groupId.trim() ? activeGroupName : 'No group selected'}
                 </p>
                 <p className="truncate text-xs text-slate-500 dark:text-slate-400">{groupSubtitle}</p>
               </div>
