@@ -9,7 +9,7 @@ import { ChatAppTopBar } from '@/components/ChatAppTopBar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-function useVoiceMeter() {
+export default function SpecialFriendPage() {
   const prefersReducedMotion = useReducedMotion();
   const [listening, setListening] = useState(false);
   const [level, setLevel] = useState(0.08);

@@ -577,6 +577,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
 export default function ChatDashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const [specialFriendModePickerOpen, setSpecialFriendModePickerOpen] = useState(false);
   const [specialFriendLaunching, setSpecialFriendLaunching] = useState(false);
   const specialFriendLaunchTimeoutRef = useRef(null);
   const [messages, setMessages] = useState([]);
@@ -670,8 +671,19 @@ export default function ChatDashboardPage() {
   }, [router, user?.id]);
 
   const handleSpecialFriendClick = useCallback(() => {
-    if (specialFriendLaunching) return;
+    if (specialFriendLaunching || specialFriendModePickerOpen) return;
     setActionError('');
+    setSpecialFriendModePickerOpen(true);
+
+    if (specialFriendLaunchTimeoutRef.current) {
+      clearTimeout(specialFriendLaunchTimeoutRef.current);
+      specialFriendLaunchTimeoutRef.current = null;
+    }
+  }, [specialFriendLaunching, specialFriendModePickerOpen]);
+
+  const continueToSpecialFriend = useCallback((mode) => {
+    if (!mode || specialFriendLaunching) return;
+    setSpecialFriendModePickerOpen(false);
     setSpecialFriendLaunching(true);
 
     if (specialFriendLaunchTimeoutRef.current) {
@@ -679,7 +691,7 @@ export default function ChatDashboardPage() {
     }
 
     specialFriendLaunchTimeoutRef.current = window.setTimeout(() => {
-      router.push('/special-friend');
+      router.push(`/special-friend?mode=${encodeURIComponent(mode)}`);
     }, 650);
   }, [router, specialFriendLaunching]);
 
@@ -1357,7 +1369,7 @@ export default function ChatDashboardPage() {
           <ChatAppTopBar
             showSpecialFriend
             onSpecialFriendClick={handleSpecialFriendClick}
-            specialFriendLaunching={specialFriendLaunching}
+            specialFriendLaunching={specialFriendLaunching || specialFriendModePickerOpen}
           />
         }
       gridClassName="grid-cols-1 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]"
@@ -2822,21 +2834,59 @@ export default function ChatDashboardPage() {
           </RightDrawer>
       </ChatAppShell>
 
-      {specialFriendLaunching && typeof document !== 'undefined'
+      {(specialFriendLaunching || specialFriendModePickerOpen) && typeof document !== 'undefined'
         ? createPortal(
             <div className="fixed inset-0 z-[260] overflow-hidden bg-slate-950/80">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.28),rgba(99,102,241,0.24),transparent_62%)]" />
               <div className="anim-glow absolute left-1/2 top-1/2 h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-400/20 blur-3xl" />
-              <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-4 text-center text-white">
-                <div className="relative flex h-28 w-28 items-center justify-center">
-                  <span className="absolute inset-0 rounded-full border border-cyan-200/40 animate-ping" />
-                  <span className="absolute inset-2 rounded-full border border-white/20 bg-white/5 backdrop-blur" />
-                  <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300 via-sky-500 to-indigo-600 shadow-[0_0_60px_rgba(34,211,238,0.55)]">
-                    <Sparkles className="h-8 w-8 text-white" />
-                  </span>
+              {specialFriendModePickerOpen ? (
+                <div className="absolute left-1/2 top-1/2 flex w-[min(92vw,440px)] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-5 rounded-3xl border border-white/15 bg-slate-900/75 p-6 text-center text-white backdrop-blur-md">
+                  <div className="relative flex h-20 w-20 items-center justify-center">
+                    <span className="absolute inset-0 rounded-full border border-cyan-200/40" />
+                    <span className="absolute inset-2 rounded-full border border-white/20 bg-white/5" />
+                    <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300 via-sky-500 to-indigo-600 shadow-[0_0_40px_rgba(34,211,238,0.45)]">
+                      <Sparkles className="h-6 w-6 text-white" />
+                    </span>
+                  </div>
+                  <p className="text-base font-semibold tracking-wide text-cyan-100">Choose Special Friend mode</p>
+                  <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-violet-200/30 bg-violet-500/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500/35"
+                      onClick={() => continueToSpecialFriend('chat')}
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      Chat
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-200/30 bg-cyan-500/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-cyan-500/35"
+                      onClick={() => continueToSpecialFriend('voice')}
+                    >
+                      <Mic className="h-4 w-4" />
+                      Voice
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-slate-300 transition hover:text-white"
+                    onClick={() => setSpecialFriendModePickerOpen(false)}
+                  >
+                    Cancel
+                  </button>
                 </div>
-                <p className="text-sm font-semibold tracking-wide text-cyan-100">Opening Special Friend…</p>
-              </div>
+              ) : (
+                <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-4 text-center text-white">
+                  <div className="relative flex h-28 w-28 items-center justify-center">
+                    <span className="absolute inset-0 rounded-full border border-cyan-200/40 animate-ping" />
+                    <span className="absolute inset-2 rounded-full border border-white/20 bg-white/5 backdrop-blur" />
+                    <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300 via-sky-500 to-indigo-600 shadow-[0_0_60px_rgba(34,211,238,0.55)]">
+                      <Sparkles className="h-8 w-8 text-white" />
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold tracking-wide text-cyan-100">Opening Special Friend…</p>
+                </div>
+              )}
             </div>,
             document.body
           )
