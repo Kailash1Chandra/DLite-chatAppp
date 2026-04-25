@@ -24,6 +24,20 @@ app.use(requestIdMiddleware);
 app.use(morgan(":method :url :status :res[content-length] - :response-time ms :req[x-request-id]"));
 app.use(apiRateLimiter);
 
+app.get("/favicon.ico", (_req, res) => {
+  // Avoid noisy 404s in browser devtools.
+  res.status(204).end();
+});
+
+app.get("/", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "call-service",
+    health: "/health",
+    apiBase: "/api",
+  });
+});
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "call-service" });
 });

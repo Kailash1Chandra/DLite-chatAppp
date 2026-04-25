@@ -1927,16 +1927,6 @@ export default function GroupChatPage() {
                 >
                   <SmilePlus className="h-[22px] w-[22px]" />
                 </button>
-                <button
-                  type="button"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/90 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-700/80"
-                  title="Attach media"
-                  aria-label="Attach media"
-                  disabled={!groupId.trim() || !isMember || sending}
-                  onClick={() => groupMediaInputRef.current?.click()}
-                >
-                  <Upload className="h-[22px] w-[22px]" />
-                </button>
                 <textarea
                   ref={groupComposerRef}
                   rows={1}
