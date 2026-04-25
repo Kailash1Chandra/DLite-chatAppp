@@ -878,6 +878,12 @@ export default function CallUI({
       status === "connected" ||
       status === "ringing");
 
+  // When CallUI is embedded without the user panel (call dashboard right side),
+  // keep it empty until a call is active/incoming (WhatsApp-like).
+  if (!showWhatsAppCallScreen && !showUserPanel) {
+    return null;
+  }
+
   const heroIcon = isVideoMode ? Video : PhoneCall;
   const HeroIcon = heroIcon;
   const statusToneClass =

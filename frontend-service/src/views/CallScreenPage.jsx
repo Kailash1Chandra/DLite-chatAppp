@@ -234,7 +234,7 @@ export default function CallScreenPage() {
           theme="enhanced"
           showUserPanel={false}
           requireExplicitStart={false}
-          showHero
+          showHero={false}
         />
       </section>
     </ChatAppShell>
