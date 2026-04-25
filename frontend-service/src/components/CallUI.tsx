@@ -937,7 +937,7 @@ export default function CallUI({
             <div className="relative z-10 flex items-start justify-between gap-3 px-5 pt-6 sm:pt-8">
               <div className="min-w-0">
                 <p className="truncate text-base font-semibold text-white drop-shadow">
-                  {peerDisplayName || peerId || "Call"}
+                  {peerDisplayName || "Call"}
                 </p>
                 <p className="mt-1 text-sm text-white/75">
                   {status === "connected" ? formatDuration(callDuration) : getStatusLabel(status)}
@@ -1356,7 +1356,7 @@ export default function CallUI({
                         Peer
                       </div>
                       <div className="mt-1 truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
-                        {peerDisplayName || incomingOffer?.fromUserId || peerId || "Waiting"}
+                        {peerDisplayName || "Waiting"}
                       </div>
                     </div>
                   </div>

@@ -2263,7 +2263,9 @@ export default function GroupChatPage() {
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{getMemberLabel(member)}</p>
-                      <p className="truncate text-xs text-slate-500 dark:text-slate-300/80">{member.id}</p>
+                      <p className="truncate text-xs text-slate-500 dark:text-slate-300/80">
+                        {member.role === 'admin' ? 'admin' : 'member'}
+                      </p>
                     </div>
                     {isGroupAdmin && member.id !== user?.id && (
                       <div className="flex items-center gap-2">
@@ -2421,7 +2423,6 @@ export default function GroupChatPage() {
                           <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                             {displayName}
                           </p>
-                          <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{uid}</p>
                         </div>
                         <span
                           className={cn(
