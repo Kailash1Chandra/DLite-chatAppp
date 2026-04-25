@@ -918,22 +918,13 @@ export default function CallUI({
           )}
         >
           {activeMode === "video" ? (
-            <div className="absolute inset-0 flex flex-col gap-3 p-3 sm:gap-4 sm:p-4">
-              <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
-                <div className="relative min-h-0 overflow-hidden rounded-[1.5rem] bg-black ring-1 ring-white/10">
+            <div className="absolute inset-0 flex flex-col p-4 sm:p-5">
+              <div className="mx-auto grid w-full max-w-[1160px] flex-1 grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
                   <video ref={overlayVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
-                  <div className="pointer-events-none absolute inset-0 bg-black/10" aria-hidden="true" />
-                  <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-semibold text-white/90 ring-1 ring-white/10">
-                    {peerDisplayName || peerId || "Remote"}
-                  </div>
                 </div>
-
-                <div className="relative min-h-0 overflow-hidden rounded-[1.5rem] bg-black ring-1 ring-white/10">
+                <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
                   <video ref={localVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
-                  <div className="pointer-events-none absolute inset-0 bg-black/10" aria-hidden="true" />
-                  <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-semibold text-white/90 ring-1 ring-white/10">
-                    You
-                  </div>
                 </div>
               </div>
             </div>
@@ -942,36 +933,38 @@ export default function CallUI({
           )}
           <div className="absolute inset-0 bg-black/15" />
 
-          <div className="relative z-10 flex items-start justify-between gap-3 px-5 pt-6 sm:pt-8">
-            <div className="min-w-0">
-              <p className="truncate text-base font-semibold text-white drop-shadow">
-                {peerDisplayName || peerId || "Call"}
-              </p>
-              <p className="mt-1 text-sm text-white/75">
-                {status === "connected" ? formatDuration(callDuration) : getStatusLabel(status)}
-              </p>
+          {activeMode !== "video" ? (
+            <div className="relative z-10 flex items-start justify-between gap-3 px-5 pt-6 sm:pt-8">
+              <div className="min-w-0">
+                <p className="truncate text-base font-semibold text-white drop-shadow">
+                  {peerDisplayName || peerId || "Call"}
+                </p>
+                <p className="mt-1 text-sm text-white/75">
+                  {status === "connected" ? formatDuration(callDuration) : getStatusLabel(status)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => router.back()}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+                  aria-label="Back"
+                  title="Back"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleBrowserFullscreen}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+                  aria-label={isBrowserFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                  title={isBrowserFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                >
+                  {isBrowserFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => router.back()}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
-                aria-label="Back"
-                title="Back"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                onClick={toggleBrowserFullscreen}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
-                aria-label={isBrowserFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                title={isBrowserFullscreen ? "Exit fullscreen" : "Fullscreen"}
-              >
-                {isBrowserFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-              </button>
-            </div>
-          </div>
+          ) : null}
 
           {activeMode !== "video" && (
             <div className="relative z-10 flex min-h-0 flex-1 items-center justify-center px-6">
@@ -1041,60 +1034,81 @@ export default function CallUI({
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2 rounded-full bg-black/35 px-3 py-2 ring-1 ring-white/10 backdrop-blur">
-                {activeMode === "video" ? (
+              <div className="flex items-center justify-center">
+                <div className="flex items-center gap-2 rounded-full bg-[#2b2b2b]/80 px-3 py-2 ring-1 ring-white/10 backdrop-blur">
                   <button
                     type="button"
-                    onClick={toggleCamera}
-                    disabled={!canToggleCamera}
-                    className={cn(
-                      "flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20",
-                      !canToggleCamera && "opacity-60"
-                    )}
-                    aria-label={cameraEnabled ? "Camera off" : "Camera on"}
-                    title={cameraEnabled ? "Camera" : "Camera off"}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                    aria-label="Call actions"
+                    title="Call"
                   >
-                    {cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+                    <Phone className="h-5 w-5" />
                   </button>
-                ) : null}
 
-                <button
-                  type="button"
-                  onClick={toggleMic}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
-                  aria-label={micEnabled ? "Mute" : "Unmute"}
-                  title={micEnabled ? "Microphone" : "Microphone off"}
-                >
-                  {micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-                </button>
+                  <button
+                    type="button"
+                    onClick={toggleMic}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                    aria-label={micEnabled ? "Mute" : "Unmute"}
+                    title={micEnabled ? "Microphone" : "Microphone off"}
+                  >
+                    {micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={leaveCall}
-                  className="flex h-10 w-12 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/20 transition hover:bg-red-600"
-                  aria-label="End call"
-                  title="End call"
-                >
-                  <PhoneOff className="h-5 w-5" />
-                </button>
+                  {activeMode === "video" ? (
+                    <button
+                      type="button"
+                      onClick={toggleCamera}
+                      disabled={!canToggleCamera}
+                      className={cn(
+                        "flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20",
+                        !canToggleCamera && "opacity-60"
+                      )}
+                      aria-label={cameraEnabled ? "Camera off" : "Camera on"}
+                      title={cameraEnabled ? "Camera" : "Camera off"}
+                    >
+                      {cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+                    </button>
+                  ) : null}
+
+                  {activeMode === "video" ? (
+                    <button
+                      type="button"
+                      onClick={toggleScreenShare}
+                      className={cn(
+                        "flex h-10 w-10 items-center justify-center rounded-full text-white transition",
+                        isScreenSharing ? "bg-white/20 hover:bg-white/25" : "bg-white/10 hover:bg-white/20"
+                      )}
+                      aria-label={isScreenSharing ? "Stop sharing" : "Share screen"}
+                      title={isScreenSharing ? "Stop sharing" : "Share screen"}
+                    >
+                      {isScreenSharing ? <MonitorOff className="h-5 w-5" /> : <Monitor className="h-5 w-5" />}
+                    </button>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                    aria-label="Participants"
+                    title="Participants"
+                  >
+                    <Users className="h-5 w-5" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={leaveCall}
+                    className="flex h-10 w-12 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/20 transition hover:bg-red-600"
+                    aria-label="End call"
+                    title="End call"
+                  >
+                    <PhoneOff className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* Optional screen-share: keep functionality but avoid cluttering the main 3 buttons */}
-            {activeMode === "video" && status !== "idle" ? (
-              <button
-                type="button"
-                onClick={toggleScreenShare}
-                className={cn(
-                  "absolute bottom-12 right-6 flex h-10 w-10 items-center justify-center rounded-full text-white backdrop-blur-sm transition",
-                  isScreenSharing ? "bg-ui-accent hover:brightness-110" : "bg-white/15 hover:bg-white/25"
-                )}
-                aria-label={isScreenSharing ? "Stop sharing" : "Share screen"}
-                title={isScreenSharing ? "Stop sharing" : "Share screen"}
-              >
-                {isScreenSharing ? <MonitorOff className="h-5 w-5" /> : <Monitor className="h-5 w-5" />}
-              </button>
-            ) : null}
+            {/* Screen share moved into the bottom bar */}
           </div>
         </div>
       ) : (
