@@ -119,6 +119,7 @@ export default function GroupChatPage() {
   const [groupMuted, setGroupMuted] = useState(false);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
   const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
+  const [addingMemberBatch, setAddingMemberBatch] = useState(false);
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const [kickingMemberId, setKickingMemberId] = useState('');
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
@@ -900,7 +901,14 @@ export default function GroupChatPage() {
 
   const handleAddMemberFromSearch = async (u) => {
     const targetGroupId = groupId.trim();
-    const uname = String(u?.username || '').trim();
+    const uname = String(
+      u?.username ||
+        u?.user_metadata?.username ||
+        u?.user_metadata?.full_name ||
+        u?.user_metadata?.name ||
+        (u?.email ? String(u.email).split('@')[0] : '') ||
+        ''
+    ).trim();
     if (!targetGroupId || !uname || !user?.id) return;
     setAddingMember(true);
     setPanelError('');
@@ -923,6 +931,47 @@ export default function GroupChatPage() {
       setPanelError(err?.message || 'Could not add user to group.');
     } finally {
       setAddingMember(false);
+    }
+  };
+
+  const handleAddSelectedMembersToCurrentGroup = async () => {
+    const targetGroupId = groupId.trim();
+    if (!targetGroupId || !user?.id) return;
+    const ids = selectedMemberIds.filter(Boolean);
+    if (ids.length === 0) return;
+
+    setAddingMemberBatch(true);
+    setPanelError('');
+    setPanelSuccess('');
+    try {
+      await ensureGroupMembership({ groupId: targetGroupId, userId: user.id });
+
+      const toAdd = memberSearchResults.filter((u) => ids.includes(String(u?.id || '').trim()));
+      for (const u of toAdd) {
+        const uname = String(
+          u?.username ||
+            u?.user_metadata?.username ||
+            u?.user_metadata?.full_name ||
+            u?.user_metadata?.name ||
+            (u?.email ? String(u.email).split('@')[0] : '') ||
+            ''
+        ).trim();
+        if (!uname) continue;
+        // Add sequentially (backend may rate-limit); keep UI simple.
+        // eslint-disable-next-line no-await-in-loop
+        await addGroupMemberByUsername({ groupId: targetGroupId, username: uname, addedById: user.id });
+      }
+
+      setPanelSuccess(`Added ${toAdd.length} member${toAdd.length === 1 ? '' : 's'} to group.`);
+      await Promise.all([loadGroupMembers(targetGroupId), loadUserGroups()]);
+      setAddMemberModalOpen(false);
+      setMemberSearch('');
+      setMemberSearchResults([]);
+      setSelectedMemberIds([]);
+    } catch (err) {
+      setPanelError(err?.message || 'Could not add users to group.');
+    } finally {
+      setAddingMemberBatch(false);
     }
   };
 
@@ -2343,31 +2392,49 @@ export default function GroupChatPage() {
                 ) : (
                   memberSearchResults.map((u) => {
                     const uid = String(u?.id || '').trim();
+                    const displayName = String(u?.username || u?.email || uid).trim();
+                    const selected = selectedMemberIds.includes(uid);
                     return (
-                      <div
+                      <button
                         key={uid || u?.username}
-                        className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-ui-menu-hover"
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition",
+                          selected ? "bg-ui-accent-subtle" : "hover:bg-ui-menu-hover"
+                        )}
+                        onClick={() => toggleSelectedMember(uid)}
                       >
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                            {u?.username || u?.email || uid}
+                            {displayName}
                           </p>
                           <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{uid}</p>
                         </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="h-8 shrink-0 px-3 text-xs"
-                          disabled={addingMember}
-                          onClick={() => handleAddMemberFromSearch(u)}
+                        <span
+                          className={cn(
+                            "flex h-6 w-6 items-center justify-center rounded-full border",
+                            selected
+                              ? "border-ui-accent bg-ui-accent text-ui-on-accent"
+                              : "border-ui-border bg-ui-panel text-transparent"
+                          )}
+                          aria-hidden
                         >
-                          {addingMember ? 'Adding…' : 'Add'}
-                        </Button>
-                      </div>
+                          <Check className="h-4 w-4" />
+                        </span>
+                      </button>
                     );
                   })
                 )}
               </div>
+
+              <Button
+                type="button"
+                className="mt-3 h-11 w-full rounded-2xl bg-gradient-to-r from-ui-grad-from to-ui-grad-to text-ui-on-accent shadow-md hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={handleAddSelectedMembersToCurrentGroup}
+                disabled={addingMemberBatch || !user?.id || !groupId.trim() || selectedMemberIds.length === 0}
+              >
+                {addingMemberBatch ? "Adding…" : `Add (${selectedMemberIds.length})`}
+              </Button>
             </div>
           </div>
         </div>
