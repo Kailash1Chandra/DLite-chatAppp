@@ -920,3 +920,100 @@ export async function setMyPresence() {
   return
 }
 
+// ===== Realtime: lightweight notifications =====
+export function subscribeThreadUpdated(callback) {
+  const cb = typeof callback === 'function' ? callback : () => undefined
+  let disposed = false
+  let detach = () => undefined
+
+  ;(async () => {
+    const snapshot = await getCurrentAuthSnapshot().catch(() => null)
+    const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
+    if (!snapshot?.token || !uid) return
+    let s
+    try {
+      s = await getSocket({ userId: uid })
+    } catch {
+      return
+    }
+    const handler = (payload) => {
+      if (disposed) return
+      cb(payload || {})
+    }
+    s.on('thread_updated', handler)
+    detach = () => s.off('thread_updated', handler)
+  })()
+
+  return () => {
+    disposed = true
+    detach()
+  }
+}
+
+export function subscribeGroupMemberRemoved(callback) {
+  const cb = typeof callback === 'function' ? callback : () => undefined
+  let disposed = false
+  let detach = () => undefined
+
+  ;(async () => {
+    const snapshot = await getCurrentAuthSnapshot().catch(() => null)
+    const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
+    if (!snapshot?.token || !uid) return
+    let s
+    try {
+      s = await getSocket({ userId: uid })
+    } catch {
+      return
+    }
+    const handler = (payload) => {
+      if (disposed || !payload) return
+      const groupId = String(payload.groupId || payload.chatId || '').trim()
+      const userId = String(payload.userId || '').trim()
+      if (!groupId) return
+      cb({ groupId, userId })
+    }
+    s.on('group_member_removed', handler)
+    detach = () => s.off('group_member_removed', handler)
+  })()
+
+  return () => {
+    disposed = true
+    detach()
+  }
+}
+
+export function subscribeGroupDeleted(callback) {
+  const cb = typeof callback === 'function' ? callback : () => undefined
+  let disposed = false
+  let detach = () => undefined
+
+  ;(async () => {
+    const snapshot = await getCurrentAuthSnapshot().catch(() => null)
+    const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
+    if (!snapshot?.token || !uid) return
+    let s
+    try {
+      s = await getSocket({ userId: uid })
+    } catch {
+      return
+    }
+    const handler = (payload) => {
+      if (disposed || !payload) return
+      const groupId = String(payload.groupId || payload.chatId || payload.id || '').trim()
+      if (!groupId) return
+      cb({ groupId })
+    }
+    s.on('group_deleted', handler)
+    s.on('chat_deleted', handler)
+    detach = () => {
+      s.off('group_deleted', handler)
+      s.off('chat_deleted', handler)
+    }
+  })()
+
+  return () => {
+    disposed = true
+    detach()
+  }
+}
+

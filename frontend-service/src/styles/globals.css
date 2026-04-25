@@ -11,16 +11,19 @@
     color-scheme: light;
     --ui-fg: #212529;
     --ui-fg-muted: #6c757d;
-    /* Slight warm tint (≈5%) */
-    --ui-canvas: #fbfaf6;
-    --ui-shell: #fffdf6;
-    --ui-sidebar: #fffdf6;
+    /* Futuristic warm tint (slightly more yellowish) */
+    --ui-canvas: #fffaf0;
+    --ui-shell: #fff7e6;
+    --ui-sidebar: #fff7e6;
     --ui-panel: #fffdf6;
     --ui-border: rgba(52, 58, 64, 0.1);
-    --ui-muted: #f4f1e8;
-    /* Buttons/gradients: more yellowish (≈50% feel) */
-    --ui-grad-from: #e9b949;
-    --ui-grad-to: #8e2de2;
+    --ui-muted: #f7efd8;
+    /* Futuristic gold + violet gradients */
+    --ui-grad-from: #f6c453;
+    --ui-grad-to: #7c3aed;
+    /* Button glow */
+    --ui-btn-glow: rgba(246, 196, 83, 0.38);
+    --ui-btn-glow2: rgba(124, 58, 237, 0.24);
     --ui-bubble-mine: rgba(255, 255, 255, 0.14);
     --ui-bubble-mine-border: rgba(255, 255, 255, 0.28);
     --ui-accent: #7c3aed;
@@ -38,14 +41,14 @@
     --ui-rail-fg: #495057;
     --ui-rail-fg-muted: #adb5bd;
     /* Selected chat row should match theme (warm in light mode) */
-    --ui-chat-active-bg: rgba(233, 185, 73, 0.22);
+    --ui-chat-active-bg: rgba(246, 196, 83, 0.26);
     --ui-chat-active-fg: #1f2937;
     --ui-chat-active-muted: rgba(31, 41, 55, 0.7);
     --ui-row-selected: #ede9fe;
     --ui-row-selected-border: rgba(124, 58, 237, 0.28);
     --ui-link: #6d28d9;
-    --ui-focus: rgba(142, 45, 226, 0.28);
-    --ui-menu-hover: #f1f3f5;
+    --ui-focus: rgba(246, 196, 83, 0.28);
+    --ui-menu-hover: #fff1cf;
     --ui-pinned-bg: rgba(124, 58, 237, 0.09);
     --ui-poll-bg: #4a00e0;
     --ui-poll-bar: #c4b5fd;
@@ -181,8 +184,8 @@
   .app-shell {
     @apply min-h-screen;
     background:
-      radial-gradient(1000px circle at 10% 0%, rgba(142, 45, 226, 0.06), transparent 55%),
-      radial-gradient(900px circle at 90% 20%, rgba(74, 0, 224, 0.04), transparent 50%),
+      radial-gradient(1000px circle at 12% 0%, rgba(246, 196, 83, 0.12), transparent 55%),
+      radial-gradient(900px circle at 90% 20%, rgba(124, 58, 237, 0.06), transparent 50%),
       var(--ui-canvas);
   }
 
