@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Phone,
   Settings,
+  Sparkles,
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -97,7 +98,7 @@ export function ChatAppIconRail({
     <div className="relative flex shrink-0 items-center gap-2 border-b border-ui-border bg-ui-sidebar px-3 py-2.5">
       {/* Centered nav (like Special Friend) */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5">
+        <div className="pointer-events-auto flex max-w-[calc(100%-7.5rem)] items-center gap-1 sm:gap-1.5">
           <Link
             href="/dashboard"
             className={cn('relative', activeNav === 'dm' ? linkActiveH : linkInactiveH)}
@@ -135,6 +136,25 @@ export function ChatAppIconRail({
             <span className={cn('text-[10px] font-semibold leading-tight', activeNav === 'call' ? 'text-ui-on-accent' : 'text-slate-600 dark:text-slate-300')}>
               Calls
             </span>
+          </Link>
+
+          {/* Special Friend: premium pill button */}
+          <Link
+            href="/special-friend"
+            className={cn(
+              'pointer-events-auto relative inline-flex min-h-[3.25rem] items-center justify-center gap-2 overflow-hidden rounded-full border border-violet-300/45',
+              'bg-gradient-to-r from-violet-600 via-indigo-600 to-fuchsia-600 px-3 py-1.5 text-xs font-semibold text-white',
+              'shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_12px_36px_-18px_rgba(99,102,241,0.75)] ring-1 ring-white/15 transition duration-200',
+              'hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_16px_42px_-18px_rgba(99,102,241,0.9)]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 motion-safe:animate-pulse'
+            )}
+            aria-label="Open Special Friend"
+            style={{ animationDuration: '2.9s' }}
+            title="Special Friend"
+          >
+            <span className="absolute inset-0 bg-white/10 opacity-70 blur-xl" aria-hidden="true" />
+            <Sparkles className="relative z-10 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="relative z-10 whitespace-nowrap">Special Friend</span>
           </Link>
         </div>
       </div>
