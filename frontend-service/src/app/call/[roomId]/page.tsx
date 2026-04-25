@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { ZegoExpressEngine } from "zego-express-engine-webrtc";
+import { Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Users, Video, VideoOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { buildHostedCallUrl, getInviteCodeFromRoomId } from "@/lib/callRoom";
 import { cn } from "@/lib/utils";
@@ -429,194 +430,162 @@ export default function ZegoCallRoomPage() {
     return <div className="p-6 text-sm text-slate-600">Please login to join the call.</div>;
   }
 
+  const primaryRemoteStreamId = remoteTiles[0]?.streamId || "";
+
   return (
-    <div className="flex min-h-[calc(100vh-56px)] flex-col gap-4 p-4">
-      <div className="rounded-2xl border border-ui-border bg-ui-panel p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Call room</p>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Mode:{" "}
-              <span className="font-semibold">{mode === "audio" ? "Audio" : "Video"}</span>
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="rounded-full border border-ui-border bg-ui-muted px-3 py-1.5 text-xs">
-              Status: <span className={`font-semibold ${statusTone}`}>{statusLabel}</span>
+    <div
+      className={cn(
+        "relative flex min-h-[calc(100vh-56px)] w-full flex-col overflow-hidden rounded-[1.75rem] bg-black shadow-2xl shadow-black/35",
+        "p-4 sm:p-5"
+      )}
+    >
+      {mode === "video" ? (
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div className="mx-auto grid w-full max-w-[1160px] flex-1 grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+              <div id="dlite-zego-local" ref={localRef} className="absolute inset-0" />
             </div>
-            <Link
-              href="/call"
-              className="anim-shimmer relative inline-flex items-center justify-center overflow-hidden rounded-full bg-gradient-to-r from-fuchsia-600 via-violet-600 to-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-fuchsia-500/15 ring-1 ring-white/15 transition hover:-translate-y-0.5 hover:brightness-110"
-            >
-              Leave
-            </Link>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleMic}
-            className={cn(
-              "anim-shimmer relative inline-flex items-center justify-center overflow-hidden rounded-full px-3 py-1.5 text-xs font-semibold text-white shadow-lg ring-1 ring-white/15 transition hover:-translate-y-0.5 hover:brightness-110",
-              isMicEnabled
-                ? "bg-gradient-to-r from-fuchsia-600 via-violet-600 to-orange-500 shadow-fuchsia-500/15"
-                : "bg-gradient-to-r from-slate-600 via-slate-700 to-slate-800 shadow-black/10"
-            )}
-          >
-            {isMicEnabled ? "Mute mic" : "Unmute mic"}
-          </button>
-          {mode === "video" ? (
-            <button
-              type="button"
-              onClick={toggleCamera}
-              className={cn(
-                "anim-shimmer relative inline-flex items-center justify-center overflow-hidden rounded-full px-3 py-1.5 text-xs font-semibold text-white shadow-lg ring-1 ring-white/15 transition hover:-translate-y-0.5 hover:brightness-110",
-                isCameraEnabled
-                  ? "bg-gradient-to-r from-fuchsia-600 via-violet-600 to-orange-500 shadow-fuchsia-500/15"
-                  : "bg-gradient-to-r from-slate-600 via-slate-700 to-slate-800 shadow-black/10"
+
+            <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+              {primaryRemoteStreamId ? (
+                <div id={`dlite-zego-remote-${primaryRemoteStreamId}`} className="absolute inset-0" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-sm text-white/70">
+                  {status === "connected" ? "Connected" : statusLabel}
+                </div>
               )}
-            >
-              {isCameraEnabled ? "Turn camera off" : "Turn camera on"}
-            </button>
-          ) : null}
-        </div>
-        {inviteCode ? (
-          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-ui-border bg-ui-muted px-3 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                Invite code
-              </p>
-              <p className="mt-1 font-mono text-base font-bold tracking-[0.26em] text-slate-900 dark:text-slate-50">
-                {inviteCode}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="anim-shimmer relative inline-flex items-center justify-center overflow-hidden rounded-full bg-gradient-to-r from-fuchsia-600 via-violet-600 to-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-fuchsia-500/15 ring-1 ring-white/15 transition hover:-translate-y-0.5 hover:brightness-110"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(inviteCode);
-                  setCopiedState("code");
-                } catch {
-                  /* ignore */
-                }
-              }}
-            >
-              {copiedState === "code" ? "Copied code" : "Copy code"}
-            </button>
-            <button
-              type="button"
-              className="anim-shimmer relative inline-flex items-center justify-center overflow-hidden rounded-full bg-gradient-to-r from-fuchsia-600 via-violet-600 to-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-fuchsia-500/15 ring-1 ring-white/15 transition hover:-translate-y-0.5 hover:brightness-110"
-              onClick={async () => {
-                try {
-                  const absoluteLink =
-                    typeof window === "undefined" ? hostedCallPath : `${window.location.origin}${hostedCallPath}`;
-                  await navigator.clipboard.writeText(absoluteLink);
-                  setCopiedState("link");
-                } catch {
-                  /* ignore */
-                }
-              }}
-            >
-              {copiedState === "link" ? "Copied link" : "Copy link"}
-            </button>
-            <Link
-              href="/call"
-              className="rounded-full border border-ui-border bg-ui-panel px-3 py-1.5 text-xs font-semibold text-slate-800 transition hover:bg-white dark:text-slate-100 dark:hover:bg-white/10"
-            >
-              Back to call home
-            </Link>
-          </div>
-        ) : null}
-        {error ? <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700">{error}</p> : null}
-        {needsUserGesture ? (
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-ui-border bg-ui-muted px-3 py-2">
-            <p className="text-xs text-slate-600 dark:text-slate-300">
-              Browser blocked audio autoplay. Click to enable audio.
-            </p>
-            <button
-              type="button"
-              className="rounded-full bg-gradient-to-r from-ui-grad-from to-ui-grad-to px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:brightness-110"
-              onClick={async () => {
-                try {
-                  await (engineRef.current as unknown as { resumeAudioContext?: () => Promise<boolean> | boolean })?.resumeAudioContext?.();
-                  setNeedsUserGesture(false);
-                } catch {
-                  /* ignore */
-                }
-              }}
-            >
-              Enable
-            </button>
-          </div>
-        ) : null}
-      </div>
 
-      <div className="grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="flex min-h-0 flex-col rounded-2xl border border-ui-border bg-ui-panel p-3">
-          <div className="mb-2 flex items-center justify-between gap-2 shrink-0">
-            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">You</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Mic {isMicEnabled ? "on" : "off"}
-              {mode === "video" ? ` · Camera ${isCameraEnabled ? "on" : "off"}` : ""}
-            </p>
-          </div>
-          <div
-            id="dlite-zego-local"
-            ref={localRef}
-            className="aspect-video w-full overflow-hidden rounded-xl bg-black/90"
-          />
-          {mode === "audio" ? <p className="mt-2 text-[11px] text-slate-500">Audio-only: camera disabled.</p> : null}
-        </div>
-
-        <div className="flex min-h-0 flex-col rounded-2xl border border-ui-border bg-ui-panel p-3">
-          <div className="mb-2 flex items-center justify-between gap-3 shrink-0">
-            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Participants</p>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">
-              {remoteTiles.length} remote · {remoteTiles.length + 1} total
-            </span>
-          </div>
-          {remoteTiles.length > 0 ? (
-            <div className="grid min-h-0 w-full flex-1 grid-cols-1 gap-3 overflow-y-auto sm:grid-cols-2">
-              {remoteTiles.map(({ streamId }) => (
-                <div key={streamId} className="rounded-xl border border-ui-border bg-ui-muted p-2">
-                  <div id={`dlite-zego-remote-${streamId}`} className="aspect-video w-full overflow-hidden rounded-xl bg-black/90" />
+              {/* Keep extra remote mounts present (hidden) so playback can attach if needed */}
+              {remoteTiles.slice(1).map(({ streamId }) => (
+                <div key={streamId} className="hidden">
+                  <div id={`dlite-zego-remote-${streamId}`} />
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="mt-6 flex items-center justify-center">
+            <div className="flex items-center gap-2 rounded-full bg-[#2b2b2b]/80 px-3 py-2 ring-1 ring-white/10 backdrop-blur">
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                aria-label="Call"
+                title="Call"
+              >
+                <Phone className="h-5 w-5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleMic}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                aria-label={isMicEnabled ? "Mute" : "Unmute"}
+                title={isMicEnabled ? "Microphone" : "Microphone off"}
+              >
+                {isMicEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+              </button>
+
+              {mode === "video" ? (
+                <button
+                  type="button"
+                  onClick={toggleCamera}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                  aria-label={isCameraEnabled ? "Camera off" : "Camera on"}
+                  title={isCameraEnabled ? "Camera" : "Camera off"}
+                >
+                  {isCameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+                </button>
+              ) : null}
+
+              <button
+                type="button"
+                disabled
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/70 transition disabled:cursor-not-allowed disabled:opacity-70"
+                aria-label="Screen share"
+                title="Screen share (coming soon)"
+              >
+                {mode === "video" ? <Monitor className="h-5 w-5" /> : <MonitorOff className="h-5 w-5" />}
+              </button>
+
+              <button
+                type="button"
+                disabled
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/70 transition disabled:cursor-not-allowed disabled:opacity-70"
+                aria-label="Participants"
+                title={`Participants: ${remoteTiles.length + 1}`}
+              >
+                <Users className="h-5 w-5" />
+              </button>
+
+              <Link
+                href="/call"
+                className="flex h-10 w-12 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/20 transition hover:bg-red-600"
+                aria-label="Leave"
+                title="Leave"
+              >
+                <PhoneOff className="h-5 w-5" />
+              </Link>
+            </div>
+          </div>
+
+          {error ? (
+            <p className="mx-auto mt-4 w-full max-w-[1160px] rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+              {error}
+            </p>
           ) : null}
-          {remoteTiles.length === 0 && (status === "waiting_remote" || status === "publishing" || status === "logging_in") ? (
-            <div className="rounded-xl border border-ui-border bg-ui-muted px-3 py-3 text-[11px] text-slate-500 dark:text-slate-400">
-              Waiting for others to join with the invite code. Share code or call link above.
+
+          {needsUserGesture ? (
+            <div className="mx-auto mt-3 flex w-full max-w-[1160px] items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+              <p className="text-xs text-white/70">Browser blocked audio autoplay. Click to enable audio.</p>
+              <button
+                type="button"
+                className="rounded-full bg-gradient-to-r from-ui-grad-from to-ui-grad-to px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:brightness-110"
+                onClick={async () => {
+                  try {
+                    await (engineRef.current as unknown as { resumeAudioContext?: () => Promise<boolean> | boolean })?.resumeAudioContext?.();
+                    setNeedsUserGesture(false);
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+              >
+                Enable
+              </button>
             </div>
           ) : null}
         </div>
-      </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="mx-auto w-full max-w-[980px] rounded-2xl border border-ui-border bg-ui-panel p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Call room</p>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  Mode: <span className="font-semibold">Audio</span>
+                </p>
+              </div>
+              <Link
+                href="/call"
+                className="anim-shimmer relative inline-flex items-center justify-center overflow-hidden rounded-full bg-gradient-to-r from-fuchsia-600 via-violet-600 to-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-fuchsia-500/15 ring-1 ring-white/15 transition hover:-translate-y-0.5 hover:brightness-110"
+              >
+                Leave
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="sticky bottom-3 z-20 rounded-2xl border border-ui-border bg-ui-panel/95 p-2 shadow-lg backdrop-blur lg:hidden">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleMic}
-            className="flex-1 rounded-xl border border-ui-border bg-ui-panel px-3 py-2 text-xs font-semibold text-slate-800 transition hover:bg-white dark:text-slate-100 dark:hover:bg-white/10"
-          >
-            {isMicEnabled ? "Mute mic" : "Unmute mic"}
-          </button>
-          {mode === "video" ? (
-            <button
-              type="button"
-              onClick={toggleCamera}
-              className="flex-1 rounded-xl border border-ui-border bg-ui-panel px-3 py-2 text-xs font-semibold text-slate-800 transition hover:bg-white dark:text-slate-100 dark:hover:bg-white/10"
-            >
-              {isCameraEnabled ? "Camera off" : "Camera on"}
-            </button>
-          ) : null}
-          <Link
-            href="/call"
-            className="rounded-xl border border-ui-border bg-ui-panel px-3 py-2 text-xs font-semibold text-slate-800 transition hover:bg-white dark:text-slate-100 dark:hover:bg-white/10"
-          >
-            Leave
-          </Link>
+      {inviteCode ? (
+        <div className="pointer-events-none absolute left-4 top-4 hidden md:block">
+          <div className="pointer-events-auto rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70 backdrop-blur">
+            Invite code: <span className="font-mono font-bold tracking-[0.26em] text-white/90">{inviteCode}</span>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="pointer-events-none absolute right-4 top-4 hidden md:block">
+        <div className="pointer-events-auto rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] font-semibold text-white/70 backdrop-blur">
+          Status: <span className={cn("font-semibold", statusTone)}>{statusLabel}</span>
         </div>
       </div>
     </div>
