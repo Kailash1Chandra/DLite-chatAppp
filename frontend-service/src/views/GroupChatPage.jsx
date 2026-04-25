@@ -42,6 +42,7 @@ import { useRouter } from 'next/navigation';
 import { buildGroupChatCallRoomId, buildHostedCallUrl } from '@/lib/callRoom';
 import { ComposerOverflowMenu, composerMenuItemClass } from '@/components/ComposerOverflowMenu';
 import { AtSign, ImageIcon, Paperclip } from 'lucide-react';
+import { broadcastGroupHostedCallInvite } from '../services/chatClient';
 import { ChatAppShell } from '@/components/ChatAppShell';
 import { ChatAppIconRail } from '@/components/ChatAppIconRail';
 import { ChatAppTopBar } from '@/components/ChatAppTopBar';
@@ -1718,6 +1719,12 @@ export default function GroupChatPage() {
                   onClick={() => {
                     const roomId = buildGroupChatCallRoomId(groupId.trim());
                     if (!roomId) return;
+                    broadcastGroupHostedCallInvite({
+                      chatId: groupId.trim(),
+                      roomId,
+                      mode: 'audio',
+                      userId: user?.id,
+                    });
                     router.push(buildHostedCallUrl(roomId, 'audio'));
                   }}
                   aria-label="Start group voice call"
@@ -1734,6 +1741,12 @@ export default function GroupChatPage() {
                   onClick={() => {
                     const roomId = buildGroupChatCallRoomId(groupId.trim());
                     if (!roomId) return;
+                    broadcastGroupHostedCallInvite({
+                      chatId: groupId.trim(),
+                      roomId,
+                      mode: 'video',
+                      userId: user?.id,
+                    });
                     router.push(buildHostedCallUrl(roomId, 'video'));
                   }}
                   aria-label="Start group video call"

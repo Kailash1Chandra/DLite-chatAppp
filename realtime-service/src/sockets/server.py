@@ -496,4 +496,49 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
             room=user_room(to_uid),
         )
 
+    @sio.event
+    async def group_hosted_call_invite(sid, data):
+        """
+        Broadcast a hosted ZEGO room invite to all members of a group chat.
+        Frontend will receive it via `call_user` event (roomId present).
+
+        Required payload:
+        - chatId: group chat id
+        - roomId: hosted room id
+        - callType: "audio" | "video"
+        """
+        session = await sio.get_session(sid)
+        from_uid = (session or {}).get("userId")
+        access_token = (session or {}).get("accessToken")
+        if not from_uid or not access_token:
+            return
+        payload = data or {}
+        chat_id = str(payload.get("chatId") or "").strip()
+        room_id = str(payload.get("roomId") or "").strip()
+        call_type = str(payload.get("callType") or "audio").strip().lower()
+        if call_type not in ("audio", "video"):
+            call_type = "audio"
+        if not chat_id or not room_id:
+            return
+
+        # Only members can broadcast invites to a group.
+        if not await _user_is_chat_member(chat_id, str(from_uid), str(access_token)):
+            await sio.emit("socket_error", {"message": "Not a member of this chat"}, to=sid)
+            return
+
+        member_ids = await _list_chat_member_ids(chat_id, str(access_token))
+        for uid in member_ids:
+            if not uid or uid == str(from_uid):
+                continue
+            await sio.emit(
+                "call_user",
+                {
+                    "fromUserId": str(from_uid),
+                    "callType": call_type,
+                    "roomId": room_id,
+                    "offer": None,
+                },
+                room=user_room(uid),
+            )
+
     return socketio.ASGIApp(sio, other_asgi_app=other_asgi_app, socketio_path="socket.io")

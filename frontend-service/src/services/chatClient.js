@@ -206,6 +206,20 @@ export async function getUserProfileById(userId) {
   return safeUserProfile(userId)
 }
 
+export async function broadcastGroupHostedCallInvite({ chatId, roomId, mode, userId } = {}) {
+  const cid = String(chatId || '').trim()
+  const rid = String(roomId || '').trim()
+  const callType = String(mode || 'audio').trim().toLowerCase() === 'video' ? 'video' : 'audio'
+  const uid = String(userId || '').trim()
+  if (!cid || !rid || !uid) return
+  try {
+    const s = await getSocket({ userId: uid })
+    s.emit('group_hosted_call_invite', { chatId: cid, roomId: rid, callType })
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function searchUsersByUsername(_term, _excludeUserId) {
   const term = String(_term || '').trim()
   if (!term) return []
