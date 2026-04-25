@@ -26,7 +26,6 @@ import {
   subscribeGroupMessages,
   subscribeGroupDeleted,
   subscribeGroupMemberRemoved,
-  subscribeThreadUpdated,
   toggleGroupReaction,
   setGroupTyping,
   subscribeGroupTyping,
@@ -198,6 +197,7 @@ export default function GroupChatPage() {
         mine,
         senderName,
         avatarSeed,
+        avatarUrl,
         isPinned,
         readCount,
         memberCount,
@@ -220,7 +220,11 @@ export default function GroupChatPage() {
               )}
             >
               <Image
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(avatarSeed || 'member')}`}
+                src={
+                  avatarUrl
+                    ? avatarUrl
+                    : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(avatarSeed || 'member')}`
+                }
                 alt=""
                 width={32}
                 height={32}
@@ -633,6 +637,10 @@ export default function GroupChatPage() {
             setMessages((prev) => prev.map((item) => (item._id === msg._id ? { ...item, ...msg } : item)));
             return;
           }
+          if (changeType === 'removed') {
+            setMessages((prev) => prev.filter((item) => item._id !== msg._id));
+            return;
+          }
           if (seen.has(msg._id)) return;
           seen.add(msg._id);
           setMessages((prev) => [...prev, msg]);
@@ -752,19 +760,6 @@ export default function GroupChatPage() {
   useEffect(() => {
     loadUserGroups();
   }, [loadUserGroups, groupsRefreshTick]);
-
-  useEffect(() => {
-    let unsub = () => undefined;
-    try {
-      unsub = subscribeThreadUpdated(() => {
-        // Refresh group list (e.g., last activity / membership changes) without full reload.
-        setGroupsRefreshTick((v) => v + 1);
-      });
-    } catch {
-      /* ignore */
-    }
-    return () => unsub();
-  }, [user?.id]);
 
   useEffect(() => {
     let unsubscribe = () => undefined;
@@ -1540,16 +1535,18 @@ export default function GroupChatPage() {
                         <LogOut className="h-4 w-4 shrink-0" />
                         Leave group
                       </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-700 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50"
-                        onClick={handleDeleteGroup}
-                        disabled={!groupId.trim() || !user?.id}
-                      >
-                        <Trash2 className="h-4 w-4 shrink-0" />
-                        Delete group
-                      </button>
+                      {isGroupAdmin ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-700 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50"
+                          onClick={handleDeleteGroup}
+                          disabled={!groupId.trim() || !user?.id}
+                        >
+                          <Trash2 className="h-4 w-4 shrink-0" />
+                          Delete group
+                        </button>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -1597,7 +1594,7 @@ export default function GroupChatPage() {
             </div>
           )}
 
-          <div className="relative min-h-0 flex-1">
+          <div className="relative flex min-h-0 flex-1 flex-col">
             <div
               ref={messagesWrapRef}
               className="scrollbar-visible min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-ui-thread px-4 py-4"
@@ -1650,6 +1647,7 @@ export default function GroupChatPage() {
                           mine={mine}
                           senderName={senderName}
                           avatarSeed={mine ? user?.username || user?.id || 'you' : senderNamesById[m.senderId] || m.senderId || 'member'}
+                          avatarUrl={groupMembers.find((mem) => mem.id === m.senderId)?.avatarUrl || ''}
                           isPinned={isPinned}
                           readCount={readCount}
                           memberCount={memberCount}
@@ -1734,6 +1732,12 @@ export default function GroupChatPage() {
                   className="mb-0.5 min-h-[40px] max-h-32 min-w-0 flex-1 resize-none bg-transparent px-1 py-2.5 text-[15px] leading-5 text-slate-900 outline-none placeholder:text-slate-500 dark:text-slate-100 dark:placeholder:text-slate-500"
                   value={message}
                   onChange={handleGroupMessageInput}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendGroupMessage(e);
+                    }
+                  }}
                   placeholder={groupId.trim() ? 'Message' : 'Open a group'}
                   disabled={!groupId.trim()}
                 />

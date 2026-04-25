@@ -128,19 +128,6 @@ export function AppHeaderMenu({
                     <ThemeMenuIcon className="h-4 w-4 shrink-0 opacity-80" />
                     {themeMenuLabel}
                   </button>
-                  {showHomeButton && (
-                    <Link
-                      href="/"
-                      role="menuitem"
-                      className={menuItemClass}
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-amber-100 ring-1 ring-amber-300/60 dark:bg-amber-950/50 dark:ring-amber-600/40">
-                        <AppLogo variant="mark" className="h-6 w-6" />
-                      </span>
-                      Home
-                    </Link>
-                  )}
                 </>
               )}
               {menuLinks.map(({ href, label, icon: Icon }) => (

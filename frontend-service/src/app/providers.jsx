@@ -5,6 +5,9 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { SocketProvider } from '@/context/SocketContext';
 import { IncomingCallProvider } from '@/context/IncomingCallContext';
+import { ToastProvider } from '@/context/ToastContext';
+import { ToastViewport } from '@/components/ToastViewport';
+import InAppNotificationListener from '@/components/InAppNotificationListener';
 
 const IncomingCallOverlay = dynamic(() => import('@/components/IncomingCallOverlay'), {
   ssr: false,
@@ -15,12 +18,16 @@ export function Providers({ children }) {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <SocketProvider>
-          <IncomingCallProvider>
-            <IncomingCallOverlay />
-            {children}
-          </IncomingCallProvider>
-        </SocketProvider>
+        <ToastProvider>
+          <SocketProvider>
+            <IncomingCallProvider>
+              <IncomingCallOverlay />
+              <InAppNotificationListener />
+              <ToastViewport />
+              {children}
+            </IncomingCallProvider>
+          </SocketProvider>
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   );

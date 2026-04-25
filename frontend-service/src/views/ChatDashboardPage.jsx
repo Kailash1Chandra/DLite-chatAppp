@@ -36,7 +36,8 @@ import {
   pinDmMessage,
   unpinDmMessage,
   subscribePinnedDmMessages,
-  subscribeThreadUpdated
+  subscribeThreadUpdated,
+  fetchRecentDirectChats
 } from '../services/chatClient';
 import {
   AtSign,
@@ -957,9 +958,30 @@ export default function ChatDashboardPage() {
   useEffect(() => {
     let unsub = () => undefined;
     try {
+      let inFlight = false;
+      let queued = false;
+      const refreshOnce = async () => {
+        if (inFlight) {
+          queued = true;
+          return;
+        }
+        inFlight = true;
+        try {
+          const items = await fetchRecentDirectChats();
+          setRecentChats(items);
+        } catch {
+          /* ignore */
+        } finally {
+          inFlight = false;
+          if (queued) {
+            queued = false;
+            refreshOnce();
+          }
+        }
+      };
       unsub = subscribeThreadUpdated(() => {
-        // Trigger a lightweight refresh of the inbox sidebar without full page reload.
-        setRecentRefreshTick((v) => v + 1);
+        // Refresh inbox list without restarting polling subscription.
+        refreshOnce();
       });
     } catch {
       /* ignore */
@@ -2217,6 +2239,12 @@ export default function ChatDashboardPage() {
                         const ta = e.target;
                         ta.style.height = 'auto';
                         ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 40), 128)}px`;
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          sendMessage(e);
+                        }
                       }}
                       placeholder={activeUserId.trim() ? 'Type a message here…' : 'Select a chat'}
                       disabled={!activeUserId.trim()}

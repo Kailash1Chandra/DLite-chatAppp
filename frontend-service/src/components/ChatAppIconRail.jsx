@@ -17,10 +17,10 @@ import { AppHeaderMenu } from '@/components/AppHeaderMenu';
 import { ProfileMenu } from '@/components/ProfileMenu';
 
 const linkInactiveH =
-  'flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-ui-muted hover:text-ui-accent dark:text-slate-400';
+  'flex min-h-[3.25rem] w-[4.25rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-1.5 py-1.5 text-slate-600 transition hover:bg-ui-muted hover:text-ui-accent dark:text-slate-300';
 
 const linkActiveH =
-  'flex h-10 w-10 items-center justify-center rounded-xl bg-ui-accent text-ui-on-accent shadow-sm shadow-violet-900/15 dark:shadow-black/25';
+  'flex min-h-[3.25rem] w-[4.25rem] flex-col items-center justify-center gap-0.5 rounded-2xl bg-ui-accent px-1.5 py-1.5 text-ui-on-accent shadow-sm shadow-violet-900/15 dark:shadow-black/25';
 
 const linkInactiveV =
   'flex h-10 w-10 items-center justify-center rounded-xl text-ui-rail-fg-muted transition hover:bg-ui-muted hover:text-ui-accent dark:hover:bg-white/10 dark:hover:text-ui-rail-fg';
@@ -94,39 +94,53 @@ export function ChatAppIconRail({
   }
 
   return (
-    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-ui-border bg-ui-sidebar px-3 py-2.5">
-      <div className="flex items-center gap-0.5 sm:gap-1">
-        <Link
-          href="/dashboard"
-          className={cn('relative', activeNav === 'dm' ? linkActiveH : linkInactiveH)}
-          title="Chats"
-          aria-current={activeNav === 'dm' ? 'page' : undefined}
-        >
-          <MessageCircle className="h-5 w-5" />
-          {dmUnreadCount > 0 ? (
-            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-ui-shell">
-              {dmUnreadCount > 99 ? '99+' : dmUnreadCount}
+    <div className="relative flex shrink-0 items-center gap-2 border-b border-ui-border bg-ui-sidebar px-3 py-2.5">
+      {/* Centered nav (like Special Friend) */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5">
+          <Link
+            href="/dashboard"
+            className={cn('relative', activeNav === 'dm' ? linkActiveH : linkInactiveH)}
+            title="Messages"
+            aria-current={activeNav === 'dm' ? 'page' : undefined}
+          >
+            <MessageCircle className="h-5 w-5" />
+            <span className={cn('text-[10px] font-semibold leading-tight', activeNav === 'dm' ? 'text-ui-on-accent' : 'text-slate-600 dark:text-slate-300')}>
+              Messages
             </span>
-          ) : null}
-        </Link>
-        <Link
-          href="/groups"
-          className={activeNav === 'groups' ? linkActiveH : linkInactiveH}
-          title="Groups"
-          aria-current={activeNav === 'groups' ? 'page' : undefined}
-        >
-          <Users className="h-5 w-5" />
-        </Link>
-        <Link
-          href="/call"
-          className={activeNav === 'call' ? linkActiveH : linkInactiveH}
-          title="Calls"
-          aria-current={activeNav === 'call' ? 'page' : undefined}
-        >
-          <Phone className="h-5 w-5" />
-        </Link>
+            {dmUnreadCount > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-ui-shell">
+                {dmUnreadCount > 99 ? '99+' : dmUnreadCount}
+              </span>
+            ) : null}
+          </Link>
+          <Link
+            href="/groups"
+            className={activeNav === 'groups' ? linkActiveH : linkInactiveH}
+            title="Groups"
+            aria-current={activeNav === 'groups' ? 'page' : undefined}
+          >
+            <Users className="h-5 w-5" />
+            <span className={cn('text-[10px] font-semibold leading-tight', activeNav === 'groups' ? 'text-ui-on-accent' : 'text-slate-600 dark:text-slate-300')}>
+              Groups
+            </span>
+          </Link>
+          <Link
+            href="/call"
+            className={activeNav === 'call' ? linkActiveH : linkInactiveH}
+            title="Calls"
+            aria-current={activeNav === 'call' ? 'page' : undefined}
+          >
+            <Phone className="h-5 w-5" />
+            <span className={cn('text-[10px] font-semibold leading-tight', activeNav === 'call' ? 'text-ui-on-accent' : 'text-slate-600 dark:text-slate-300')}>
+              Calls
+            </span>
+          </Link>
+        </div>
       </div>
-      <div className="flex items-center gap-0.5">
+
+      {/* Right-side actions */}
+      <div className="ml-auto flex items-center gap-0.5">
         <AppHeaderMenu
           collapseActionsInMenu
           showChatsInCollapsedMenu={false}

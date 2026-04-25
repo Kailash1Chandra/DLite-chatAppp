@@ -2,6 +2,7 @@ import { io } from 'socket.io-client'
 import { createSocketIoClientOptions, waitForDomReady } from '@/lib/socketIoClientOptions'
 import { API_BASE_URL, CHAT_SOCKET_URL } from './appClient'
 import { getCurrentAuthSnapshot } from './authClient'
+import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient'
 
 let socketInstance = null
 let lastChatSocketAuthKey = ''
@@ -216,7 +217,11 @@ export async function searchUsersByUsername(_term, _excludeUserId) {
   const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${snapshot.token}` } })
   const json = await res.json().catch(() => ({}))
   if (!res.ok || json?.success === false) return []
-  return json?.users || []
+  const rows = Array.isArray(json?.users) ? json.users : []
+  return rows.map((u) => ({
+    ...u,
+    avatarUrl: u?.avatarUrl || u?.avatar_url || u?.photoURL || u?.picture || '',
+  }))
 }
 
 export async function listDirectMessages() {
@@ -663,13 +668,83 @@ export async function getMessagesByChatId({ chatId, token }) {
 }
 
 export async function setUserProfilePhoto() {
-  const error = new Error('Profile photo upload is disabled.')
-  error.code = 'feature/disabled'
-  throw error
+  const snapshot = await getCurrentAuthSnapshot().catch(() => null)
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const uid = String(arguments?.[0]?.userId || arguments?.[0]?.uid || snapshot?.user?.id || '').trim()
+  const file = arguments?.[0]?.file
+  if (!uid || !file) throw new Error('userId and file are required')
+
+  // Reuse existing Cloudinary upload route.
+  const fd = new FormData()
+  fd.append('file', file)
+  const r = await fetch(`${API_BASE_URL}/chat/media/upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${snapshot.token}` },
+    body: fd,
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok || j?.success === false) throw new Error(j?.message || 'Could not upload photo')
+  const url = String(j?.url || '').trim()
+  if (!url) throw new Error('Upload returned empty url')
+
+  // Persist onto auth metadata when Supabase session exists (keeps current app logic: user.photoURL).
+  try {
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.auth.updateUser({ data: { avatar_url: url, picture: url } })
+    }
+  } catch {
+    /* best-effort */
+  }
+
+  // Also patch the cached snapshot so UI updates without refresh.
+  try {
+    if (typeof window !== 'undefined') {
+      const raw = window.localStorage.getItem('d_lite_auth_snapshot')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed?.user) {
+          parsed.user.photoURL = url
+          window.localStorage.setItem('d_lite_auth_snapshot', JSON.stringify(parsed))
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return url
 }
 
 export async function clearUserProfilePhoto() {
-  return
+  const snapshot = await getCurrentAuthSnapshot().catch(() => null)
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const url = String(arguments?.[0]?.photoURL || arguments?.[0]?.url || '').trim()
+
+  try {
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.auth.updateUser({ data: { avatar_url: '', picture: '' } })
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    if (typeof window !== 'undefined') {
+      const raw = window.localStorage.getItem('d_lite_auth_snapshot')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed?.user) {
+          parsed.user.photoURL = ''
+          window.localStorage.setItem('d_lite_auth_snapshot', JSON.stringify(parsed))
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // We don't delete from Cloudinary here; keep current behavior safe.
+  return { ok: true, cleared: true, previousUrl: url || null }
 }
 
 // ===== Group chat =====
@@ -790,8 +865,54 @@ export function subscribeGroupMessages() {
         'added'
       )
     }
+    const onUpdated = (p) => {
+      if (disposed || !p) return
+      const cid = String(p?.chatId || '').trim()
+      if (cid !== chatId) return
+      const m = p?.message || {}
+      const id = String(m?._id || m?.id || '').trim()
+      if (!id) return
+      cb(
+        {
+          _id: id,
+          chatId,
+          senderId: m.senderId || m.sender_id || '',
+          message: m.message || m.content || '',
+          content: m.content || '',
+          type: m.type || 'text',
+          createdAt: Number(m.createdAt || m.created_at || Date.now()),
+          reactions: m.reactions || undefined,
+          isDeleted: Boolean(m.isDeleted || m.is_deleted),
+        },
+        'changed'
+      )
+    }
+    const onDeleted = (p) => {
+      if (disposed || !p) return
+      const cid = String(p?.chatId || '').trim()
+      if (cid !== chatId) return
+      const id = String(p?.messageId || p?._id || '').trim()
+      if (!id) return
+      cb({ _id: id, chatId }, 'removed')
+    }
+    const onReaction = (p) => {
+      if (disposed || !p) return
+      const cid = String(p?.chatId || '').trim()
+      if (cid !== chatId) return
+      const id = String(p?.messageId || '').trim()
+      if (!id) return
+      cb({ _id: id, chatId, reactions: p?.reactions || {} }, 'changed')
+    }
     s.on('receive_message', handler)
-    detach = () => s.off('receive_message', handler)
+    s.on('message_updated', onUpdated)
+    s.on('message_deleted', onDeleted)
+    s.on('reaction_updated', onReaction)
+    detach = () => {
+      s.off('receive_message', handler)
+      s.off('message_updated', onUpdated)
+      s.off('message_deleted', onDeleted)
+      s.off('reaction_updated', onReaction)
+    }
   })()
 
   return () => {
@@ -955,6 +1076,7 @@ export async function listGroupMembers() {
       userId: id,
       username: u.user_metadata?.username || u.username || id,
       role: m.role || 'member',
+      avatarUrl: u.avatar_url || u.avatarUrl || u.user_metadata?.avatar_url || '',
     }
   })
 }
@@ -1010,14 +1132,30 @@ export async function setGroupPhoto() {
   throw error
 }
 export async function exportGroupChatHistory() {
-  const error = new Error('Export is disabled.')
-  error.code = 'feature/disabled'
-  throw error
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const groupId = String(arguments?.[0]?.groupId || arguments?.[0]?.chatId || arguments?.[0] || '').trim()
+  const limit = Number(arguments?.[0]?.limit || 200)
+  if (!groupId) throw new Error('groupId is required')
+  const msgs = await getMessagesByChatId({ chatId: groupId, token: snapshot.token })
+  const clipped = msgs.slice(Math.max(0, msgs.length - limit))
+  return { type: 'group', groupId, exportedAt: Date.now(), messages: clipped }
 }
 export async function importGroupChatHistory() {
-  const error = new Error('Import is disabled.')
-  error.code = 'feature/disabled'
-  throw error
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const groupId = String(arguments?.[0]?.groupId || arguments?.[0]?.chatId || '').trim()
+  const payload = arguments?.[0]?.payload
+  if (!groupId || !Array.isArray(payload?.messages)) throw new Error('groupId and payload.messages are required')
+
+  for (const m of payload.messages) {
+    const content = String(m?.content || m?.message || '').trim()
+    const type = String(m?.type || 'text').trim() || 'text'
+    const isDeleted = Boolean(m?.is_deleted || m?.isDeleted)
+    if (!content || isDeleted) continue
+    await sendGroupMessage({ chatId: groupId, content, type }).catch(() => undefined)
+  }
+  return { ok: true }
 }
 export async function markGroupThreadRead() {
   const snapshot = await getCurrentAuthSnapshot()
@@ -1068,7 +1206,30 @@ export function subscribePinnedGroupMessages() {
   return () => undefined
 }
 export async function deleteGroupMessage() {
-  return
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const messageId = String(arguments?.[0]?.messageId || arguments?.[0] || '').trim()
+  if (!messageId) throw new Error('messageId is required')
+  const res = await fetch(`${API_BASE_URL}/chat/messages/${encodeURIComponent(messageId)}/delete`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${snapshot.token}` },
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not delete message')
+  const msg = json?.message || null
+  // Best-effort realtime: notify members viewing this group.
+  try {
+    const cid = String(msg?.chat_id || msg?.chatId || '').trim()
+    const uid = String(snapshot?.user?.id || snapshot?.user?.uid || '').trim()
+    if (cid && uid) {
+      const s = await getSocket({ userId: uid })
+      s.emit('join_chat', { chatId: cid })
+      s.emit('message_deleted', { chatId: cid, messageId: String(msg?.id || messageId) })
+    }
+  } catch {
+    /* ignore */
+  }
+  return msg
 }
 export async function toggleDmReaction() {
   const snapshot = await getCurrentAuthSnapshot()
@@ -1228,6 +1389,34 @@ export async function unpinDmMessage() {
   if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not unpin message')
   return true
 }
+
+function dedupeRecentChats(items) {
+  const rows = Array.isArray(items) ? items : []
+  const byKey = new Map()
+  for (const chat of rows) {
+    // DMs should be unique per peer (backend may accidentally create multiple threads).
+    const key = String(chat?.peerId || chat?.peer_id || chat?.peer?.id || chat?.threadId || chat?.chatId || chat?.id || '').trim()
+    if (!key) continue
+    const prev = byKey.get(key)
+    if (!prev) {
+      byKey.set(key, chat)
+      continue
+    }
+    const ta = new Date(chat?.lastAt || chat?.updatedAt || 0).getTime()
+    const tb = new Date(prev?.lastAt || prev?.updatedAt || 0).getTime()
+    byKey.set(key, ta >= tb ? chat : prev)
+  }
+  return [...byKey.values()]
+}
+
+export async function fetchRecentDirectChats() {
+  const snapshot = await getCurrentAuthSnapshot().catch(() => null)
+  if (!snapshot?.token) return []
+  const res = await fetch(`${API_BASE_URL}/chat/dm/recent`, { headers: { Authorization: `Bearer ${snapshot.token}` } })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) return []
+  return dedupeRecentChats(json?.chats || [])
+}
 export function subscribePinnedDmMessages() {
   const peerId = String(arguments?.[1] || '').trim()
   const cb = typeof arguments?.[2] === 'function' ? arguments?.[2] : () => undefined
@@ -1261,25 +1450,6 @@ export function subscribeRecentDirectChats(_userId, callback) {
   let timer = null
   const INTERVAL_MS = 8000
   const INTERVAL_BACKGROUND_MS = 45000
-
-  function dedupeRecentChats(items) {
-    const rows = Array.isArray(items) ? items : []
-    const byKey = new Map()
-    for (const chat of rows) {
-      // DMs should be unique per peer (backend may accidentally create multiple threads).
-      const key = String(chat?.peerId || chat?.peer_id || chat?.peer?.id || chat?.threadId || chat?.chatId || chat?.id || '').trim()
-      if (!key) continue
-      const prev = byKey.get(key)
-      if (!prev) {
-        byKey.set(key, chat)
-        continue
-      }
-      const ta = new Date(chat?.lastAt || chat?.updatedAt || 0).getTime()
-      const tb = new Date(prev?.lastAt || prev?.updatedAt || 0).getTime()
-      byKey.set(key, ta >= tb ? chat : prev)
-    }
-    return [...byKey.values()]
-  }
 
   const load = async () => {
     const snapshot = await getCurrentAuthSnapshot().catch(() => null)

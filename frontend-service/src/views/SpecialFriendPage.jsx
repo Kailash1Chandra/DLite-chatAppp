@@ -7,6 +7,7 @@ import { useReducedMotion } from 'framer-motion';
 import { ChatAppShell } from '@/components/ChatAppShell';
 import { ChatAppTopBar } from '@/components/ChatAppTopBar';
 import { Button } from '@/components/ui/button';
+import { AppLogo } from '@/components/AppLogo';
 import { cn } from '@/lib/utils';
 
 export default function SpecialFriendPage() {
@@ -237,7 +238,12 @@ export default function SpecialFriendPage() {
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.15),rgba(15,23,42,0.78))]" />
           <div className="relative z-10 mx-auto flex w-full max-w-5xl min-h-0 flex-1 flex-col px-4 py-6 sm:px-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
+              <div className="flex items-center gap-3">
+                <AppLogo
+                  variant="mark"
+                  className="h-11 w-11 border-white/15 bg-white/[0.06] shadow-[0_0_0_1px_rgba(255,255,255,0.06)_inset]"
+                  imgClassName="opacity-95"
+                />
                 <p className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-white/[0.06] px-3 py-1 text-[11px] font-semibold tracking-wide text-cyan-100">
                   <Sparkles className="h-3.5 w-3.5" />
                   Special Friend chat
