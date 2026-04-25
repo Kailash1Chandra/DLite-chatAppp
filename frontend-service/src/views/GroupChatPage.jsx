@@ -808,6 +808,7 @@ export default function GroupChatPage() {
   const handleSendGroupMessage = async (e) => {
     e.preventDefault();
     if (!user?.id || !groupId.trim() || !message.trim()) return;
+    const outgoingText = message.trim();
     setSending(true);
     setPanelError('');
     setPanelSuccess('');
@@ -815,11 +816,32 @@ export default function GroupChatPage() {
     setGroupTyping({ groupId: groupId.trim(), userId: user.id, username: user.username || 'User', isTyping: false }).catch(() => undefined);
     if (groupTypingTimeoutRef.current) clearTimeout(groupTypingTimeoutRef.current);
     try {
-      await sendChatGroupMessage({
+      const saved = await sendChatGroupMessage({
         groupId: groupId.trim(),
         senderId: user.id,
-        message: message.trim()
+        message: outgoingText
       });
+
+      if (saved) {
+        const normalizedSaved = {
+          _id: String(saved.id || saved._id || ''),
+          chatId: saved.chat_id || saved.chatId || groupId.trim(),
+          senderId: saved.sender_id || saved.senderId || user.id,
+          message: saved.message || saved.content || outgoingText,
+          content: saved.content || outgoingText,
+          type: saved.type || 'text',
+          createdAt: saved.created_at ? Date.parse(saved.created_at) : Number(saved.createdAt || Date.now()),
+          reactions: saved.reactions || {},
+          isDeleted: Boolean(saved.is_deleted || saved.isDeleted),
+        };
+
+        setMessages((prev) => {
+          if (!normalizedSaved._id) return prev;
+          if (prev.some((item) => item._id === normalizedSaved._id)) return prev;
+          return [...prev, normalizedSaved];
+        });
+      }
+
       setMessage('');
       const ta = groupComposerRef.current;
       if (ta) {
