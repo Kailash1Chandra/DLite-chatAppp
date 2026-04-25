@@ -118,6 +118,7 @@ export default function GroupChatPage() {
   const [groupMenuOpen, setGroupMenuOpen] = useState(false);
   const [groupMuted, setGroupMuted] = useState(false);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
+  const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const [kickingMemberId, setKickingMemberId] = useState('');
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
@@ -871,7 +872,8 @@ export default function GroupChatPage() {
   };
 
   const handleAddMember = async () => {
-    const targetGroupId = groupId.trim() || groupInput.trim();
+    const targetGroupId = groupId.trim();
+    // IMPORTANT: adding members must never create a new group implicitly.
     if (!targetGroupId || !memberUsername.trim() || !user?.id) return;
     setAddingMember(true);
     setPanelError('');
@@ -889,6 +891,34 @@ export default function GroupChatPage() {
       setRecentlyAddedMemberId(added.id);
       setMemberUsername('');
       await Promise.all([loadGroupMembers(targetGroupId), loadUserGroups()]);
+    } catch (err) {
+      setPanelError(err?.message || 'Could not add user to group.');
+    } finally {
+      setAddingMember(false);
+    }
+  };
+
+  const handleAddMemberFromSearch = async (u) => {
+    const targetGroupId = groupId.trim();
+    const uname = String(u?.username || '').trim();
+    if (!targetGroupId || !uname || !user?.id) return;
+    setAddingMember(true);
+    setPanelError('');
+    setPanelSuccess('');
+    try {
+      await ensureGroupMembership({ groupId: targetGroupId, userId: user.id });
+      const added = await addGroupMemberByUsername({
+        groupId: targetGroupId,
+        username: uname,
+        addedById: user.id
+      });
+      setPanelSuccess(`${added.username} added to group.`);
+      setRecentlyAddedMemberId(added.id);
+      await Promise.all([loadGroupMembers(targetGroupId), loadUserGroups()]);
+      setAddMemberModalOpen(false);
+      setMemberSearch('');
+      setMemberSearchResults([]);
+      setSelectedMemberIds([]);
     } catch (err) {
       setPanelError(err?.message || 'Could not add user to group.');
     } finally {
@@ -2245,7 +2275,7 @@ export default function GroupChatPage() {
                   size="sm"
                   onClick={() => {
                     setMembersModalOpen(false);
-                    setGroupSearchOpen(true);
+                    setAddMemberModalOpen(true);
                   }}
                   disabled={!groupId.trim()}
                 >
@@ -2255,6 +2285,88 @@ export default function GroupChatPage() {
                 <Button type="button" size="sm" variant="ghost" onClick={() => setMembersModalOpen(false)}>
                   Close
                 </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addMemberModalOpen && (
+        <div className="fixed inset-0 z-[160] flex items-end justify-center bg-black/55 p-4 backdrop-blur-sm sm:items-center">
+          <div
+            className="w-full max-w-lg rounded-3xl border border-ui-border bg-ui-panel p-5 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add member to group"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-base font-bold text-slate-900 dark:text-slate-50">Add member</p>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300/80">
+                  Add users to <span className="font-semibold">{activeGroupName}</span>
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-9 w-9"
+                onClick={() => setAddMemberModalOpen(false)}
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="mt-4">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  className="input h-11 w-full rounded-2xl pl-10 text-sm"
+                  placeholder="Search username…"
+                  value={memberSearch}
+                  onChange={(e) => {
+                    setMemberSearch(e.target.value);
+                    setMemberSearchOpen(true);
+                  }}
+                />
+              </div>
+
+              <div className="mt-3 max-h-64 overflow-y-auto rounded-2xl border border-ui-border bg-ui-panel p-1">
+                {memberSearchLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-6 text-sm text-slate-500">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Searching…
+                  </div>
+                ) : memberSearch.trim() && memberSearchResults.length === 0 ? (
+                  <p className="px-3 py-4 text-center text-xs text-slate-500">No users found.</p>
+                ) : (
+                  memberSearchResults.map((u) => {
+                    const uid = String(u?.id || '').trim();
+                    return (
+                      <div
+                        key={uid || u?.username}
+                        className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-ui-menu-hover"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            {u?.username || u?.email || uid}
+                          </p>
+                          <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{uid}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 shrink-0 px-3 text-xs"
+                          disabled={addingMember}
+                          onClick={() => handleAddMemberFromSearch(u)}
+                        >
+                          {addingMember ? 'Adding…' : 'Add'}
+                        </Button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>
