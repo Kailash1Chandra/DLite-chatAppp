@@ -142,9 +142,10 @@ export function ChatAppIconRail({
           <Link
             href="/special-friend"
             className={cn(
-              'pointer-events-auto relative inline-flex min-h-[3.25rem] items-center justify-center gap-2 overflow-hidden rounded-full border border-violet-300/45',
-              'bg-gradient-to-r from-violet-600 via-indigo-600 to-fuchsia-600 px-3 py-1.5 text-xs font-semibold text-white',
-              'shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_12px_36px_-18px_rgba(99,102,241,0.75)] ring-1 ring-white/15 transition duration-200',
+              // Match the nav buttons’ footprint so it aligns perfectly.
+              'pointer-events-auto relative inline-flex min-h-[3.25rem] w-[4.25rem] items-center justify-center gap-1 overflow-hidden rounded-2xl border border-violet-300/45',
+              'bg-gradient-to-r from-violet-600 via-indigo-600 to-fuchsia-600 px-2 py-1.5 text-[10px] font-semibold leading-tight text-white',
+              'shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_12px_36px_-20px_rgba(99,102,241,0.75)] ring-1 ring-white/15 transition duration-200',
               'hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_16px_42px_-18px_rgba(99,102,241,0.9)]',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 motion-safe:animate-pulse'
             )}
@@ -154,7 +155,7 @@ export function ChatAppIconRail({
           >
             <span className="absolute inset-0 bg-white/10 opacity-70 blur-xl" aria-hidden="true" />
             <Sparkles className="relative z-10 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className="relative z-10 whitespace-nowrap">Special Friend</span>
+            <span className="relative z-10 whitespace-nowrap">Special</span>
           </Link>
         </div>
       </div>
