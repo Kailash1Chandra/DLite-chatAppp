@@ -33,6 +33,8 @@ export default function ZegoCallRoomPage() {
   const engineRef = useRef<ZegoExpressEngine | null>(null);
   const localStreamRef = useRef<any>(null);
   const publishedStreamIdRef = useRef<string>("");
+  const screenStreamRef = useRef<any>(null);
+  const screenStreamIdRef = useRef<string>("");
   const remoteStreamsRef = useRef<Record<string, any>>({});
 
   const [status, setStatus] = useState<
@@ -44,6 +46,7 @@ export default function ZegoCallRoomPage() {
   const [copiedState, setCopiedState] = useState<"" | "code" | "link">("");
   const [isMicEnabled, setIsMicEnabled] = useState(true);
   const [isCameraEnabled, setIsCameraEnabled] = useState(mode === "video");
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const reconnectingRef = useRef(false);
 
   const server = useMemo(() => "wss://webliveroom-api.zego.im/ws", []);
@@ -134,6 +137,101 @@ export default function ZegoCallRoomPage() {
     }
   };
 
+  const stopPublishedStream = async (zg: ZegoExpressEngine | null, streamId: string, stream: any) => {
+    if (!zg || !streamId || !stream) return;
+    try {
+      zg.stopPublishingStream(streamId);
+    } catch {
+      /* ignore */
+    }
+    try {
+      zg.destroyStream(stream);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const republishCameraStream = async (zg: ZegoExpressEngine) => {
+    const nextStream =
+      mode === "audio"
+        ? await zg.createZegoStream({ camera: { audio: true, video: false } })
+        : await zg.createZegoStream({ camera: { audio: true, video: true } });
+    localStreamRef.current = nextStream;
+    applyLocalTrackState(nextStream);
+    try {
+      nextStream.playVideo?.(document.getElementById("dlite-zego-local"));
+    } catch {
+      /* ignore */
+    }
+    const nextStreamId = `${roomId}-${userId}-${Date.now()}`;
+    publishedStreamIdRef.current = nextStreamId;
+    await zg.startPublishingStream(nextStreamId, nextStream);
+  };
+
+  const toggleScreenShare = async () => {
+    if (mode !== "video") return;
+    const zg = engineRef.current;
+    if (!zg) return;
+
+    try {
+      if (isScreenSharing) {
+        setIsScreenSharing(false);
+        const screenId = screenStreamIdRef.current;
+        const screenStream = screenStreamRef.current;
+        screenStreamIdRef.current = "";
+        screenStreamRef.current = null;
+        await stopPublishedStream(zg, screenId, screenStream);
+
+        // Restore camera stream publishing.
+        const camId = publishedStreamIdRef.current;
+        const camStream = localStreamRef.current;
+        publishedStreamIdRef.current = "";
+        localStreamRef.current = null;
+        await stopPublishedStream(zg, camId, camStream);
+        await republishCameraStream(zg);
+        return;
+      }
+
+      // Switch publishing from camera -> screen.
+      setIsScreenSharing(true);
+
+      const camId = publishedStreamIdRef.current;
+      const camStream = localStreamRef.current;
+      publishedStreamIdRef.current = "";
+      localStreamRef.current = null;
+      await stopPublishedStream(zg, camId, camStream);
+
+      const screenStream = await zg.createZegoStream({
+        screen: {
+          audio: false,
+          video: { quality: 1 },
+        },
+      });
+      screenStreamRef.current = screenStream;
+
+      try {
+        screenStream.playVideo?.(document.getElementById("dlite-zego-local"));
+      } catch {
+        /* ignore */
+      }
+
+      const screenId = `${roomId}-${userId}-screen-${Date.now()}`;
+      screenStreamIdRef.current = screenId;
+      await zg.startPublishingStream(screenId, screenStream);
+
+      // If the user stops sharing via browser UI, revert back.
+      const screenTrack: MediaStreamTrack | undefined = screenStream?.getVideoTracks?.()?.[0];
+      if (screenTrack) {
+        screenTrack.onended = () => {
+          toggleScreenShare().catch(() => undefined);
+        };
+      }
+    } catch (e) {
+      setIsScreenSharing(false);
+      setError(e instanceof Error ? e.message : "Screen share failed");
+    }
+  };
+
   useEffect(() => {
     if (mode !== "video") {
       setIsCameraEnabled(false);
@@ -166,6 +264,23 @@ export default function ZegoCallRoomPage() {
       engineRef.current = null;
 
       stopRemoteStreams(zg);
+
+      try {
+        if (zg && screenStreamRef.current && screenStreamIdRef.current) {
+          zg.stopPublishingStream(screenStreamIdRef.current);
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        if (zg && screenStreamRef.current) {
+          zg.destroyStream(screenStreamRef.current);
+          screenStreamRef.current = null;
+          screenStreamIdRef.current = "";
+        }
+      } catch {
+        /* ignore */
+      }
 
       try {
         if (zg) {
@@ -499,10 +614,13 @@ export default function ZegoCallRoomPage() {
 
               <button
                 type="button"
-                disabled
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/70 transition disabled:cursor-not-allowed disabled:opacity-70"
-                aria-label="Screen share"
-                title="Screen share (coming soon)"
+                onClick={toggleScreenShare}
+                className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-full text-white transition",
+                  isScreenSharing ? "bg-white/20 hover:bg-white/25" : "bg-white/10 hover:bg-white/20"
+                )}
+                aria-label={isScreenSharing ? "Stop sharing" : "Share screen"}
+                title={isScreenSharing ? "Stop sharing" : "Share screen"}
               >
                 {mode === "video" ? <Monitor className="h-5 w-5" /> : <MonitorOff className="h-5 w-5" />}
               </button>
