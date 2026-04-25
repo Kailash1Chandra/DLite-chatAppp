@@ -17,6 +17,13 @@ export function buildHostedCallUrl(roomId: string, mode: CallMode) {
   return `/call/${encodeURIComponent(roomId)}${query ? `?${query}` : ""}`;
 }
 
+// Deterministic hosted room id for group chats (so "Group call" always joins same room).
+export function buildGroupChatCallRoomId(groupId: string) {
+  const id = normalizeRoomParticipant(groupId);
+  if (!id) return "";
+  return `group-${id}`;
+}
+
 function sanitizeInviteCode(value: string) {
   return String(value || "")
     .toUpperCase()

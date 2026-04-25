@@ -36,8 +36,10 @@ import {
   subscribeRecentDirectChats,
   searchUsersByUsername
 } from '../services/chatClient';
-import { ArrowLeft, Check, Download, Upload, BellOff, Camera, Loader2, LogOut, MessageSquare, MoreVertical, Pin, PinOff, Plus, Search, Send, SmilePlus, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { ArrowLeft, Check, Download, Upload, BellOff, Camera, Loader2, LogOut, MessageSquare, MoreVertical, Phone, Video, Pin, PinOff, Plus, Search, Send, SmilePlus, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useRouter } from 'next/navigation';
+import { buildGroupChatCallRoomId, buildHostedCallUrl } from '@/lib/callRoom';
 import { ChatAppShell } from '@/components/ChatAppShell';
 import { ChatAppIconRail } from '@/components/ChatAppIconRail';
 import { ChatAppTopBar } from '@/components/ChatAppTopBar';
@@ -74,6 +76,7 @@ function linkifyGroupMessage(text) {
 }
 
 export default function GroupChatPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const [groupInput, setGroupInput] = useState('');
   const [groupId, setGroupId] = useState('');
@@ -1607,6 +1610,38 @@ export default function GroupChatPage() {
                 </p>
               </button>
               <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  disabled={!groupId.trim()}
+                  onClick={() => {
+                    const roomId = buildGroupChatCallRoomId(groupId.trim());
+                    if (!roomId) return;
+                    router.push(buildHostedCallUrl(roomId, 'audio'));
+                  }}
+                  aria-label="Start group voice call"
+                  title="Voice call"
+                >
+                  <Phone className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  disabled={!groupId.trim()}
+                  onClick={() => {
+                    const roomId = buildGroupChatCallRoomId(groupId.trim());
+                    if (!roomId) return;
+                    router.push(buildHostedCallUrl(roomId, 'video'));
+                  }}
+                  aria-label="Start group video call"
+                  title="Video call"
+                >
+                  <Video className="h-4 w-4" />
+                </Button>
                 <input
                   ref={importGroupFileRef}
                   type="file"
@@ -1851,6 +1886,7 @@ export default function GroupChatPage() {
                 <input
                   ref={groupMediaInputRef}
                   type="file"
+                  accept="*/*"
                   className="hidden"
                   onChange={handlePickGroupMedia}
                 />
