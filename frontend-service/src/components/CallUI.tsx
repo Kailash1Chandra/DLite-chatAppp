@@ -918,7 +918,17 @@ export default function CallUI({
           )}
         >
           {activeMode === "video" ? (
-            <video ref={overlayVideoRef} autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
+            <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-2 p-3 sm:gap-3 sm:p-4">
+              <div className="relative col-span-2 row-span-2 overflow-hidden rounded-[1.5rem] bg-black ring-1 ring-white/10">
+                <video ref={overlayVideoRef} autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
+                <div className="pointer-events-none absolute inset-0 bg-black/10" aria-hidden="true" />
+              </div>
+
+              {/* Local small tile (WhatsApp-like) */}
+              <div className="pointer-events-none absolute right-4 top-24 z-20 h-28 w-20 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-2xl sm:right-6 sm:top-28 sm:h-36 sm:w-24">
+                <video ref={localVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
+              </div>
+            </div>
           ) : (
             <div className="absolute inset-0 bg-gradient-to-b from-slate-950 to-black" />
           )}
@@ -987,11 +997,7 @@ export default function CallUI({
             </div>
           )}
 
-          {activeMode === "video" && (
-            <div className="absolute bottom-28 right-4 z-20 h-28 w-20 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-2xl sm:bottom-32 sm:h-36 sm:w-24">
-              <video ref={localVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
-            </div>
-          )}
+          {/* local tile moved into the video grid above */}
 
           <div className="relative z-10 mt-auto flex items-center justify-center px-6 pb-10 pt-6">
             {status === "idle" ? (

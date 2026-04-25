@@ -1756,7 +1756,7 @@ export default function GroupChatPage() {
       </ChatAppShell>
 
       {typeof document !== 'undefined' ? createPortal(groupInfoDrawer, document.body) : null}
-
+aff
       {membersModalOpen && (
         <div className="fixed inset-0 z-[150] bg-black/55 backdrop-blur-sm">
           <div className="mx-auto flex h-full w-full max-w-2xl flex-col bg-ui-panel">
