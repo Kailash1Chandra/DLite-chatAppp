@@ -40,6 +40,8 @@ import { ArrowLeft, Check, Download, Upload, BellOff, Camera, Loader2, LogOut, M
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { buildGroupChatCallRoomId, buildHostedCallUrl } from '@/lib/callRoom';
+import { ComposerOverflowMenu, composerMenuItemClass } from '@/components/ComposerOverflowMenu';
+import { AtSign, ImageIcon, Paperclip } from 'lucide-react';
 import { ChatAppShell } from '@/components/ChatAppShell';
 import { ChatAppIconRail } from '@/components/ChatAppIconRail';
 import { ChatAppTopBar } from '@/components/ChatAppTopBar';
@@ -133,6 +135,7 @@ export default function GroupChatPage() {
   const groupPhotoInputRef = useRef(null);
   const groupComposerRef = useRef(null);
   const groupMediaInputRef = useRef(null);
+  const groupImageInputRef = useRef(null);
   const messagesWrapRef = useRef(null);
   const shouldAutoScrollRef = useRef(false);
   const lastGroupMessageCountRef = useRef(0);
@@ -943,6 +946,23 @@ export default function GroupChatPage() {
   };
 
   const handlePickGroupMedia = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !user?.id || !groupId.trim()) return;
+    setSending(true);
+    setPanelError('');
+    setPanelSuccess('');
+    try {
+      await sendChatGroupMedia({ groupId: groupId.trim(), chatId: groupId.trim(), senderId: user.id, file });
+      setPanelSuccess('Media sent.');
+    } catch (err) {
+      setPanelError(err?.message || 'Could not send media.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handlePickGroupImage = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !user?.id || !groupId.trim()) return;
@@ -1890,6 +1910,13 @@ export default function GroupChatPage() {
                   className="hidden"
                   onChange={handlePickGroupMedia}
                 />
+                <input
+                  ref={groupImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePickGroupImage}
+                />
                 <button
                   type="button"
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/90 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-700/80"
@@ -1933,6 +1960,46 @@ export default function GroupChatPage() {
                 >
                   {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                 </button>
+                <ComposerOverflowMenu
+                  includeGlobalItems={false}
+                  composerActions={
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={composerMenuItemClass}
+                        disabled={!groupId.trim() || !isMember || sending}
+                        onClick={() => groupMediaInputRef.current?.click()}
+                      >
+                        <Paperclip className="h-4 w-4 shrink-0 opacity-80" />
+                        Attach file
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={composerMenuItemClass}
+                        disabled={!groupId.trim() || !isMember || sending}
+                        onClick={() => groupImageInputRef.current?.click()}
+                      >
+                        <ImageIcon className="h-4 w-4 shrink-0 opacity-80" />
+                        Photo
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={composerMenuItemClass}
+                        disabled={!groupId.trim() || !isMember || sending}
+                        onClick={() => {
+                          groupComposerRef.current?.focus();
+                          setMessage((prev) => `${prev}@`);
+                        }}
+                      >
+                        <AtSign className="h-4 w-4 shrink-0 opacity-80" />
+                        Mention
+                      </button>
+                    </>
+                  }
+                />
               </div>
             </div>
           </form>
