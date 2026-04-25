@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { listenForIncomingHostedCall } from '@/lib/call';
 import { buildHostedCallUrl } from '@/lib/callRoom';
+import { getUserProfileById } from '@/services/chatClient';
 
 const IncomingCallContext = createContext(null);
 
@@ -38,6 +39,7 @@ export function IncomingCallProvider({ children }) {
   const pathname = usePathname();
   const beeper = useRef(createBeeper());
   const [incoming, setIncoming] = useState(null);
+  const [callerProfile, setCallerProfile] = useState(null);
 
   // /call is now the launcher; only suppress auto-navigation when already inside an active call route.
   const isOnCallPage = pathname?.startsWith('/call/') || pathname?.startsWith('/webrtc-call');
@@ -62,6 +64,7 @@ export function IncomingCallProvider({ children }) {
       if (isOnCallPage) return;
       if (!incoming) {
         setIncoming(null);
+        setCallerProfile(null);
         beeperRef.stop();
         return;
       }
@@ -73,6 +76,35 @@ export function IncomingCallProvider({ children }) {
       beeperRef.stop();
     };
   }, [user?.id, isOnCallPage, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fromId = String(incoming?.fromUserId || '').trim();
+    if (!fromId) {
+      setCallerProfile(null);
+      return () => undefined;
+    }
+    (async () => {
+      try {
+        const p = await getUserProfileById(fromId).catch(() => null);
+        if (cancelled) return;
+        const username =
+          p?.username ||
+          p?.user_metadata?.username ||
+          p?.user_metadata?.full_name ||
+          p?.user_metadata?.name ||
+          p?.email ||
+          fromId;
+        const photoURL = p?.avatarUrl || p?.avatar_url || p?.photoURL || p?.picture || '';
+        setCallerProfile({ id: fromId, username, photoURL });
+      } catch {
+        if (!cancelled) setCallerProfile({ id: fromId, username: fromId, photoURL: '' });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [incoming?.fromUserId]);
 
   // When navigating to /call page, hide global overlay
   useEffect(() => {
@@ -86,11 +118,11 @@ export function IncomingCallProvider({ children }) {
   const value = useMemo(
     () => ({
       offer: incoming,
-      callerProfile: incoming ? { id: incoming.fromUserId, username: incoming.fromUserId } : null,
+      callerProfile,
       accept,
       reject,
     }),
-    [accept, incoming, reject]
+    [accept, callerProfile, incoming, reject]
   );
 
   return (

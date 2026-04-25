@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ZegoExpressEngine } from "zego-express-engine-webrtc";
 import { Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Users, Video, VideoOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { buildHostedCallUrl, getInviteCodeFromRoomId } from "@/lib/callRoom";
 import { cn } from "@/lib/utils";
+import { endCall, listenForCallEnded } from "@/lib/call";
 
 type RemoteTile = { streamId: string };
 
@@ -20,6 +21,7 @@ type RemoteTile = { streamId: string };
 export default function ZegoCallRoomPage() {
   const { user } = useAuth();
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const roomId = String((params as any)?.roomId || "").trim();
@@ -51,6 +53,17 @@ export default function ZegoCallRoomPage() {
 
   const server = useMemo(() => "wss://webliveroom-api.zego.im/ws", []);
   const hostedCallPath = useMemo(() => buildHostedCallUrl(roomId, mode), [mode, roomId]);
+  const peerUserId = useMemo(() => {
+    // If this hosted room id is a DM room (`dm-a--b`), we can detect the peer and sync "end call" for both sides.
+    const raw = String(roomId || "").trim();
+    if (!raw.startsWith("dm-")) return "";
+    const rest = raw.slice(3);
+    const parts = rest.split("--").map((s) => s.trim()).filter(Boolean);
+    if (parts.length !== 2) return "";
+    if (parts[0] === userId) return parts[1];
+    if (parts[1] === userId) return parts[0];
+    return "";
+  }, [roomId, userId]);
   const statusLabel = useMemo(() => {
     switch (status) {
       case "getting_token":
@@ -512,6 +525,26 @@ export default function ZegoCallRoomPage() {
   }, [applyLocalTrackState, mode, roomId, server, userId, userName]);
 
   useEffect(() => {
+    if (!userId || !peerUserId) return () => undefined;
+    // When peer ends the call, close this page too.
+    return listenForCallEnded(
+      userId,
+      () => {
+        router.replace("/call");
+      },
+      { fromUserId: peerUserId }
+    );
+  }, [peerUserId, router, userId]);
+
+  const handleLeave = async () => {
+    // Tell the peer to close too (DM hosted room only).
+    if (userId && peerUserId) {
+      endCall({ userId, peerUserId }).catch(() => undefined);
+    }
+    router.replace("/call");
+  };
+
+  useEffect(() => {
     applyLocalTrackState(localStreamRef.current);
   }, [applyLocalTrackState]);
 
@@ -640,6 +673,10 @@ export default function ZegoCallRoomPage() {
                 className="flex h-10 w-12 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/20 transition hover:bg-red-600"
                 aria-label="Leave"
                 title="Leave"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleLeave();
+                }}
               >
                 <PhoneOff className="h-5 w-5" />
               </Link>

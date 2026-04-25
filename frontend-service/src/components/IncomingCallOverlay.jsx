@@ -14,7 +14,7 @@ export default function IncomingCallOverlay() {
   const callerName = callerProfile?.username || offer.fromUserId || 'Unknown user';
   const isVideo = offer.mode === 'video';
   const initial = String(callerName).slice(0, 1).toUpperCase();
-  const roomCode = String(offer.roomId || '').replace(/^room-/, '');
+  const photoURL = String(callerProfile?.photoURL || '').trim();
 
   return (
     <AnimatePresence>
@@ -35,27 +35,25 @@ export default function IncomingCallOverlay() {
             <div className="relative flex items-center justify-center">
               <span className="absolute h-36 w-36 animate-ping rounded-full bg-green-500/20" />
               <span className="absolute h-48 w-48 animate-ping rounded-full bg-green-500/10 [animation-delay:400ms]" />
-              <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 via-violet-600 to-cyan-500 text-4xl font-bold text-white shadow-2xl shadow-violet-500/30">
-                {initial}
-              </div>
+              {photoURL ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={photoURL}
+                  alt=""
+                  className="relative h-24 w-24 rounded-full border border-white/10 object-cover shadow-2xl shadow-violet-500/30"
+                  draggable={false}
+                />
+              ) : (
+                <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 via-violet-600 to-cyan-500 text-4xl font-bold text-white shadow-2xl shadow-violet-500/30">
+                  {initial}
+                </div>
+              )}
             </div>
 
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-white/45">Incoming call</p>
               <p className="mt-2 text-2xl font-bold tracking-tight text-white">{callerName}</p>
-              <p className="mt-2 text-sm font-medium text-white/70">
-                {isVideo ? 'Video room invite' : 'Voice room invite'}
-              </p>
-              {roomCode ? (
-                <p className="mt-3 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-white/65">
-                  Room {roomCode}
-                </p>
-              ) : null}
             </div>
-
-            <p className="max-w-sm text-sm leading-6 text-white/55">
-              Accept to join the hosted ZEGO room now, or decline to ignore the invite.
-            </p>
 
             <div className="flex items-center gap-5 pt-2">
               <div className="flex flex-col items-center gap-2.5">
