@@ -1,142 +1,224 @@
 # D-LITE
 
-D-LITE is a real-time chat + calling app refactored into a **simplified 3-service architecture** with a modern Next.js frontend.
+D-LITE is a real-time chat + calling app with a modern Next.js frontend and a multi-backend architecture for chat, realtime signaling, and AI features.
 
-This repository contains:
+## What’s in this repo
 
-- **frontend-service**: Next.js web app (UI + internal API routes for link preview / optional Mongo message backup).
-- **core-backend**: merged REST backend for auth + chat reads + media uploads.
-- **realtime-service**: Socket.IO service for chat realtime + WebRTC signaling.
-- **Database assets**: reference SQL schema and docs.
+- **frontend-service**: Next.js web app (UI + internal API routes)
+- **core-backend**: FastAPI REST backend for auth, chat, groups, media upload
+- **realtime-service**: Socket.IO backend for realtime chat + call signaling
+- **ai-backend**: FastAPI AI backend (chat,voice-chat(coming-soon))
+- **database/docs**: SQL schema + deployment/environment docs
 
 ## Features
 
-- **Authentication**
-  - `core-backend` uses **Supabase Auth** (primary) with `/auth/me`.
-  - If Supabase is unreachable in local setups, it can fall back to locally-issued JWTs (dev-friendly).
-- **Direct & group chat**
-  - `core-backend` provides REST reads and `realtime-service` provides Socket.IO realtime events.
-  - When configured, messages are persisted in Supabase Postgres (`messages` table).
-- **Calls**
-  - WebRTC signaling via Socket.IO (`realtime-service`).
-- **Media**
-  - Media uploads to Cloudinary via `core-backend` (optional; runs in degraded mode when not configured).
-- **Backups (optional)**
-  - `frontend-service` can mirror messages to MongoDB via `POST /api/message-backup` when `MONGODB_URI` is set.
+### Authentication
+- **Sign up / Log in** — email-based registration and login via Supabase Auth
+- **Protected routes** — all chat pages are behind an auth guard; unauthenticated users are redirected to `/login`
+- **Session persistence** — auth state is managed globally via `AuthContext` and survives page refreshes
+
+### Direct (DM) Chat
+- **Real-time messaging** — messages appear instantly via Socket.IO; no page refresh needed
+- **Recent chats sidebar** — lists your active conversations sorted by latest activity
+- **Start new chat** — search any registered user by username and open a DM instantly
+- **Filter conversations** — live search bar to filter your chats list
+- **Typing indicators** — see when the other person is typing
+- **Online presence** — see whether a contact is online or offline
+- **Message reactions** — hover a message and react with an emoji (👍 ❤️ 😂 etc.)
+- **Pin / unpin messages** — pin important messages; pinned messages are highlighted and accessible from the conversation header
+- **Delete messages** — remove your own messages; deleted messages show a placeholder
+- **Media sharing** — send images, videos, audio files, and generic file attachments; previews render inline
+- **Link preview** — pasted URLs are enriched with a title/description card via `/api/link-preview`
+- **Polls** — compose an informal poll with up to three options; poll cards render inline in the chat thread
+- **Export chat history** — download the full conversation as a JSON file
+- **Message backup** — optional MongoDB-backed backup via `/api/message-backup`
+- **User avatars** — auto-generated DiceBear avatars based on username; no manual upload needed
+
+### Group Chat
+- **Create groups** — pick a name, set a group photo, and invite members in a two-step flow
+- **Add / kick members** — admins can search for users and add them, or remove existing members
+- **Admin roles** — the group creator is an admin; regular members have limited permissions
+- **Real-time group messages** — all members see new messages live via Socket.IO
+- **Group typing indicators** — see who in the group is currently typing
+- **Message reactions** — same emoji reaction system as DM, scoped per group message
+- **Pin / unpin messages** — admins and members can pin notable messages in the group
+- **In-conversation message search** — filter messages within the active group by keyword
+- **Mute notifications** — toggle notification muting per group
+- **Group photo upload** — upload a group avatar image (stored via Cloudinary)
+- **Export / import chat history** — export a group's messages as JSON, or re-import a previously exported file
+- **Leave group** — any member can leave; admins can also delete the group entirely
+
+### Calls
+- **Video / voice calls** — browser-based calls powered by WebRTC signaling over `realtime-service`
+- **Incoming call overlay** — a full-screen overlay pops up with accept / decline when someone calls you
+- **Hosted call rooms** — shareable call rooms via ZEGOCLOUD when the `token` API is configured
+- **Call history** — recent call records are tracked client-side via `callHistory`
+
+### AI — Special Friend
+- **Chat mode** — have a freeform text conversation with an AI assistant; responses stream from `ai-backend`
+- **Voice mode** — speak into your microphone (speech-to-text via Deepgram), get a spoken AI reply (text-to-speech via ElevenLabs); a live audio-level visualiser shows mic activity
+- **Mode picker** — switch between chat and voice mode from the Special Friend entry point
+
+### UI / UX
+- **Dark / light theme** — toggle between themes; preference is persisted via `ThemeContext`
+- **Virtualized message lists** — long conversations use `@tanstack/react-virtual` so only visible messages are rendered, keeping the UI fast regardless of history length
+- **Linkified messages** — plain-text URLs in messages are automatically turned into clickable links
+- **Responsive layout** — sidebar collapses on narrow viewports; works on mobile browsers
+- **Composer overflow menu** — extra send actions (poll, media, etc.) are tucked behind a `+` button in the message composer
+
+## Feature map (service routing)
+
+- **Auth**: Supabase Auth via `core-backend` (`/auth/*`)
+- **Direct & Group chat**: REST (`core-backend`) + Socket.IO realtime (`realtime-service`)
+- **Calls**: WebRTC signaling on `realtime-service`
+- **Media uploads**: Cloudinary via `core-backend` (`/chat/media/upload`)
+- **AI assistant (Special Friend)**: `ai-backend` via `/api/v1/chat`
 
 ## Architecture (high level)
 
 ```text
 Browser (Next.js)
-  ├─ UI routes (/login, /dashboard, /groups, /call, /webrtc-call, /video-call)
-  ├─ Internal API routes:
+  ├─ UI routes (/login, /dashboard, /groups, /special-friend, /call, ...)
+  ├─ Internal API routes
   │    ├─ /api/link-preview
   │    ├─ /api/message-backup (optional Mongo)
-  │    └─ /api/token (ZEGOCLOUD, when configured)
-  ├─ REST API -> core-backend (port 4000)
-  │              ├─ /auth/*
-  │              ├─ /chat/*
-  │              └─ /media/*
-  └─ WebSockets (Socket.IO) -> realtime-service (port 4003)
-                 ├─ chat events
-                 └─ call signaling events
+  │    └─ /api/token (ZEGOCLOUD when configured)
+  ├─ REST -> core-backend
+  │    ├─ /auth/*
+  │    └─ /chat/*
+  ├─ Socket.IO -> realtime-service
+  │    ├─ chat events
+  │    └─ call signaling events
+  └─ AI -> ai-backend
+       └─ /api/v1/* (chat,voice-chat)
 ```
 
-## Services & ports
+## Local services & default ports
 
-- **frontend-service (Next.js)**: `http://localhost:3000`
-- **core-backend (REST)**: `http://localhost:4000`
-- **realtime-service (Socket.IO)**: `http://localhost:4003`
+- `frontend-service`: `http://localhost:3000`
+- `core-backend`: `http://localhost:4000`
+- `realtime-service`: `http://localhost:4003`
+- `ai-backend`: `http://localhost:8000`
 
 ## Repo structure
 
 ```text
-core-backend/            # Auth + chat reads + media (FastAPI)
-realtime-service/        # Chat realtime + call signaling (Socket.IO / ASGI)
 frontend-service/        # Next.js frontend
-database/                # Reference schema/docs
-docs/                    # Deployment / env notes
-.env.example             # Example env config (repo root)
+core-backend/            # FastAPI auth/chat/media
+realtime-service/        # Socket.IO realtime + signaling
+ai-backend/              # FastAPI AI endpoints (chat/STT/TTS)
+database/                # SQL and data assets
+docs/                    # Deployment and env docs
+.env.example             # Root env template
 ```
 
-## Environment
+## Quick start (local)
 
-Configuration is now unified via root `.env` (see `.env.example`).
+### 1) Prepare env
 
-For **production deployments where each service is hosted separately**, see `docs/ENVIRONMENT_VARIABLES.md`.
+- Copy `.env.example` to `.env` at repo root
+- Fill required Supabase values (`SUPABASE_URL`, `SUPABASE_ANON_KEY`)
+- Add optional integrations if needed (Cloudinary, AI provider keys)
 
-### Required for full functionality
+### 2) Run frontend
 
-- **Supabase (auth/chat storage)**
-  - `SUPABASE_URL`, `SUPABASE_ANON_KEY`; `SUPABASE_SERVICE_ROLE_KEY` on **core-backend** for some group/admin operations (optional for many DM flows if RLS is used)
+```bash
+cd frontend-service
+npm install
+npm run dev
+```
 
-### Optional
+### 3) Run core backend
 
-- **Cloudinary (media uploads)**: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
+```bash
+cd core-backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 4000
+```
 
-- **Local auth fallback consistency**: set `AUTH_JWT_SECRET` (and keep it consistent across services)
+### 4) Run realtime backend
 
-If you don’t set optional values, services still start but related features may respond with `503` until configured.
+```bash
+cd realtime-service
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 4003
+```
 
-## Run locally (without Docker)
+### 5) Run AI backend
 
-Backend is now Python-based. You can still run locally, but Docker is recommended.
+```bash
+cd ai-backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-Notes:
+## Environment variables
 
-- If Supabase/Mongo/Cloudinary env vars are missing, some services may run in **degraded mode** (health endpoints work, feature endpoints return `503`).
+For full deployment guidance, see `docs/ENVIRONMENT_VARIABLES.md`.
 
-## Docker
+### Frontend (public)
 
-Each service has its own `Dockerfile` for deployment (e.g. Render). Compose files are not required for the default layout; run services separately or add your own orchestration.
+- `NEXT_PUBLIC_API_BASE_URL` (core-backend origin)
+- `NEXT_PUBLIC_CHAT_SOCKET_URL` (realtime-service origin)
+- `NEXT_PUBLIC_CALL_SOCKET_URL` (usually same as chat socket origin)
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_AI_BACKEND_URL` (optional; defaults to `https://dlite-ai.onrender.com` in Special Friend)
 
-## API reference
+### Core backend
 
-### Auth
+- Required: `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+- Recommended: `SUPABASE_SERVICE_ROLE_KEY` (for group/admin write flows)
+- Optional media: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
+
+### Realtime backend
+
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+- `SOCKET_IO_CORS_ORIGINS`
+
+### AI backend
+
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_MODEL` (example: `nvidia/nemotron-3-super-120b-a12b:free`)
+- `DEEPGRAM_API_KEY` (STT)
+- `ELEVENLABS_API_KEY` (TTS)
+- `ELEVENLABS_VOICE_ID`
+
+## API quick reference
+
+### Core backend
 
 - `POST /auth/signup`
 - `POST /auth/login`
-- `GET /auth/me` (requires `Authorization: Bearer <token>`)
+- `GET /auth/me`
+- `GET /chat/messages/{chatId}`
+- `POST /chat/messages/send`
+- `POST /chat/media/upload`
 
-### Chat
+### AI backend (prefix: `/api/v1`)
 
-- `GET /chat/messages/:chatId` (requires `Authorization: Bearer <token>`)
-
-### Media
-
-- `POST /chat/media/upload` (multipart form-data, field: `file`; requires auth; stores on **Cloudinary**, returns `url` + `type`)
-- Configure `core-backend`: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (server-only)
-
-### Call (Socket.IO)
-
-Connect with `userId` in handshake (`auth.userId` or query `userId`).
-
-Events (client → server):
-
-- `call_user` → `{ toUserId, callType: 'audio'|'video', offer: { type, sdp } }`
-- `accept_call` → `{ toUserId, answer: { type, sdp } }` (callee → caller)
-- `reject_call` → `{ toUserId, reason? }`
-- `ice_candidate` → `{ toUserId, candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment? } }`
-- `end_call` → `{ toUserId, reason? }`
-
-Events (server → client):
-
-- `call_user` (incoming offer), `call_answer`, `call_rejected`, `call_ice_candidate`, `call_ended`
+- `GET /health`
+- `POST /chat`
+- `POST /speech-to-text`
+- `POST /text-to-speech`
+- `POST /voice-chat`
 
 ## Health checks (smoke test)
 
 ```bash
 curl -sS http://localhost:3000/health
 curl -sS http://localhost:4000/health
-curl -sS http://localhost:4000/auth/me
 curl -sS http://localhost:4003/health
+curl -sS http://localhost:8000/api/v1/health
 ```
 
 ## Troubleshooting
 
-- **Auth/Chat returns 503**
-  - Set Supabase env vars in root `.env` and restart.
-- **Media returns 503**
-  - Set Cloudinary env vars on **core-backend** and restart.
-- **Mongo message backup skipped**
-  - Set `MONGODB_URI` (and optional `MONGODB_DB_NAME`) on **frontend-service** if you use `/api/message-backup`.
+- **Group/direct chat issues**
+  - Verify `NEXT_PUBLIC_API_BASE_URL` points to `core-backend`
+  - Verify `NEXT_PUBLIC_CHAT_SOCKET_URL` points to `realtime-service`
+- **Media upload fails**
+  - Ensure Cloudinary vars are set on `core-backend`
+- **Special Friend returns fallback/local reply**
+  - Verify `NEXT_PUBLIC_AI_BACKEND_URL` and `ai-backend` `/api/v1/chat` health
+- **TTS fails with 401**
+  - Re-check `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` on `ai-backend`
