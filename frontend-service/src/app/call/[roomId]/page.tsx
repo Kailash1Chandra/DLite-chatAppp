@@ -70,6 +70,7 @@ export default function ZegoCallRoomPage() {
   const [isCameraEnabled, setIsCameraEnabled] = useState(mode === "video");
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const reconnectingRef = useRef(false);
+  const engineDestroyTimerRef = useRef<number | null>(null);
   const [videoLayout, setVideoLayout] = useState<"split" | "pip">("split");
   const [endedOverlayVisible, setEndedOverlayVisible] = useState(false);
 
@@ -307,7 +308,16 @@ export default function ZegoCallRoomPage() {
       setRemoteTiles([]);
     };
 
+    const clearPendingEngineDestroy = () => {
+      if (engineDestroyTimerRef.current !== null) {
+        window.clearTimeout(engineDestroyTimerRef.current);
+        engineDestroyTimerRef.current = null;
+      }
+    };
+
     const cleanup = async () => {
+      clearPendingEngineDestroy();
+
       const zg = engineRef.current;
       engineRef.current = null;
 
@@ -345,23 +355,32 @@ export default function ZegoCallRoomPage() {
 
       try {
         if (zg) {
-          zg.logoutRoom(roomId);
+          await Promise.resolve((zg as unknown as { logoutRoom?: (r: string) => unknown }).logoutRoom?.(roomId)).catch(
+            () => undefined
+          );
         }
       } catch {
         /* ignore */
       }
 
-      try {
-        if (zg) {
-          zg.destroyEngine();
-        }
-      } catch {
-        /* ignore */
+      // Defer engine destruction slightly. ZEGO may still have in-flight post-login tasks
+      // (cloud settings / loggers). Destroying immediately can trigger internal null deref errors.
+      if (zg) {
+        const zgToDestroy = zg;
+        engineDestroyTimerRef.current = window.setTimeout(() => {
+          engineDestroyTimerRef.current = null;
+          try {
+            zgToDestroy.destroyEngine();
+          } catch {
+            /* ignore */
+          }
+        }, 220);
       }
     };
 
     const run = async () => {
       try {
+        clearPendingEngineDestroy();
         setError("");
         setNeedsUserGesture(false);
         setRemoteTiles([]);
@@ -387,9 +406,11 @@ export default function ZegoCallRoomPage() {
 
         setStatus("initializing");
         await applyZegoLoggingPolicy();
+        if (cancelled) return;
         const zg = new ZegoExpressEngine(appId, server);
         engineRef.current = zg;
         await applyZegoLoggingPolicy(zg);
+        if (cancelled) return;
 
         try {
           (zg as unknown as { setDebugVerbose?: (v: boolean) => void }).setDebugVerbose?.(false);
@@ -403,6 +424,7 @@ export default function ZegoCallRoomPage() {
         } catch {
           /* ignore */
         }
+        if (cancelled) return;
 
         const upsertRemoteTile = (streamId: string, remoteStream: any) => {
           remoteStreamsRef.current[streamId] = remoteStream;
@@ -556,6 +578,7 @@ export default function ZegoCallRoomPage() {
         publishedStreamIdRef.current = streamId;
         if (!streamId.trim()) throw new Error("Invalid stream id");
         await zg.startPublishingStream(streamId, localStream);
+        if (cancelled) return;
 
         setStatus("waiting_remote");
       } catch (e) {
