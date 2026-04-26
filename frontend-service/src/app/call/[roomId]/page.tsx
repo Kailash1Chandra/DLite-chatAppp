@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ZegoExpressEngine } from "zego-express-engine-webrtc";
-import { Columns2, Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Users, Video, VideoOff } from "lucide-react";
+import { Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Users, Video, VideoOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { buildHostedCallUrl, getInviteCodeFromRoomId } from "@/lib/callRoom";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,33 @@ function AvatarBadge({ label }: { label: string }) {
   return (
     <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/10 text-2xl font-bold text-white ring-1 ring-white/10">
       {initials}
+    </div>
+  );
+}
+
+function AudioWaveform({ active = false }: { active?: boolean }) {
+  const bars = useMemo(() => Array.from({ length: 22 }, (_v, i) => i), []);
+  return (
+    <div className="flex items-end justify-center gap-[3px]" aria-hidden="true">
+      {bars.map((i) => {
+        const base = 0.22 + Math.sin(i * 0.5) * 0.1;
+        const wobble = active ? (Math.sin(Date.now() / 180 + i * 0.75) + 1) / 2 : 0.15;
+        const h = 6 + (active ? wobble : base) * 26;
+        return (
+          <div
+            // eslint-disable-next-line react/no-array-index-key
+            key={i}
+            className="w-1 rounded-full"
+            style={{
+              height: `${h}px`,
+              background: "linear-gradient(180deg, #fb923c, #ea580c)",
+              transition: "height 90ms ease-out",
+              filter: "drop-shadow(0 10px 22px rgba(234,88,12,0.20))",
+              opacity: 0.95,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -95,6 +122,8 @@ export default function ZegoCallRoomPage() {
   const [videoLayout, setVideoLayout] = useState<"whatsapp" | "meet">("meet");
   const [endedOverlayVisible, setEndedOverlayVisible] = useState(false);
   const [remoteVideoState, setRemoteVideoState] = useState<Record<string, boolean>>({});
+  const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
+  const [callNow, setCallNow] = useState<number>(Date.now());
 
   const server = useMemo(() => "wss://webliveroom-api.zego.im/ws", []);
   const hostedCallPath = useMemo(() => buildHostedCallUrl(roomId, mode), [mode, roomId]);
@@ -723,6 +752,18 @@ export default function ZegoCallRoomPage() {
     return () => window.clearTimeout(t);
   }, [copiedState]);
 
+  useEffect(() => {
+    if (status !== "connected") return;
+    setCallStartedAt((prev) => prev ?? Date.now());
+  }, [status]);
+
+  useEffect(() => {
+    if (!callStartedAt) return;
+    if (status !== "connected") return;
+    const t = window.setInterval(() => setCallNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [callStartedAt, status]);
+
   if (!roomId) {
     return <div className="p-6 text-sm text-slate-600">Missing roomId.</div>;
   }
@@ -738,6 +779,15 @@ export default function ZegoCallRoomPage() {
   const remoteAvatarLabel = primaryRemoteStreamId
     ? String(primaryRemoteStreamId.split("-")[1] || "User")
     : "User";
+  const durationSec = callStartedAt ? Math.max(0, Math.floor((callNow - callStartedAt) / 1000)) : 0;
+  const mm = String(Math.floor(durationSec / 60)).padStart(2, "0");
+  const ss = String(durationSec % 60).padStart(2, "0");
+
+  const controlBtn =
+    "relative flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/10 backdrop-blur " +
+    "transition duration-150 ease-out will-change-transform " +
+    "hover:bg-white/15 hover:-translate-y-[1px] hover:shadow-[0_10px_30px_-16px_rgba(255,255,255,0.25)] " +
+    "active:translate-y-0 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
 
   return (
     <div
@@ -847,7 +897,7 @@ export default function ZegoCallRoomPage() {
             <div className="flex items-center gap-2 rounded-full bg-[#2b2b2b]/80 px-3 py-2 ring-1 ring-white/10 backdrop-blur">
               <button
                 type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                className={controlBtn}
                 aria-label="Call"
                 title="Call"
               >
@@ -857,7 +907,7 @@ export default function ZegoCallRoomPage() {
               <button
                 type="button"
                 onClick={toggleMic}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                className={controlBtn}
                 aria-label={isMicEnabled ? "Mute" : "Unmute"}
                 title={isMicEnabled ? "Microphone" : "Microphone off"}
               >
@@ -868,7 +918,7 @@ export default function ZegoCallRoomPage() {
                 <button
                   type="button"
                   onClick={toggleCamera}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                  className={controlBtn}
                   aria-label={isCameraEnabled ? "Camera off" : "Camera on"}
                   title={isCameraEnabled ? "Camera" : "Camera off"}
                 >
@@ -880,7 +930,7 @@ export default function ZegoCallRoomPage() {
                 type="button"
                 onClick={toggleScreenShare}
                 className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-full text-white transition",
+                  controlBtn,
                   isScreenSharing ? "bg-white/20 hover:bg-white/25" : "bg-white/10 hover:bg-white/20"
                 )}
                 aria-label={isScreenSharing ? "Stop sharing" : "Share screen"}
@@ -892,26 +942,19 @@ export default function ZegoCallRoomPage() {
               <button
                 type="button"
                 disabled
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/70 transition disabled:cursor-not-allowed disabled:opacity-70"
+                className={cn(
+                  controlBtn,
+                  "text-white/70 disabled:cursor-not-allowed disabled:opacity-70 hover:-translate-y-0 hover:shadow-none"
+                )}
                 aria-label="Participants"
                 title={`Participants: ${remoteTiles.length + 1}`}
               >
                 <Users className="h-5 w-5" />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setVideoLayout((v) => (v === "meet" ? "whatsapp" : "meet"))}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
-                aria-label="Change layout"
-                title={videoLayout === "meet" ? "WhatsApp layout" : "Google Meet layout"}
-              >
-                <Columns2 className="h-5 w-5" />
-              </button>
-
               <Link
                 href="/call"
-                className="flex h-10 w-12 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/20 transition hover:bg-red-600"
+                className="flex h-11 w-[52px] items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/25 ring-1 ring-red-400/30 transition duration-150 ease-out hover:-translate-y-[1px] hover:bg-red-600 active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                 aria-label="Leave"
                 title="Leave"
                 onClick={(e) => {
@@ -951,21 +994,97 @@ export default function ZegoCallRoomPage() {
           ) : null}
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="mx-auto w-full max-w-[980px] rounded-2xl border border-ui-border bg-ui-panel p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Call room</p>
-                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  Mode: <span className="font-semibold">Audio</span>
-                </p>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div className="relative mx-auto flex w-full max-w-[1160px] flex-1 flex-col justify-center">
+            <div className="absolute inset-0 overflow-hidden rounded-2xl">
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/15 via-black to-black" />
+              <div className="absolute -left-24 -top-24 h-[360px] w-[360px] rounded-full bg-orange-500/25 blur-[80px]" />
+              <div className="absolute -bottom-28 -right-24 h-[420px] w-[420px] rounded-full bg-pink-500/15 blur-[90px]" />
+              <div className="absolute inset-0 bg-black/35" />
+            </div>
+
+            <div className="relative z-10 mx-auto flex w-full max-w-[760px] flex-col items-center px-4 py-10 text-center text-white">
+              <div className="flex w-full items-center justify-between">
+                <div className="rounded-full bg-black/35 px-3 py-1 text-xs font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur">
+                  {mm}:{ss}
+                </div>
+
+                <div className="rounded-full bg-black/35 px-3 py-1 text-xs font-semibold text-emerald-200 ring-1 ring-white/10 backdrop-blur">
+                  {status === "connected" ? "Excellent" : statusLabel}
+                </div>
               </div>
-              <Link
-                href="/call"
-                className="anim-shimmer relative inline-flex items-center justify-center overflow-hidden rounded-full bg-gradient-to-r from-fuchsia-600 via-violet-600 to-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-fuchsia-500/15 ring-1 ring-white/15 transition hover:-translate-y-0.5 hover:brightness-110"
-              >
-                Leave
-              </Link>
+
+              <div className="mt-14">
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-full bg-orange-500/20 blur-[28px]" />
+                  <div className="relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
+                    <span className="text-5xl font-extrabold">{getInitials(remoteAvatarLabel)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 text-2xl font-semibold tracking-tight">{remoteAvatarLabel}</div>
+              <div className="mt-1 flex items-center justify-center gap-2 text-sm text-white/70">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                {status === "connected" ? "Connected · HD audio" : statusLabel}
+              </div>
+
+              <div className="mt-7">
+                <AudioWaveform active={status === "connected"} />
+              </div>
+
+              <div className="mt-10 flex items-center justify-center">
+                <div className="flex items-center gap-2 rounded-full bg-[#2b2b2b]/80 px-3 py-2 ring-1 ring-white/10 backdrop-blur">
+                  <button
+                    type="button"
+                    onClick={toggleMic}
+                    className={controlBtn}
+                    aria-label={isMicEnabled ? "Mute" : "Unmute"}
+                    title={isMicEnabled ? "Microphone" : "Microphone off"}
+                  >
+                    {isMicEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled
+                    className={cn(
+                      controlBtn,
+                      "text-white/70 disabled:cursor-not-allowed disabled:opacity-70 hover:-translate-y-0 hover:shadow-none"
+                    )}
+                    aria-label="Reactions"
+                    title="Reactions"
+                  >
+                    <span className="text-base">♥</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled
+                    className={cn(
+                      controlBtn,
+                      "text-white/70 disabled:cursor-not-allowed disabled:opacity-70 hover:-translate-y-0 hover:shadow-none"
+                    )}
+                    aria-label="More"
+                    title="More"
+                  >
+                    <span className="text-base">…</span>
+                  </button>
+
+                  <Link
+                    href="/call"
+                    className="flex h-11 w-[52px] items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/25 ring-1 ring-red-400/30 transition duration-150 ease-out hover:-translate-y-[1px] hover:bg-red-600 active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                    aria-label="Leave"
+                    title="Leave"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleLeave();
+                    }}
+                  >
+                    <PhoneOff className="h-5 w-5" />
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </div>
