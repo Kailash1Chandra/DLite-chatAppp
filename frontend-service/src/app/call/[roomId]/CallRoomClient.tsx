@@ -227,6 +227,34 @@ function errorToUserMessage(e: unknown, fallback = "Something went wrong"): stri
   return n.trim() || fallback;
 }
 
+/**
+ * DevTools: filter console by `[D-LITE call]` to see the real error (stack, cause, raw value).
+ */
+function logCallRoomFailure(context: string, err: unknown) {
+  const payload: Record<string, unknown> = {
+    context,
+    uiMessage: normalizeUiError(err) || errorToUserMessage(err, ""),
+    raw: err,
+  };
+  if (err instanceof Error) {
+    payload.name = err.name;
+    payload.message = err.message;
+    payload.stack = err.stack;
+    const c = (err as Error & { cause?: unknown }).cause;
+    if (c !== undefined) payload.cause = c;
+  }
+  if (err && typeof err === "object" && !(err instanceof Error)) {
+    if (typeof Response === "undefined" || !(err instanceof Response)) {
+      try {
+        payload.asJson = JSON.stringify(err);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  console.error("[D-LITE call]", payload);
+}
+
 /** Profile / peer display: never turn arbitrary objects into "[object Object]" names. */
 function safeDisplayName(value: unknown): string {
   if (value == null) return "";
@@ -1188,6 +1216,7 @@ export default function ZegoCallRoomPage() {
         setStatus("waiting_remote");
       } catch (e) {
         if (cancelled) return;
+        logCallRoomFailure("Zego run() / token / login / publish", e);
         setStatus("error");
         setError(errorToUserMessage(e, "Call failed"));
         await cleanup();
