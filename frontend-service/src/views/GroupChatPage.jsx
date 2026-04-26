@@ -1776,7 +1776,7 @@ export default function GroupChatPage() {
                       mode: 'audio',
                       userId: user?.id,
                     });
-                    router.push(buildHostedCallUrl(roomId, 'audio'));
+                    router.push(buildHostedCallUrl(roomId, 'audio', { admin: true }));
                   }}
                   aria-label="Start group voice call"
                   title="Voice call"
@@ -1798,7 +1798,7 @@ export default function GroupChatPage() {
                       mode: 'video',
                       userId: user?.id,
                     });
-                    router.push(buildHostedCallUrl(roomId, 'video'));
+                    router.push(buildHostedCallUrl(roomId, 'video', { admin: true }));
                   }}
                   aria-label="Start group video call"
                   title="Video call"

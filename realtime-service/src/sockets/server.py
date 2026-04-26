@@ -536,6 +536,8 @@ def create_socket_app(*, cors_allowed_origins: list[str] | str, other_asgi_app=N
                     "fromUserId": str(from_uid),
                     "callType": call_type,
                     "roomId": room_id,
+                    "chatId": chat_id,
+                    "isGroupCall": True,
                     "offer": None,
                 },
                 room=user_room(uid),

@@ -186,6 +186,8 @@ export function listenForIncomingHostedCall(
           fromUserId: String(payload.fromUserId || ''),
           mode: payload.callType === 'video' ? 'video' : 'audio',
           roomId,
+          chatId: payload.chatId ? String(payload.chatId) : undefined,
+          isGroupCall: Boolean(payload.isGroupCall),
           createdAt: Date.now(),
         })
       }

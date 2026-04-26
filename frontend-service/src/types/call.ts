@@ -44,5 +44,7 @@ export interface HostedCallInvitePayload {
   fromUserId: string;
   mode: CallMode;
   roomId: string;
+  chatId?: string;
+  isGroupCall?: boolean;
   createdAt: number;
 }

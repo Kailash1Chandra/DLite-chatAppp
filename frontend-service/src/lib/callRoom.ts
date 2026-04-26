@@ -10,9 +10,10 @@ export function buildDirectCallRoomId(userA: string, userB: string) {
   return `dm-${ids[0]}--${ids[1]}`;
 }
 
-export function buildHostedCallUrl(roomId: string, mode: CallMode) {
+export function buildHostedCallUrl(roomId: string, mode: CallMode, opts?: { admin?: boolean }) {
   const params = new URLSearchParams();
   params.set("mode", mode);
+  if (opts?.admin) params.set("admin", "1");
   const query = params.toString();
   return `/call/${encodeURIComponent(roomId)}${query ? `?${query}` : ""}`;
 }

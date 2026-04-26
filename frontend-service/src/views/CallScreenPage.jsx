@@ -54,7 +54,7 @@ export default function CallScreenPage() {
     }
     setRoomError('');
     setRoomCode(inviteCode);
-    router.push(buildHostedCallUrl(roomId, roomMode === 'audio' ? 'audio' : 'video'));
+    router.push(buildHostedCallUrl(roomId, roomMode === 'audio' ? 'audio' : 'video', { admin: true }));
   };
 
   const joinRoom = () => {

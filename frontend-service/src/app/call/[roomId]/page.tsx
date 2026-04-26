@@ -48,6 +48,7 @@ export default function ZegoCallRoomPage() {
 
   const roomId = String((params as any)?.roomId || "").trim();
   const mode = String(searchParams?.get("mode") || "video").toLowerCase() === "audio" ? "audio" : "video";
+  const isAdmin = String(searchParams?.get("admin") || "").trim() === "1";
 
   const userId = String(user?.id || "").trim();
   const userName = String(user?.username || userId || "User").trim();
@@ -853,6 +854,7 @@ export default function ZegoCallRoomPage() {
       <div className="pointer-events-none absolute right-4 top-4 hidden md:block">
         <div className="pointer-events-auto rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] font-semibold text-white/70 backdrop-blur">
           Status: <span className={cn("font-semibold", statusTone)}>{statusLabel}</span>
+          {isAdmin ? <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/75">Admin</span> : null}
         </div>
       </div>
 

@@ -433,34 +433,32 @@ const ChatMessageRow = memo(function ChatMessageRow({
                             <SmilePlus className="h-4 w-4 shrink-0 opacity-80" />
                             React
                           </button>
-                          {mine && menuPollSafe && (
-                            <>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover disabled:pointer-events-none disabled:opacity-60 dark:text-slate-100"
-                                onClick={() => handleEditMessage(m)}
-                                disabled={!canEditDelete}
-                              >
-                                <Pencil className="h-4 w-4 shrink-0 opacity-80" />
-                                Edit message
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-600 transition-colors duration-150 hover:bg-red-50 disabled:pointer-events-none disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950/40"
-                                onClick={() => {
-                                  if (!canEditDelete) return;
-                                  toggleMessageMenu(m._id);
-                                  handleDeleteMessage(m._id);
-                                }}
-                                disabled={!canEditDelete || deletingMessageId === m._id}
-                              >
-                                <Trash2 className="h-4 w-4 shrink-0" />
-                                {deletingMessageId === m._id ? 'Unsending…' : 'Unsend message'}
-                              </button>
-                            </>
-                          )}
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover disabled:pointer-events-none disabled:opacity-50 dark:text-slate-100"
+                            onClick={() => handleEditMessage(m)}
+                            disabled={!mine || !menuPollSafe || !canEditDelete}
+                            aria-disabled={!mine || !menuPollSafe || !canEditDelete}
+                          >
+                            <Pencil className="h-4 w-4 shrink-0 opacity-80" />
+                            Edit message
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-600 transition-colors duration-150 hover:bg-red-50 disabled:pointer-events-none disabled:opacity-45 dark:text-red-400 dark:hover:bg-red-950/40"
+                            onClick={() => {
+                              if (!mine || !menuPollSafe || !canEditDelete) return;
+                              toggleMessageMenu(m._id);
+                              handleDeleteMessage(m._id);
+                            }}
+                            disabled={!mine || !menuPollSafe || !canEditDelete || deletingMessageId === m._id}
+                            aria-disabled={!mine || !menuPollSafe || !canEditDelete || deletingMessageId === m._id}
+                          >
+                            <Trash2 className="h-4 w-4 shrink-0" />
+                            {deletingMessageId === m._id ? 'Unsending…' : 'Unsend message'}
+                          </button>
                           <button
                             type="button"
                             role="menuitem"
@@ -484,17 +482,17 @@ const ChatMessageRow = memo(function ChatMessageRow({
                             )}
                             {isPinned ? 'Unpin message' : 'Pin message'}
                           </button>
-                          {mine && (
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
-                              onClick={() => handleDeleteForMe(m._id)}
-                            >
-                              <Trash2 className="h-4 w-4 shrink-0 opacity-80" />
-                              Delete for me
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover disabled:pointer-events-none disabled:opacity-50 dark:text-slate-100"
+                            onClick={() => handleDeleteForMe(m._id)}
+                            disabled={!mine}
+                            aria-disabled={!mine}
+                          >
+                            <Trash2 className="h-4 w-4 shrink-0 opacity-80" />
+                            Delete for me
+                          </button>
                         </div>
                       )}
                     </div>
