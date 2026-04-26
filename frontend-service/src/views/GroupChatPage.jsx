@@ -36,7 +36,7 @@ import {
   subscribeRecentDirectChats,
   searchUsersByUsername
 } from '../services/chatClient';
-import { ArrowLeft, Check, Download, Upload, BellOff, Camera, Loader2, LogOut, MessageSquare, MoreVertical, Phone, Video, Pin, PinOff, Plus, Search, Send, SmilePlus, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { ArrowLeft, Check, Download, Upload, BellOff, Camera, Loader2, LogOut, MessageSquare, MoreVertical, Pencil, Phone, Video, Pin, PinOff, Plus, Search, Send, SmilePlus, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { buildGroupChatCallRoomId, buildHostedCallUrl } from '@/lib/callRoom';
