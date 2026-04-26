@@ -1926,7 +1926,7 @@ export default function ZegoCallRoomPage() {
                       ) : null}
                     </>
                   ) : videoLayout === "dual" ? (
-                    <div className="grid min-h-0 w-full flex-1 grid-cols-1 grid-rows-2 gap-px bg-black">
+                    <div className="grid min-h-0 w-full flex-1 grid-cols-2 gap-px bg-black">
                       <div
                         data-dlite-dual-tile="remote"
                         className="relative min-h-0 w-full min-w-0 overflow-hidden rounded-xl bg-neutral-900 shadow-[inset_0_0_0_2px_rgba(34,211,238,0.85)]"
