@@ -119,7 +119,7 @@ function useAudioLevel(stream) {
       sourceRef.current = null;
       analyserRef.current = null;
     };
-  }, [trackKey]);
+  }, [trackKey, stream]);
 
   return { level, isSpeaking };
 }
@@ -312,10 +312,11 @@ function SelfPiP({ user, stream, videoOn, muted }) {
     if (!stream) return;
     try {
       el.srcObject = stream;
+      Promise.resolve(el.play?.()).catch(() => undefined);
     } catch {
       /* ignore */
     }
-  }, [stream]);
+  }, [stream, videoOn]);
 
   const hasVideo = Boolean(stream?.getVideoTracks?.()?.length);
   const showVideo = videoOn && hasVideo;
@@ -464,6 +465,40 @@ function FloatingControls({
   );
 }
 
+function StreamVideo({ stream, muted = false, mirrored = false, className = '', onError }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (!stream) {
+      try {
+        el.srcObject = null;
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    try {
+      if (el.srcObject !== stream) el.srcObject = stream;
+      Promise.resolve(el.play?.()).catch(() => undefined);
+    } catch {
+      /* ignore */
+    }
+  }, [stream]);
+
+  return (
+    <video
+      ref={ref}
+      autoPlay
+      playsInline
+      muted={muted}
+      onError={onError}
+      className={cn('h-full w-full object-cover', mirrored && '[transform:scaleX(-1)]', className)}
+    />
+  );
+}
+
 export default function PremiumCallUI({
   remoteUser,
   localUser,
@@ -564,21 +599,59 @@ export default function PremiumCallUI({
       <ReactionsLayer reactions={reactions} />
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-5 text-center">
-          <AvatarWithRings user={remoteUser} isSpeaking={remoteAudio.isSpeaking} level={remoteAudio.level} />
-          <div>
-            <p className="text-2xl font-bold tracking-tight text-white">{remoteUser?.name || 'Call'}</p>
-            <p className="mt-1 text-sm text-white/75">
-              <span className={cn(status === 'connected' ? 'text-emerald-300' : 'text-white/70')}>●</span> {subtitle}
-            </p>
-          </div>
+        {mode === 'video' ? (
+          <div className="relative mx-auto flex h-full w-full max-w-[1160px] min-h-0 flex-1 flex-col">
+            <div className="grid h-full min-h-0 w-full grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="relative overflow-hidden rounded-2xl bg-black/40 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                {remoteStream ? (
+                  <StreamVideo stream={remoteStream} className="absolute inset-0" />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <AvatarWithRings user={remoteUser} isSpeaking={remoteAudio.isSpeaking} level={remoteAudio.level} />
+                  </div>
+                )}
+                <div className="absolute left-4 top-4 rounded-full bg-black/45 px-3 py-1 text-xs font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur">
+                  {remoteUser?.name || 'User'}
+                </div>
+              </div>
 
-          <div className="mt-1">
-            <LiveWaveform level={remoteAudio.level} isSpeaking={remoteAudio.isSpeaking} count={28} />
+              <div className="relative overflow-hidden rounded-2xl bg-black/40 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                {localStream && !videoOff ? (
+                  <StreamVideo stream={localStream} muted mirrored className="absolute inset-0" />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-black/30">
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-600 to-violet-800 text-5xl font-bold text-white">
+                        {String(localUser?.initial || localUser?.name || 'Y').slice(0, 1).toUpperCase()}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="absolute left-4 top-4 rounded-full bg-black/45 px-3 py-1 text-xs font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur">
+                  You
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="flex flex-col items-center gap-5 text-center">
+              <AvatarWithRings user={remoteUser} isSpeaking={remoteAudio.isSpeaking} level={remoteAudio.level} />
+              <div>
+                <p className="text-2xl font-bold tracking-tight text-white">{remoteUser?.name || 'Call'}</p>
+                <p className="mt-1 text-sm text-white/75">
+                  <span className={cn(status === 'connected' ? 'text-emerald-300' : 'text-white/70')}>●</span> {subtitle}
+                </p>
+              </div>
 
-        <SelfPiP user={localUser} stream={localStream} videoOn={mode === 'video' && !videoOff} muted={muted} />
+              <div className="mt-1">
+                <LiveWaveform level={remoteAudio.level} isSpeaking={remoteAudio.isSpeaking} count={28} />
+              </div>
+            </div>
+
+            <SelfPiP user={localUser} stream={localStream} videoOn={mode === 'video' && !videoOff} muted={muted} />
+          </>
+        )}
       </div>
 
       <FloatingControls
