@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { subscribeRecentDirectChats } from '@/services/chatClient';
 import { DoorOpen, PlusCircle, Video } from 'lucide-react';
 import { buildGroupCallRoomId, buildHostedCallUrl, formatInviteCode, generateInviteCode } from '@/lib/callRoom';
+import PremiumCallUI from '@/components/PremiumCallUI';
 
 const CallUI = dynamic(() => import('@/components/CallUI'), {
   loading: () => (
@@ -235,6 +236,29 @@ export default function CallScreenPage() {
           showUserPanel={false}
           requireExplicitStart={false}
           showHero={false}
+          renderConnected={(ctx) => (
+            <PremiumCallUI
+              remoteUser={ctx.remoteUser}
+              localUser={ctx.localUser}
+              localStream={ctx.localStream}
+              remoteStream={ctx.remoteStream}
+              peerConnection={ctx.peerConnection}
+              mode={ctx.mode}
+              status={ctx.status}
+              startedAt={ctx.startedAt}
+              onEnd={ctx.onEnd}
+              onToggleMic={ctx.onToggleMic}
+              onToggleVideo={ctx.onToggleVideo}
+              onScreenShare={ctx.onScreenShare}
+              onReaction={(emoji) => {
+                // For now, local-only. When you add socket broadcast, call it here.
+                // eslint-disable-next-line no-console
+                console.log('[reaction]', emoji);
+                ctx.onReaction?.(emoji);
+              }}
+              onMore={ctx.onMore}
+            />
+          )}
         />
       </section>
     </ChatAppShell>

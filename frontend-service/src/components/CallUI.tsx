@@ -64,6 +64,22 @@ interface CallUIProps {
   showUserPanel?: boolean;
   requireExplicitStart?: boolean;
   showHero?: boolean;
+  renderConnected?: (ctx: {
+    remoteUser: { name: string; avatarUrl?: string; initial?: string };
+    localUser: { name: string; avatarUrl?: string; initial?: string };
+    localStream: MediaStream | null;
+    remoteStream: MediaStream | null;
+    peerConnection: RTCPeerConnection | null;
+    mode: "audio" | "video";
+    status: "connecting" | "connected" | "reconnecting";
+    startedAt: number;
+    onEnd: () => void;
+    onToggleMic: (muted: boolean) => void;
+    onToggleVideo: (off: boolean) => void;
+    onScreenShare: () => void;
+    onReaction: (emoji: string) => void;
+    onMore: () => void;
+  }) => React.ReactNode;
 }
 
 function createRingtonePlayer() {
@@ -155,6 +171,7 @@ export default function CallUI({
   showUserPanel = true,
   requireExplicitStart = false,
   showHero = true,
+  renderConnected,
 }: CallUIProps) {
   const auth = useAuthContext();
   const router = useRouter();
@@ -953,6 +970,59 @@ export default function CallUI({
   const audioFrameClassName = isEnhanced
     ? "flex aspect-video items-center justify-center rounded-[1.4rem] bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.18),transparent_44%),radial-gradient(circle_at_bottom,rgba(249,115,22,0.12),transparent_46%),linear-gradient(145deg,#0b0f19,#000)] text-sm text-slate-100 ring-1 ring-black/10 dark:ring-white/10"
     : "flex aspect-video items-center justify-center rounded bg-slate-900 text-sm text-slate-200";
+
+  if (typeof renderConnected === "function" && status === "connected") {
+    return (
+      <>
+        {renderConnected({
+          remoteUser: {
+            name: peerDisplayName || calleeUsername || "User",
+            avatarUrl: undefined,
+            initial: String(peerDisplayName || calleeUsername || "U").slice(0, 1).toUpperCase(),
+          },
+          localUser: {
+            name: String(auth?.user?.username || auth?.user?.email || "You"),
+            avatarUrl: String((auth?.user as any)?.photoURL || "").trim() || undefined,
+            initial: String(auth?.user?.username || "Y").slice(0, 1).toUpperCase(),
+          },
+          localStream: localStreamRef.current,
+          remoteStream: remoteStreamRef.current,
+          peerConnection: peerConnectionRef.current,
+          mode: activeMode === "video" ? "video" : "audio",
+          status: "connected",
+          startedAt: (callHistoryRef.current?.startedAt as number) || Date.now(),
+          onEnd: () => {
+            leaveCall().catch(() => undefined);
+          },
+          onToggleMic: (muted) => {
+            try {
+              localStreamRef.current?.getAudioTracks?.().forEach((t) => (t.enabled = !muted));
+              setMicEnabled(!muted);
+            } catch {
+              /* ignore */
+            }
+          },
+          onToggleVideo: (off) => {
+            try {
+              localStreamRef.current?.getVideoTracks?.().forEach((t) => (t.enabled = !off));
+              setCameraEnabled(!off);
+            } catch {
+              /* ignore */
+            }
+          },
+          onScreenShare: () => toggleScreenShare().catch(() => undefined),
+          onReaction: (emoji) => {
+            // eslint-disable-next-line no-console
+            console.log("[call:reaction]", emoji);
+          },
+          onMore: () => {
+            // eslint-disable-next-line no-console
+            console.log("[call:more]");
+          },
+        })}
+      </>
+    );
+  }
 
   return (
     <>
