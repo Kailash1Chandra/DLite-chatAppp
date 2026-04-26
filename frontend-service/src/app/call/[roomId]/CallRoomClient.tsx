@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ZegoExpressEngine } from "zego-express-engine-webrtc";
 import {
@@ -129,20 +129,60 @@ function zegoReasonToString(reason: unknown): string {
   return String(reason);
 }
 
-function errorToUserMessage(e: unknown, fallback = "Something went wrong"): string {
-  if (e instanceof Error) return e.message?.trim() || fallback;
-  if (typeof e === "string") return e.trim() || fallback;
-  if (typeof e === "number" || typeof e === "boolean") return String(e);
-  if (e && typeof e === "object") {
-    const o = e as Record<string, unknown>;
-    if (typeof o.message === "string" && o.message.trim()) return o.message.trim();
+/**
+ * Any value → safe UI string. Never relies on default `${obj}` / String(obj) for plain objects
+ * (that becomes "[object Object]"). Used for error state and critical labels.
+ */
+function normalizeUiError(input: unknown): string {
+  if (input == null) return "";
+  if (typeof input === "string") {
+    const s = input.trim();
+    if (s === "[object Object]") return "Something went wrong. Please try again.";
+    return input;
+  }
+  if (typeof input === "number" && Number.isFinite(input)) return String(input);
+  if (typeof input === "boolean") return String(input);
+  if (input instanceof Error) return input.message?.trim() || "Something went wrong";
+  if (typeof input === "object") {
+    const o = input as Record<string, unknown>;
+    for (const k of ["message", "reason", "error", "msg", "description", "detail", "state"]) {
+      const v = o[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
     try {
-      return JSON.stringify(e);
+      return JSON.stringify(input);
     } catch {
-      return fallback;
+      return "Something went wrong";
     }
   }
-  return fallback;
+  return String(input);
+}
+
+function errorToUserMessage(e: unknown, fallback = "Something went wrong"): string {
+  const n = normalizeUiError(e);
+  return n.trim() || fallback;
+}
+
+/** Profile / peer display: never turn arbitrary objects into "[object Object]" names. */
+function safeDisplayName(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    for (const k of ["username", "name", "full_name", "displayName", "nickname", "email", "label"]) {
+      const v = o[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return "";
+  }
+  return "";
+}
+
+function zegoStreamIdString(streamID: unknown): string {
+  if (typeof streamID === "string" && streamID.trim()) return streamID.trim();
+  const s = zegoReasonToString(streamID).trim();
+  return s && s !== "[object Object]" ? s : "stream";
 }
 
 function zegoLikeToMediaStream(s: unknown): MediaStream | null {
@@ -324,7 +364,7 @@ export default function ZegoCallRoomPage() {
   const isAdmin = String(searchParams?.get("admin") || "").trim() === "1";
 
   const userId = String(user?.id || "").trim();
-  const userName = String(user?.username || userId || "User").trim();
+  const userName = (safeDisplayName(user?.username) || userId || "User").trim();
   const inviteCode = useMemo(() => getInviteCodeFromRoomId(roomId), [roomId]);
 
   const localRef = useRef<HTMLDivElement | null>(null);
@@ -339,7 +379,10 @@ export default function ZegoCallRoomPage() {
   const [status, setStatus] = useState<
     "idle" | "getting_token" | "initializing" | "logging_in" | "publishing" | "waiting_remote" | "connected" | "error"
   >("idle");
-  const [error, setError] = useState<string>("");
+  const [error, setErrorRaw] = useState<string>("");
+  const setError = useCallback((next: unknown) => {
+    setErrorRaw(normalizeUiError(next));
+  }, []);
   const [needsUserGesture, setNeedsUserGesture] = useState(false);
   const [remoteTiles, setRemoteTiles] = useState<RemoteTile[]>([]);
   const remoteTilesRef = useRef<RemoteTile[]>([]);
@@ -559,7 +602,7 @@ export default function ZegoCallRoomPage() {
       }
     } catch (e) {
       setIsScreenSharing(false);
-      setError(e instanceof Error ? e.message : "Screen share failed");
+      setError(errorToUserMessage(e, "Screen share failed"));
     }
   };
 
@@ -782,7 +825,7 @@ export default function ZegoCallRoomPage() {
               upsertRemoteTile(sid, remoteStream);
             } catch (e) {
               if (!quiet) {
-                const msg = e instanceof Error ? e.message : String(e);
+                const msg = normalizeUiError(e);
                 setError(msg ? `Could not play remote stream: ${msg}` : "Could not play remote stream");
               }
             }
@@ -831,7 +874,7 @@ export default function ZegoCallRoomPage() {
               const remoteStream = await zg.startPlayingStream(remoteStreamId);
               upsertRemoteTile(remoteStreamId, remoteStream);
             } catch (e) {
-              const msg = e instanceof Error ? e.message : String(e);
+              const msg = normalizeUiError(e);
               setError(msg ? `Could not play remote stream: ${msg}` : "Could not play remote stream");
             }
           }
@@ -925,18 +968,18 @@ export default function ZegoCallRoomPage() {
         try {
           (zg as unknown as { on?: (event: string, cb: (...args: unknown[]) => void) => void }).on?.(
             "playerStateUpdate",
-            (_roomID: string, streamID: string, state: { errorCode?: number } | undefined) => {
+            (_roomID: string, streamID: unknown, state: { errorCode?: number } | undefined) => {
               if (cancelled) return;
               const code = Number(state?.errorCode || 0);
-              if (code) setError(`Play failed (${streamID}): code ${code}`);
+              if (code) setError(`Play failed (${zegoStreamIdString(streamID)}): code ${code}`);
             }
           );
           (zg as unknown as { on?: (event: string, cb: (...args: unknown[]) => void) => void }).on?.(
             "publisherStateUpdate",
-            (_roomID: string, streamID: string, state: { errorCode?: number } | undefined) => {
+            (_roomID: string, streamID: unknown, state: { errorCode?: number } | undefined) => {
               if (cancelled) return;
               const code = Number(state?.errorCode || 0);
-              if (code) setError(`Publish failed (${streamID}): code ${code}`);
+              if (code) setError(`Publish failed (${zegoStreamIdString(streamID)}): code ${code}`);
             }
           );
           (zg as unknown as { on?: (event: string, cb: (...args: unknown[]) => void) => void }).on?.(
@@ -1071,9 +1114,9 @@ export default function ZegoCallRoomPage() {
     if (!userId || !peerUserId) return () => undefined;
     return listenForRejection(
       userId,
-      (payload) => {
+            (payload) => {
         if (!payload) return;
-        setError(payload.message?.trim() || HOSTED_CALL_DECLINED_MESSAGE);
+        setError(normalizeUiError(payload.message) || HOSTED_CALL_DECLINED_MESSAGE);
         setEndedOverlayVisible(true);
         window.setTimeout(() => router.replace("/call"), 2200);
       },
@@ -1260,9 +1303,9 @@ export default function ZegoCallRoomPage() {
           (p as { user_metadata?: Record<string, string> } | null)?.user_metadata?.name ||
           (p as Record<string, unknown> | null)?.email ||
           "";
-        const rawStr = String(usernameRaw || "").trim();
+        const rawStr = safeDisplayName(usernameRaw) || safeDisplayName((p as Record<string, unknown> | null)?.email);
         const isUuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawStr);
-        const emailStr = String((p as Record<string, unknown> | null)?.email || "").trim();
+        const emailStr = safeDisplayName((p as Record<string, unknown> | null)?.email);
         const fromEmail = emailStr && emailStr.includes("@") ? emailStr.split("@")[0] : "";
         const next =
           rawStr && !isUuidLike ? rawStr : fromEmail || "";
@@ -1297,13 +1340,13 @@ export default function ZegoCallRoomPage() {
 
   const primaryRemoteStreamId = remoteTiles[0]?.streamId || "";
   const localHasVideo = mode === "video" && isCameraEnabled;
-  const localAvatarLabel = String(user?.username || user?.email || userId || "Me");
+  const localAvatarLabel = safeDisplayName(user?.username) || safeDisplayName(user?.email) || userId || "Me";
   const remoteStreamKey = primaryRemoteStreamId ? peerStreamUserKey(roomId, primaryRemoteStreamId) : "";
   const peerNameQuery = String(searchParams?.get("peer") || searchParams?.get("peerName") || "").trim();
   const peerLocQuery = String(searchParams?.get("loc") || "").trim();
   const voicePeerDisplayName =
     peerNameQuery ||
-    String(remotePeerProfileName || "").trim() ||
+    safeDisplayName(remotePeerProfileName) ||
     (remoteStreamKey ? formatPeerIdAsDisplayName(remoteStreamKey) : "") ||
     "Participant";
   const voicePeerHandleRaw = (peerUserId || remoteStreamKey || "").replace(/\s+/g, "");
@@ -1325,8 +1368,8 @@ export default function ZegoCallRoomPage() {
     remotePlayQuality >= 3 ? "bad" : remotePlayQuality === 2 ? "mid" : "good";
   const videoConnText =
     status === "connected" && primaryRemoteStreamId
-      ? `${connLabel}${remotePeerDelayMs != null ? ` ${remotePeerDelayMs}ms` : ""}`
-      : statusLabel;
+      ? `${normalizeUiError(connLabel)}${remotePeerDelayMs != null ? ` ${remotePeerDelayMs}ms` : ""}`
+      : normalizeUiError(statusLabel);
   const callParticipantCount = remoteTiles.length + 1;
 
   const controlBtn =
