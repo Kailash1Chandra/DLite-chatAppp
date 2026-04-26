@@ -191,10 +191,20 @@ function isMuted() {
   return !!muted
 }
 
+/**
+ * Chrome blocks navigator.vibrate until the document has a user gesture and logs noisy
+ * "[Intervention] Blocked call to navigator.vibrate" on every call (e.g. incoming call via socket).
+ */
+function vibrationAllowedByBrowserPolicy() {
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return false
+  const ua = navigator.userActivation
+  if (ua && typeof ua.hasBeenActive === 'boolean' && !ua.hasBeenActive) return false
+  return true
+}
+
 function vibrate(pattern) {
   if (typeof window === 'undefined') return false
-  const can = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
-  if (!can) return false
+  if (!vibrationAllowedByBrowserPolicy()) return false
   try {
     return navigator.vibrate(pattern)
   } catch {
@@ -204,15 +214,22 @@ function vibrate(pattern) {
 
 function startVibrationLoop(pattern, intervalMs = 1400) {
   stopVibration()
+  if (!vibrationAllowedByBrowserPolicy()) return
   vibrate(pattern)
-  vibrateTimer = setInterval(() => vibrate(pattern), intervalMs)
+  vibrateTimer = setInterval(() => {
+    if (!vibrationAllowedByBrowserPolicy()) {
+      stopVibration()
+      return
+    }
+    vibrate(pattern)
+  }, intervalMs)
 }
 
 function stopVibration() {
   if (vibrateTimer) clearInterval(vibrateTimer)
   vibrateTimer = null
   try {
-    vibrate(0)
+    if (vibrationAllowedByBrowserPolicy()) navigator.vibrate(0)
   } catch {
     // ignore
   }
