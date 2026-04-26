@@ -1763,7 +1763,10 @@ export default function ZegoCallRoomPage() {
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl">
           <div
             ref={videoStageRef}
-            className="relative z-10 flex min-h-[min(72vh,680px)] flex-1 flex-col overflow-hidden rounded-2xl border border-white/5 bg-[#07050c] px-3 pb-36 pt-3 shadow-2xl sm:px-5 sm:pb-40 sm:pt-5"
+            className={cn(
+              "relative z-10 flex min-h-[min(72vh,680px)] flex-1 flex-col overflow-hidden rounded-2xl border border-white/5 bg-[#07050c] shadow-2xl",
+              videoLayout === "dual" ? "px-0 pb-0 pt-0 sm:px-0 sm:pb-0 sm:pt-0" : "px-3 pb-36 pt-3 sm:px-5 sm:pb-40 sm:pt-5"
+            )}
           >
             <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
               <div className="absolute inset-0 bg-gradient-to-br from-violet-950/90 via-[#0a0612] to-black" />
@@ -1772,83 +1775,92 @@ export default function ZegoCallRoomPage() {
               <div className="absolute inset-0 bg-black/35" />
             </div>
 
-            <div className="relative z-10 flex w-full max-w-[1280px] flex-col gap-3 self-center">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex flex-col gap-2">
-                  <div className="inline-flex w-fit flex-wrap items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3.5 py-2 text-xs font-semibold text-white/90 shadow-lg backdrop-blur-md">
-                    <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500/70 opacity-60" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-                    </span>
-                    <span className="tabular-nums tracking-tight text-white">{mm}:{ss}</span>
-                    <span className="text-white/35" aria-hidden="true">
-                      |
-                    </span>
-                    <span className="text-white/85">Video · 720p</span>
-                    {isScreenSharing ? (
-                      <span className="rounded-full bg-amber-500/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-100 ring-1 ring-amber-400/35">
-                        Sharing
+            <div
+              className={cn(
+                "relative z-10 flex w-full flex-col self-center",
+                videoLayout === "dual" ? "max-w-none gap-0" : "max-w-[1280px] gap-3"
+              )}
+            >
+              {videoLayout !== "dual" ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex flex-col gap-2">
+                    <div className="inline-flex w-fit flex-wrap items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3.5 py-2 text-xs font-semibold text-white/90 shadow-lg backdrop-blur-md">
+                      <span className="relative flex h-2 w-2 shrink-0">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500/70 opacity-60" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
                       </span>
-                    ) : null}
-                    {isAdmin ? (
-                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/75">Host</span>
-                    ) : null}
+                      <span className="tabular-nums tracking-tight text-white">
+                        {mm}:{ss}
+                      </span>
+                      <span className="text-white/35" aria-hidden="true">
+                        |
+                      </span>
+                      <span className="text-white/85">Video · 720p</span>
+                      {isScreenSharing ? (
+                        <span className="rounded-full bg-amber-500/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-100 ring-1 ring-amber-400/35">
+                          Sharing
+                        </span>
+                      ) : null}
+                      {isAdmin ? (
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/75">Host</span>
+                      ) : null}
+                    </div>
+                    <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-100/95 backdrop-blur">
+                      <Shield className="h-3.5 w-3.5 text-emerald-300" aria-hidden="true" />
+                      E2E encrypted
+                    </div>
                   </div>
-                  <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-100/95 backdrop-blur">
-                    <Shield className="h-3.5 w-3.5 text-emerald-300" aria-hidden="true" />
-                    E2E encrypted
+
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2 text-xs font-semibold text-white/90 shadow-md backdrop-blur-md">
+                      <ConnectionSignalBars bars={connBars} tone={connTone} />
+                      <span className={cn(remotePlayQuality >= 3 ? "text-rose-200" : "text-emerald-100")}>{videoConnText}</span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!primaryRemoteStreamId}
+                      onClick={async () => {
+                        if (!primaryRemoteStreamId) return;
+                        const mount = document.getElementById(`dlite-zego-remote-${primaryRemoteStreamId}`);
+                        const vid = mount?.querySelector("video") as HTMLVideoElement | undefined;
+                        if (!vid || !document.pictureInPictureEnabled) return;
+                        try {
+                          if (document.pictureInPictureElement === vid) await document.exitPictureInPicture();
+                          else await vid.requestPictureInPicture();
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                      className={cn(
+                        controlBtn,
+                        "h-10 w-10 disabled:cursor-not-allowed disabled:opacity-45",
+                        "focus-visible:ring-offset-[#0a0612]"
+                      )}
+                      aria-label="Picture in picture"
+                      title="Picture in picture"
+                    >
+                      <PictureInPicture2 className="h-[18px] w-[18px]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = videoStageRef.current;
+                        if (!el) return;
+                        if (!document.fullscreenElement) void el.requestFullscreen?.().catch(() => undefined);
+                        else void document.exitFullscreen?.();
+                      }}
+                      className={cn(controlBtn, "h-10 w-10 focus-visible:ring-offset-[#0a0612]")}
+                      aria-label="Fullscreen"
+                      title="Fullscreen"
+                    >
+                      <Maximize2 className="h-[18px] w-[18px]" />
+                    </button>
                   </div>
                 </div>
+              ) : null}
 
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2 text-xs font-semibold text-white/90 shadow-md backdrop-blur-md">
-                    <ConnectionSignalBars bars={connBars} tone={connTone} />
-                    <span className={cn(remotePlayQuality >= 3 ? "text-rose-200" : "text-emerald-100")}>{videoConnText}</span>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!primaryRemoteStreamId}
-                    onClick={async () => {
-                      if (!primaryRemoteStreamId) return;
-                      const mount = document.getElementById(`dlite-zego-remote-${primaryRemoteStreamId}`);
-                      const vid = mount?.querySelector("video") as HTMLVideoElement | undefined;
-                      if (!vid || !document.pictureInPictureEnabled) return;
-                      try {
-                        if (document.pictureInPictureElement === vid) await document.exitPictureInPicture();
-                        else await vid.requestPictureInPicture();
-                      } catch {
-                        /* ignore */
-                      }
-                    }}
-                    className={cn(
-                      controlBtn,
-                      "h-10 w-10 disabled:cursor-not-allowed disabled:opacity-45",
-                      "focus-visible:ring-offset-[#0a0612]"
-                    )}
-                    aria-label="Picture in picture"
-                    title="Picture in picture"
-                  >
-                    <PictureInPicture2 className="h-[18px] w-[18px]" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const el = videoStageRef.current;
-                      if (!el) return;
-                      if (!document.fullscreenElement) void el.requestFullscreen?.().catch(() => undefined);
-                      else void document.exitFullscreen?.();
-                    }}
-                    className={cn(controlBtn, "h-10 w-10 focus-visible:ring-offset-[#0a0612]")}
-                    aria-label="Fullscreen"
-                    title="Fullscreen"
-                  >
-                    <Maximize2 className="h-[18px] w-[18px]" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="relative mt-1 flex min-h-0 flex-1 flex-col">
-                {remoteTiles.length > 1 ? (
+              <div className={cn("relative flex min-h-0 flex-1 flex-col", videoLayout === "dual" ? "mt-0" : "mt-1")}>
+                {remoteTiles.length > 1 && videoLayout !== "dual" ? (
                   <div className="mb-2 flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
                     {remoteTiles.slice(1).map(({ streamId }) => (
                       <div
@@ -1872,7 +1884,10 @@ export default function ZegoCallRoomPage() {
 
                 <div
                   className={cn(
-                    "relative flex min-h-[min(52vh,520px)] flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)]",
+                    "relative flex flex-1 overflow-hidden bg-black",
+                    videoLayout === "dual"
+                      ? "min-h-0 rounded-none border-0 shadow-none"
+                      : "min-h-[min(52vh,520px)] rounded-2xl border border-white/10 shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)]",
                     primaryRemoteStreamId && videoLayout === "dual"
                       ? "flex-col items-stretch justify-center"
                       : "items-center justify-center"
