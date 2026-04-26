@@ -304,10 +304,10 @@ export default function VideoCallUI({
   }, []);
 
   useEffect(() => {
+    const els = remoteVideoElements.current;
     return () => {
       try {
-        const setRef = remoteVideoElements.current;
-        setRef.clear();
+        els.clear();
       } catch {
         /* ignore */
       }
