@@ -12,6 +12,24 @@ import { endCall, listenForCallEnded } from "@/lib/call";
 
 type RemoteTile = { streamId: string };
 
+function getInitials(nameOrId: string) {
+  const s = String(nameOrId || "").trim();
+  if (!s) return "?";
+  const parts = s.split(/\s+/).filter(Boolean);
+  const a = (parts[0] || s)[0] || "?";
+  const b = parts.length > 1 ? (parts[parts.length - 1] || "")[0] || "" : "";
+  return (a + b).toUpperCase();
+}
+
+function AvatarBadge({ label }: { label: string }) {
+  const initials = getInitials(label);
+  return (
+    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/10 text-2xl font-bold text-white ring-1 ring-white/10">
+      {initials}
+    </div>
+  );
+}
+
 async function applyZegoLoggingPolicy(zg?: InstanceType<typeof ZegoExpressEngine>) {
   // Disable both local + remote logs (remote logger can open `weblogger-wss...` sockets).
   // `logURL: ""` explicitly disables log reporting endpoint per ZEGO docs.
@@ -76,6 +94,7 @@ export default function ZegoCallRoomPage() {
   const engineDestroyTimerRef = useRef<number | null>(null);
   const [videoLayout, setVideoLayout] = useState<"whatsapp" | "meet">("meet");
   const [endedOverlayVisible, setEndedOverlayVisible] = useState(false);
+  const [remoteVideoState, setRemoteVideoState] = useState<Record<string, boolean>>({});
 
   const server = useMemo(() => "wss://webliveroom-api.zego.im/ws", []);
   const hostedCallPath = useMemo(() => buildHostedCallUrl(roomId, mode), [mode, roomId]);
@@ -431,6 +450,12 @@ export default function ZegoCallRoomPage() {
 
         const upsertRemoteTile = (streamId: string, remoteStream: any) => {
           remoteStreamsRef.current[streamId] = remoteStream;
+          try {
+            const hasVideo = (remoteStream?.getVideoTracks?.() || []).length > 0;
+            setRemoteVideoState((prev) => ({ ...prev, [streamId]: hasVideo }));
+          } catch {
+            setRemoteVideoState((prev) => ({ ...prev, [streamId]: false }));
+          }
           setRemoteTiles((current) => {
             if (current.some((tile) => tile.streamId === streamId)) return current;
             return [...current, { streamId }];
@@ -446,6 +471,11 @@ export default function ZegoCallRoomPage() {
               /* ignore */
             }
             delete remoteStreamsRef.current[streamId];
+          });
+          setRemoteVideoState((prev) => {
+            const next = { ...prev };
+            streamIds.forEach((id) => delete next[id]);
+            return next;
           });
           setRemoteTiles((current) => {
             const next = current.filter((tile) => !streamIds.includes(tile.streamId));
@@ -632,19 +662,27 @@ export default function ZegoCallRoomPage() {
       const remoteStream = remoteStreamsRef.current[streamId];
       const mountId = `dlite-zego-remote-${streamId}`;
       const mountNode = document.getElementById(mountId);
-      if (!remoteStream || !mountNode || mountNode.childElementCount > 0) return;
+      if (!remoteStream || !mountNode) return;
       try {
+        // Re-bind on layout switch: clear previous child if it belonged to a different stream.
+        const prevBound = (mountNode as HTMLElement).dataset.boundStreamId || "";
+        if (prevBound !== streamId) {
+          mountNode.innerHTML = "";
+          (mountNode as HTMLElement).dataset.boundStreamId = streamId;
+        }
         // Attach via a real <video> element so audio reliably plays too.
-        // Some ZEGO view helpers can render video without unmuted audio depending on browser policies.
-        const el = document.createElement("video");
-        el.autoplay = true;
-        el.playsInline = true;
-        el.muted = false;
+        let el = mountNode.querySelector("video") as HTMLVideoElement | null;
+        if (!el) {
+          el = document.createElement("video");
+          el.autoplay = true;
+          el.playsInline = true;
+          el.muted = false;
+          el.style.width = "100%";
+          el.style.height = "100%";
+          el.style.objectFit = "cover";
+          mountNode.appendChild(el);
+        }
         (el as any).srcObject = remoteStream;
-        el.style.width = "100%";
-        el.style.height = "100%";
-        el.style.objectFit = "cover";
-        mountNode.appendChild(el);
         // If autoplay is blocked, the existing "Enable" UI calls resumeAudioContext.
         // Still attempt a best-effort play here.
         Promise.resolve(el.play()).catch(() => undefined);
@@ -669,6 +707,12 @@ export default function ZegoCallRoomPage() {
 
   const primaryRemoteStreamId = remoteTiles[0]?.streamId || "";
   const totalTiles = remoteTiles.length + 1;
+  const localHasVideo = mode === "video" && isCameraEnabled;
+  const primaryRemoteHasVideo = primaryRemoteStreamId ? remoteVideoState[primaryRemoteStreamId] !== false : false;
+  const localAvatarLabel = String(user?.username || user?.email || userId || "Me");
+  const remoteAvatarLabel = primaryRemoteStreamId
+    ? String(primaryRemoteStreamId.split("-")[1] || "User")
+    : "User";
 
   return (
     <div
@@ -683,7 +727,15 @@ export default function ZegoCallRoomPage() {
             {videoLayout === "whatsapp" ? (
               <div className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
                 {primaryRemoteStreamId ? (
-                  <div id={`dlite-zego-remote-${primaryRemoteStreamId}`} className="absolute inset-0" />
+                  <>
+                    <div id={`dlite-zego-remote-${primaryRemoteStreamId}`} className="absolute inset-0" />
+                    {/* When remote camera is off (or voice call), show avatar overlay */}
+                    {mode !== "video" || !primaryRemoteHasVideo ? (
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <AvatarBadge label={remoteAvatarLabel} />
+                      </div>
+                    ) : null}
+                  </>
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
                     {status === "connected" ? "Connected" : statusLabel}
@@ -691,7 +743,22 @@ export default function ZegoCallRoomPage() {
                 )}
 
                 <div className="absolute bottom-4 right-4 h-[140px] w-[210px] overflow-hidden rounded-xl bg-black/50 ring-1 ring-white/15 shadow-lg sm:h-[160px] sm:w-[240px]">
-                  <div id="dlite-zego-local" ref={localRef} className="absolute inset-0" />
+                  <div id="dlite-zego-local" ref={localRef} className={cn("absolute inset-0", !localHasVideo && "opacity-0")} />
+                  {/* When my camera is off (or voice call), show my avatar in the tile */}
+                  {mode !== "video" || !localHasVideo ? (
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      {user?.photoURL ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={String(user.photoURL)}
+                          alt="Me"
+                          className="h-20 w-20 rounded-full object-cover ring-1 ring-white/10"
+                        />
+                      ) : (
+                        <AvatarBadge label={localAvatarLabel} />
+                      )}
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Keep extra remote mounts present (hidden) so playback can attach if needed */}
@@ -709,7 +776,21 @@ export default function ZegoCallRoomPage() {
                 )}
               >
                 <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-                  <div id="dlite-zego-local" ref={localRef} className="absolute inset-0" />
+                  <div id="dlite-zego-local" ref={localRef} className={cn("absolute inset-0", !localHasVideo && "opacity-0")} />
+                  {mode !== "video" || !localHasVideo ? (
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      {user?.photoURL ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={String(user.photoURL)}
+                          alt="Me"
+                          className="h-24 w-24 rounded-full object-cover ring-1 ring-white/10"
+                        />
+                      ) : (
+                        <AvatarBadge label={localAvatarLabel} />
+                      )}
+                    </div>
+                  ) : null}
                 </div>
 
                 {remoteTiles.map(({ streamId }) => (
@@ -718,6 +799,11 @@ export default function ZegoCallRoomPage() {
                     className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]"
                   >
                     <div id={`dlite-zego-remote-${streamId}`} className="absolute inset-0" />
+                    {mode !== "video" || remoteVideoState[streamId] === false ? (
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <AvatarBadge label={String(streamId.split("-")[1] || "User")} />
+                      </div>
+                    ) : null}
                   </div>
                 ))}
 
