@@ -68,6 +68,17 @@ function AudioWaveform({ active = false }: { active?: boolean }) {
   );
 }
 
+function tryPlayLocalVideo(stream: any, localNode: HTMLDivElement | null) {
+  if (!stream) return;
+  const node = localNode || (typeof document !== "undefined" ? (document.getElementById("dlite-zego-local") as any) : null);
+  if (!node) return;
+  try {
+    stream.playVideo?.(node);
+  } catch {
+    /* ignore */
+  }
+}
+
 async function applyZegoLoggingPolicy(zg?: InstanceType<typeof ZegoExpressEngine>) {
   // Disable both local + remote logs (remote logger can open `weblogger-wss...` sockets).
   // `logURL: ""` explicitly disables log reporting endpoint per ZEGO docs.
@@ -267,11 +278,9 @@ export default function ZegoCallRoomPage() {
         : await zg.createZegoStream({ camera: { audio: true, video: true } });
     localStreamRef.current = nextStream;
     applyLocalTrackState(nextStream);
-    try {
-      nextStream.playVideo?.(document.getElementById("dlite-zego-local"));
-    } catch {
-      /* ignore */
-    }
+    tryPlayLocalVideo(nextStream, localRef.current);
+    // In some layouts the node may mount a tick later; retry once.
+    window.setTimeout(() => tryPlayLocalVideo(nextStream, localRef.current), 0);
     const nextStreamId = `${roomId}-${userId}-${Date.now()}`;
     publishedStreamIdRef.current = nextStreamId;
     await zg.startPublishingStream(nextStreamId, nextStream);
@@ -320,11 +329,8 @@ export default function ZegoCallRoomPage() {
       });
       screenStreamRef.current = screenStream;
 
-      try {
-        screenStream.playVideo?.(document.getElementById("dlite-zego-local"));
-      } catch {
-        /* ignore */
-      }
+      tryPlayLocalVideo(screenStream, localRef.current);
+      window.setTimeout(() => tryPlayLocalVideo(screenStream, localRef.current), 0);
 
       const screenId = `${roomId}-${userId}-screen-${Date.now()}`;
       screenStreamIdRef.current = screenId;
@@ -641,11 +647,8 @@ export default function ZegoCallRoomPage() {
         localStreamRef.current = localStream;
         applyLocalTrackState(localStream);
 
-        try {
-          localStream.playVideo?.(document.getElementById("dlite-zego-local"));
-        } catch {
-          /* ignore */
-        }
+        tryPlayLocalVideo(localStream, localRef.current);
+        window.setTimeout(() => tryPlayLocalVideo(localStream, localRef.current), 0);
 
         const streamId = `${roomId}-${userId}-${Date.now()}`;
         publishedStreamIdRef.current = streamId;
@@ -695,6 +698,14 @@ export default function ZegoCallRoomPage() {
   useEffect(() => {
     applyLocalTrackState(localStreamRef.current);
   }, [applyLocalTrackState]);
+
+  // Re-bind local renderer when layout switches (node can remount).
+  useEffect(() => {
+    const s = localStreamRef.current || screenStreamRef.current;
+    if (!s) return;
+    tryPlayLocalVideo(s, localRef.current);
+    window.setTimeout(() => tryPlayLocalVideo(s, localRef.current), 0);
+  }, [videoLayout]);
 
   useEffect(() => {
     if (!engineRef.current) return;
