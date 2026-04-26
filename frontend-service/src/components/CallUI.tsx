@@ -1057,7 +1057,7 @@ export default function CallUI({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                      peerDisplayName || peerId || "user"
+                      peerDisplayName || "user"
                     )}`}
                     alt=""
                     className="h-full w-full object-cover"
@@ -1065,7 +1065,7 @@ export default function CallUI({
                   />
                   <div className="pointer-events-none absolute inset-0 bg-black/10" aria-hidden="true" />
                 </div>
-                <p className="text-lg font-semibold text-white">{peerDisplayName || peerId || "Waiting"}</p>
+                <p className="text-lg font-semibold text-white">{peerDisplayName || "Waiting"}</p>
                 <p className="text-sm text-white/70">{status === "connected" ? "Voice call" : getStatusLabel(status)}</p>
               </div>
             </div>
@@ -1300,7 +1300,7 @@ export default function CallUI({
                                 <span className="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                                   {u.username}
                                 </span>
-                                <span className="block truncate font-mono text-[11px] opacity-60">{u.id.slice(0, 6)}…</span>
+                                <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">Tap to call</span>
                               </span>
                             </button>
                           );

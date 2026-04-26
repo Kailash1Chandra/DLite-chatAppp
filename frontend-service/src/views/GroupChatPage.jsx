@@ -1677,7 +1677,7 @@ export default function GroupChatPage() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-semibold leading-5">
-                            {String(group?.name || '').trim() ? group.name : `Group ${group.id}`}
+                            {String(group?.name || '').trim() ? group.name : `Group`}
                           </div>
                           <div
                             className={cn(

@@ -370,7 +370,7 @@ export function CallUsersPanel({ className }: { className?: string }) {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                          {it.peerName || it.peerId}
+                          {it.peerName || "Unknown"}
                         </p>
                         <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                           {formatWhen(it.startedAt)}
