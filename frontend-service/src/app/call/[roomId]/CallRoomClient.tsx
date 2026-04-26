@@ -1765,7 +1765,8 @@ export default function ZegoCallRoomPage() {
             ref={videoStageRef}
             className={cn(
               "relative z-10 flex min-h-[min(72vh,680px)] flex-1 flex-col overflow-hidden rounded-2xl border border-white/5 bg-[#07050c] shadow-2xl",
-              videoLayout === "dual" ? "px-0 pb-0 pt-0 sm:px-0 sm:pb-0 sm:pt-0" : "px-3 pb-36 pt-3 sm:px-5 sm:pb-40 sm:pt-5"
+              // Controls are absolutely positioned, so do not reserve bottom padding (prevents empty band).
+              videoLayout === "dual" ? "px-0 pb-0 pt-0 sm:px-0 sm:pb-0 sm:pt-0" : "px-3 pb-0 pt-3 sm:px-5 sm:pb-0 sm:pt-5"
             )}
           >
             <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
