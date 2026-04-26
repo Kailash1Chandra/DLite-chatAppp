@@ -1248,10 +1248,26 @@ export default function ZegoCallRoomPage() {
         setStatus("publishing");
         let localStream: any;
         try {
-          localStream =
-            mode === "audio"
-              ? await zg.createZegoStream({ camera: { audio: true, video: false } })
-              : await zg.createZegoStream({ camera: { audio: true, video: true } });
+          if (mode === "audio") {
+            localStream = await zg.createZegoStream({ camera: { audio: true, video: false } });
+          } else {
+            // Prefer camera+mic for video calls, but fall back to audio-only when
+            // the browser has no camera device (NotFoundError) or it becomes unavailable.
+            try {
+              localStream = await zg.createZegoStream({ camera: { audio: true, video: true } });
+            } catch (err) {
+              const msg = normalizeUiError(err);
+              const isNotFound =
+                /NotFoundError/i.test(msg) ||
+                /Requested device not found/i.test(msg) ||
+                /device not found/i.test(msg) ||
+                /no.*(camera|video)/i.test(msg);
+              if (!isNotFound) throw err;
+              callDiagInfo("camera missing; falling back to audio-only stream", { roomId, localUserId: userId, msg });
+              setIsCameraEnabled(false);
+              localStream = await zg.createZegoStream({ camera: { audio: true, video: false } });
+            }
+          }
         } catch (err) {
           const msg = normalizeUiError(err);
           const wrap = new Error(msg || "Could not access microphone/camera");
