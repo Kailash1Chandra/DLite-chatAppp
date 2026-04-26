@@ -146,6 +146,7 @@ export default function ZegoCallRoomPage() {
   const [remoteVideoState, setRemoteVideoState] = useState<Record<string, boolean>>({});
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [callNow, setCallNow] = useState<number>(Date.now());
+  const streamPollRef = useRef<number | null>(null);
 
   const server = useMemo(() => "wss://webliveroom-api.zego.im/ws", []);
   const hostedCallPath = useMemo(() => buildHostedCallUrl(roomId, mode), [mode, roomId]);
@@ -385,6 +386,14 @@ export default function ZegoCallRoomPage() {
 
     const cleanup = async () => {
       clearPendingEngineDestroy();
+      if (streamPollRef.current !== null) {
+        try {
+          window.clearInterval(streamPollRef.current);
+        } catch {
+          /* ignore */
+        }
+        streamPollRef.current = null;
+      }
 
       const zg = engineRef.current;
       engineRef.current = null;
@@ -536,6 +545,13 @@ export default function ZegoCallRoomPage() {
           if (cancelled) return;
           if (!Array.isArray(streamList) || streamList.length === 0) return;
 
+          try {
+            // eslint-disable-next-line no-console
+            console.log("[zego] roomStreamUpdate", { updateType, count: streamList.length });
+          } catch {
+            /* ignore */
+          }
+
           if (updateType === "DELETE") {
             const deletedIds = streamList
               .map((s) => String(s?.streamID || s?.streamId || "").trim())
@@ -607,6 +623,22 @@ export default function ZegoCallRoomPage() {
 
         zg.on("roomStreamUpdate", onRoomStreamUpdate);
         zg.on("roomStateChanged", onRoomStateChanged);
+        try {
+          (zg as unknown as { on?: (event: string, cb: (...args: unknown[]) => void) => void }).on?.(
+            "roomUserUpdate",
+            (_roomID: string, updateType: string, userList: any[]) => {
+              if (cancelled) return;
+              try {
+                // eslint-disable-next-line no-console
+                console.log("[zego] roomUserUpdate", { updateType, count: Array.isArray(userList) ? userList.length : 0 });
+              } catch {
+                /* ignore */
+              }
+            }
+          );
+        } catch {
+          /* ignore */
+        }
 
         try {
           (zg as unknown as { on?: (event: string, cb: (...args: unknown[]) => void) => void }).on?.(
@@ -658,19 +690,38 @@ export default function ZegoCallRoomPage() {
         await zg.startPublishingStream(streamId, localStream);
         if (cancelled) return;
 
-        // Some ZEGO environments won't emit initial `roomStreamUpdate` until something changes.
-        // Actively read any existing streams and play them once after we publish.
+        // Some ZEGO environments won't emit initial `roomStreamUpdate` reliably.
+        // Poll room stream list briefly until we discover the peer stream.
         try {
           const listFn = (zg as unknown as { getRoomStreamList?: (r: string) => any }).getRoomStreamList;
-          const res = await Promise.resolve(listFn?.(roomId)).catch(() => null);
-          const streams = Array.isArray((res as any)?.streamList)
-            ? (res as any).streamList
-            : Array.isArray(res)
-              ? res
-              : [];
-          if (streams.length) {
-            onRoomStreamUpdate(roomId, "ADD", streams).catch(() => undefined);
-          }
+          const pollOnce = async () => {
+            const res = await Promise.resolve(listFn?.(roomId)).catch(() => null);
+            const streams = Array.isArray((res as any)?.streamList)
+              ? (res as any).streamList
+              : Array.isArray(res)
+                ? res
+                : [];
+            if (streams.length) {
+              onRoomStreamUpdate(roomId, "ADD", streams).catch(() => undefined);
+            }
+          };
+          await pollOnce().catch(() => undefined);
+          let tries = 0;
+          if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
+          streamPollRef.current = window.setInterval(() => {
+            tries += 1;
+            if (cancelled) return;
+            if (remoteTiles.length > 0) {
+              if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
+              streamPollRef.current = null;
+              return;
+            }
+            pollOnce().catch(() => undefined);
+            if (tries >= 10) {
+              if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
+              streamPollRef.current = null;
+            }
+          }, 1200);
         } catch {
           /* ignore */
         }
