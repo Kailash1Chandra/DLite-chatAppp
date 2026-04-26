@@ -32,6 +32,8 @@ import {
   subscribeGroupTyping,
   pinGroupMessage,
   unpinGroupMessage,
+  editGroupMessage,
+  hideGroupMessageForMe,
   subscribePinnedGroupMessages,
   subscribeRecentDirectChats,
   searchUsersByUsername
@@ -50,6 +52,7 @@ import { cn } from '@/lib/utils';
 
 const MESSAGE_MENU_WIDTH = 210;
 const MESSAGE_MENU_MAX_HEIGHT = 260;
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
 
 function formatGroupMessageTime(ts) {
   const n = Number(ts || 0);
@@ -387,9 +390,14 @@ export default function GroupChatPage() {
                                   className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover disabled:pointer-events-none disabled:opacity-50 dark:text-slate-100"
                                   onClick={() => {
                                     setOpenGroupMessageMenuId(null);
-                                    // group messages don't support inline edit yet → keep disabled (DM parity)
+                                    if (!mine) return;
+                                    handleEditGroupMessage(m);
                                   }}
-                                  disabled
+                                  disabled={
+                                    !mine ||
+                                    Boolean(m.isDeleted) ||
+                                    !(Number(m.createdAt || 0) && Date.now() - Number(m.createdAt || 0) <= EDIT_WINDOW_MS)
+                                  }
                                 >
                                   <Pencil className="h-4 w-4 shrink-0 opacity-80" />
                                   Edit message
@@ -430,7 +438,10 @@ export default function GroupChatPage() {
                                   type="button"
                                   role="menuitem"
                                   className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover disabled:pointer-events-none disabled:opacity-50 dark:text-slate-100"
-                                  disabled
+                                  onClick={() => {
+                                    setOpenGroupMessageMenuId(null);
+                                    handleDeleteGroupForMe(m._id);
+                                  }}
                                 >
                                   <Trash2 className="h-4 w-4 shrink-0 opacity-80" />
                                   Delete for me
@@ -1239,6 +1250,47 @@ export default function GroupChatPage() {
     try {
       await unpinGroupMessage({ groupId: groupId.trim(), messageId });
     } catch { setPanelError('Could not unpin message.'); }
+  };
+
+  const handleEditGroupMessage = async (msg) => {
+    if (!user?.id || !groupId.trim() || !msg?._id) return;
+    if (msg.isDeleted) {
+      setPanelError('Deleted messages cannot be edited.');
+      return;
+    }
+    const createdAt = Number(msg.createdAt || 0);
+    const canAccess = createdAt && Date.now() - createdAt <= EDIT_WINDOW_MS;
+    if (!canAccess) {
+      setPanelError('Edit window expired (15 minutes).');
+      return;
+    }
+    const currentText = String(msg.content || msg.message || '').trim();
+    const next = window.prompt('Edit message', currentText);
+    if (next === null) return;
+    const newContent = next.trim();
+    if (!newContent) return;
+
+    setPanelError('');
+    try {
+      await editGroupMessage({ groupId: groupId.trim(), messageId: msg._id, newContent });
+      setMessages((prev) => prev.map((m) => (m._id === msg._id ? { ...m, content: newContent, message: newContent } : m)));
+      setOpenGroupMessageMenuId(null);
+    } catch (err) {
+      setPanelError(err?.message || 'Could not edit message.');
+    }
+  };
+
+  const handleDeleteGroupForMe = async (messageId) => {
+    if (!groupId.trim() || !user?.id || !messageId) return;
+    if (typeof window !== 'undefined' && !window.confirm('Delete this message only for you?')) return;
+    setPanelError('');
+    try {
+      await hideGroupMessageForMe({ groupId: groupId.trim(), userId: user.id, messageId });
+      setMessages((prev) => prev.filter((m) => m._id !== messageId));
+      setOpenGroupMessageMenuId(null);
+    } catch (err) {
+      setPanelError(err?.message || 'Could not delete message for you.');
+    }
   };
 
   const handleDeleteGroupMessage = async (messageId) => {

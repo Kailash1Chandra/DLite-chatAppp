@@ -1185,6 +1185,36 @@ export async function markGroupThreadRead() {
 export async function toggleGroupReaction() {
   return toggleDmReaction(arguments?.[0] || {})
 }
+
+export async function editGroupMessage() {
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const messageId = String(arguments?.[0]?.messageId || arguments?.[0]?.id || arguments?.[0]?._id || '').trim()
+  const newContent = String(arguments?.[0]?.newContent || arguments?.[0]?.content || arguments?.[0]?.text || '').trim()
+  if (!messageId || !newContent) throw new Error('messageId and newContent are required')
+  const res = await fetch(`${API_BASE_URL}/chat/messages/${encodeURIComponent(messageId)}/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+    body: JSON.stringify({ content: newContent }),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not edit message')
+  return json?.message || true
+}
+
+export async function hideGroupMessageForMe() {
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const messageId = String(arguments?.[0]?.messageId || arguments?.[0]?.id || arguments?.[0]?._id || arguments?.[0] || '').trim()
+  if (!messageId) throw new Error('messageId is required')
+  const res = await fetch(`${API_BASE_URL}/chat/messages/${encodeURIComponent(messageId)}/hide`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${snapshot.token}` },
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not delete for me')
+  return true
+}
 export async function setGroupMemberRole() {
   const snapshot = await getCurrentAuthSnapshot()
   if (!snapshot?.token) throw new Error('Not authenticated')
@@ -1211,13 +1241,53 @@ export function subscribeGroupTyping() {
   return () => undefined
 }
 export async function pinGroupMessage() {
-  return
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const groupId = String(arguments?.[0]?.groupId || arguments?.[0]?.chatId || '').trim()
+  const messageId = String(arguments?.[0]?.messageId || arguments?.[0]?.id || arguments?.[0]?._id || '').trim()
+  if (!groupId || !messageId) throw new Error('groupId and messageId are required')
+  const res = await fetch(`${API_BASE_URL}/chat/pins/${encodeURIComponent(groupId)}/pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+    body: JSON.stringify({ messageId }),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not pin message')
+  return true
 }
 export async function unpinGroupMessage() {
-  return
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const groupId = String(arguments?.[0]?.groupId || arguments?.[0]?.chatId || '').trim()
+  const messageId = String(arguments?.[0]?.messageId || arguments?.[0]?.id || arguments?.[0]?._id || '').trim()
+  if (!groupId || !messageId) throw new Error('groupId and messageId are required')
+  const res = await fetch(`${API_BASE_URL}/chat/pins/${encodeURIComponent(groupId)}/unpin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+    body: JSON.stringify({ messageId }),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not unpin message')
+  return true
 }
 export function subscribePinnedGroupMessages() {
-  return () => undefined
+  const groupId = String(arguments?.[0] || '').trim()
+  const cb = typeof arguments?.[1] === 'function' ? arguments?.[1] : () => undefined
+  let disposed = false
+  ;(async () => {
+    const snapshot = await getCurrentAuthSnapshot().catch(() => null)
+    if (!snapshot?.token || !groupId) return
+    const res = await fetch(`${API_BASE_URL}/chat/pins/${encodeURIComponent(groupId)}`, {
+      headers: { Authorization: `Bearer ${snapshot.token}` },
+    })
+    const json = await res.json().catch(() => ({}))
+    if (disposed) return
+    if (!res.ok || json?.success === false) return
+    cb(json?.pins || [])
+  })()
+  return () => {
+    disposed = true
+  }
 }
 export async function deleteGroupMessage() {
   const snapshot = await getCurrentAuthSnapshot()
