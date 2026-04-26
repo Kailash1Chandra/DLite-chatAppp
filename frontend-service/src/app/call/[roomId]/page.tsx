@@ -8,7 +8,7 @@ import { Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Users, Video, VideoO
 import { useAuth } from "@/hooks/useAuth";
 import { buildHostedCallUrl, getInviteCodeFromRoomId } from "@/lib/callRoom";
 import { cn } from "@/lib/utils";
-import { endCall, listenForCallEnded } from "@/lib/call";
+import { endCall, endHostedCallRoom, joinHostedCallRoom, leaveHostedCallRoom, listenForCallEnded, listenForHostedCallEnded } from "@/lib/call";
 
 // Ensure ZEGO remote logger is disabled as early as possible (before engine init).
 try {
@@ -160,7 +160,10 @@ export default function ZegoCallRoomPage() {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const reconnectingRef = useRef(false);
   const engineDestroyTimerRef = useRef<number | null>(null);
-  const [videoLayout, setVideoLayout] = useState<"whatsapp" | "meet">("meet");
+  const [videoLayout, setVideoLayout] = useState<"whatsapp" | "meet">(() => {
+    // For 1v1 (dm-...) calls, default to WhatsApp PiP. For groups, default to grid/meet.
+    return String(roomId || "").startsWith("dm-") ? "whatsapp" : "meet";
+  });
   const [endedOverlayVisible, setEndedOverlayVisible] = useState(false);
   const [remoteVideoState, setRemoteVideoState] = useState<Record<string, boolean>>({});
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
@@ -185,6 +188,7 @@ export default function ZegoCallRoomPage() {
     if (parts[1] === userId) return parts[0];
     return "";
   }, [roomId, userId]);
+  const shouldBroadcastEndToRoom = useMemo(() => Boolean(peerUserId) || isAdmin, [isAdmin, peerUserId]);
   const statusLabel = useMemo(() => {
     switch (status) {
       case "getting_token":
@@ -520,6 +524,14 @@ export default function ZegoCallRoomPage() {
         await applyZegoLoggingPolicy(zg);
         if (cancelled) return;
 
+        // Lower-latency realtime scenario (important for audio call "live voice" delay).
+        // ZegoScenario.StandardVideoCall = 4 (enum in SDK typings). Must be set before loginRoom.
+        try {
+          zg.setRoomScenario?.(4 as any);
+        } catch {
+          /* ignore */
+        }
+
         try {
           (zg as unknown as { setDebugVerbose?: (v: boolean) => void }).setDebugVerbose?.(false);
         } catch {
@@ -761,6 +773,12 @@ export default function ZegoCallRoomPage() {
         }
         localStreamRef.current = localStream;
         applyLocalTrackState(localStream);
+        // Enable AEC/ANS/AGC to improve clarity and reduce perceived lag/echo.
+        try {
+          await zg.setAudioConfig?.(localStream, { AEC: true, AGC: true, ANS: true } as any);
+        } catch {
+          /* ignore */
+        }
 
         tryPlayLocalVideo(localStream, localRef.current);
         window.setTimeout(() => tryPlayLocalVideo(localStream, localRef.current), 0);
@@ -810,6 +828,24 @@ export default function ZegoCallRoomPage() {
     };
   }, [applyLocalTrackState, mode, roomId, server, userId, userName]);
 
+  // Join call-service room channel (for cross-client "end call" sync).
+  useEffect(() => {
+    if (!userId || !roomId) return () => undefined;
+    joinHostedCallRoom({ userId, roomId }).catch(() => undefined);
+    return () => {
+      leaveHostedCallRoom({ userId, roomId }).catch(() => undefined);
+    };
+  }, [roomId, userId]);
+
+  // If someone ends the hosted room call, close this page too.
+  useEffect(() => {
+    if (!userId || !roomId) return () => undefined;
+    return listenForHostedCallEnded(userId, roomId, () => {
+      setEndedOverlayVisible(true);
+      window.setTimeout(() => router.replace("/call"), 1200);
+    });
+  }, [roomId, router, userId]);
+
   useEffect(() => {
     if (!userId || !peerUserId) return () => undefined;
     // When peer ends the call, close this page too.
@@ -827,6 +863,10 @@ export default function ZegoCallRoomPage() {
     // Tell the peer to close too (DM hosted room only).
     if (userId && peerUserId) {
       endCall({ userId, peerUserId }).catch(() => undefined);
+    }
+    // For hosted rooms: if admin (group) or DM (1v1), end room for everyone.
+    if (userId && roomId && shouldBroadcastEndToRoom) {
+      endHostedCallRoom({ userId, roomId }).catch(() => undefined);
     }
     setEndedOverlayVisible(true);
     window.setTimeout(() => router.replace("/call"), 1600);
@@ -1038,51 +1078,73 @@ export default function ZegoCallRoomPage() {
                 ))}
               </div>
             ) : (
-              <div
-                className={cn(
-                  "grid h-full w-full gap-4",
-                  totalTiles <= 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-[repeat(auto-fit,minmax(260px,1fr))]"
-                )}
-              >
-                <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-                  <div id="dlite-zego-local" ref={localRef} className={cn("absolute inset-0", !localHasVideo && "opacity-0")} />
-                  {mode !== "video" || !localHasVideo ? (
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                      {user?.photoURL ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={String(user.photoURL)}
-                          alt="Me"
-                          className="h-24 w-24 rounded-full object-cover ring-1 ring-white/10"
-                        />
-                      ) : (
-                        <AvatarBadge label={localAvatarLabel} />
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-
-                {remoteTiles.map(({ streamId }) => (
-                  <div
-                    key={streamId}
-                    className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]"
-                  >
-                    <div id={`dlite-zego-remote-${streamId}`} className="absolute inset-0" />
-                    {mode !== "video" || remoteVideoState[streamId] === false ? (
+              <div className="h-full w-full">
+                {/* When no remote yet, do NOT show a second empty window (avoids "blank screen" feeling). */}
+                {!primaryRemoteStreamId ? (
+                  <div className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                    <div id="dlite-zego-local" ref={localRef} className={cn("absolute inset-0", !localHasVideo && "opacity-0")} />
+                    {mode !== "video" || !localHasVideo ? (
                       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                        <AvatarBadge label={String(streamId.split("-")[1] || "User")} />
+                        {user?.photoURL ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={String(user.photoURL)}
+                            alt="Me"
+                            className="h-24 w-24 rounded-full object-cover ring-1 ring-white/10"
+                          />
+                        ) : (
+                          <AvatarBadge label={localAvatarLabel} />
+                        )}
                       </div>
                     ) : null}
-                  </div>
-                ))}
-
-                {!primaryRemoteStreamId ? (
-                  <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-                    <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
-                      {status === "connected" ? "Connected" : statusLabel}
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-white/70">
+                      {statusLabel}
                     </div>
                   </div>
-                ) : null}
+                ) : (
+                  <div
+                    className={cn(
+                      "grid h-full w-full gap-4",
+                      totalTiles <= 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-[repeat(auto-fit,minmax(260px,1fr))]"
+                    )}
+                  >
+                    <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                      <div
+                        id="dlite-zego-local"
+                        ref={localRef}
+                        className={cn("absolute inset-0", !localHasVideo && "opacity-0")}
+                      />
+                      {mode !== "video" || !localHasVideo ? (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                          {user?.photoURL ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={String(user.photoURL)}
+                              alt="Me"
+                              className="h-24 w-24 rounded-full object-cover ring-1 ring-white/10"
+                            />
+                          ) : (
+                            <AvatarBadge label={localAvatarLabel} />
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {remoteTiles.map(({ streamId }) => (
+                      <div
+                        key={streamId}
+                        className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]"
+                      >
+                        <div id={`dlite-zego-remote-${streamId}`} className="absolute inset-0" />
+                        {mode !== "video" || remoteVideoState[streamId] === false ? (
+                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                            <AvatarBadge label={String(streamId.split("-")[1] || "User")} />
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

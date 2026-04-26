@@ -324,6 +324,70 @@ export function listenForCallEnded(
   }
 }
 
+// ===== Hosted-room lifecycle (room-scoped) =====
+export async function joinHostedCallRoom(params: { userId: string; roomId: string }) {
+  const uid = String(params.userId || '').trim()
+  const rid = String(params.roomId || '').trim()
+  if (!uid || !rid) return
+  const socket = await ensureCallSocket(uid)
+  socket.emit('room:join', { roomID: rid })
+}
+
+export async function leaveHostedCallRoom(params: { userId: string; roomId: string }) {
+  const uid = String(params.userId || '').trim()
+  const rid = String(params.roomId || '').trim()
+  if (!uid || !rid) return
+  const socket = await ensureCallSocket(uid)
+  socket.emit('room:leave', { roomID: rid })
+}
+
+export function listenForHostedCallEnded(
+  userId: string,
+  roomId: string,
+  onEnded: (payload: { roomId: string; endedBy: string; durationSeconds?: number } | null) => void
+) {
+  const uid = String(userId || '').trim()
+  const rid = String(roomId || '').trim()
+  let disposed = false
+  let detach: () => void = () => undefined
+
+  ;(async () => {
+    try {
+      const socket = await ensureCallSocket(uid)
+      if (disposed) return
+
+      const handler = (payload: any) => {
+        if (!payload) return
+        const roomID = String(payload.roomID || payload.roomId || '').trim()
+        if (!roomID || roomID !== rid) return
+        onEnded({
+          roomId: roomID,
+          endedBy: String(payload.endedBy || payload.by || '').trim(),
+          durationSeconds: typeof payload.durationSeconds === 'number' ? payload.durationSeconds : undefined,
+        })
+      }
+
+      socket.on('call:ended', handler)
+      detach = () => socket.off('call:ended', handler)
+    } catch {
+      /* ignore */
+    }
+  })()
+
+  return () => {
+    disposed = true
+    detach()
+  }
+}
+
+export async function endHostedCallRoom(params: { userId: string; roomId: string }) {
+  const uid = String(params.userId || '').trim()
+  const rid = String(params.roomId || '').trim()
+  if (!uid || !rid) return
+  const socket = await ensureCallSocket(uid)
+  socket.emit('call:end', { roomID: rid })
+}
+
 export async function acceptCall(params: { userId: string; callerId: string; answer: RTCSessionDescriptionInit }) {
   const socket = await ensureCallSocket(params.userId)
   const a = params.answer
