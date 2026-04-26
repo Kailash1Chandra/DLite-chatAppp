@@ -9,66 +9,72 @@
    */
   :root {
     color-scheme: light;
-    --ui-fg: #212529;
-    --ui-fg-muted: #6c757d;
-    /* Futuristic warm tint (slightly more yellowish) */
-    --ui-canvas: #fffaf0;
-    --ui-shell: #fff7e6;
-    --ui-sidebar: #fff7e6;
-    --ui-panel: #fffdf6;
-    --ui-border: rgba(52, 58, 64, 0.1);
-    --ui-muted: #f7efd8;
-    /* Futuristic gold + violet gradients */
-    --ui-grad-from: #f6c453;
-    --ui-grad-to: #7c3aed;
+    /* Sunset Chrome — warm futurism, retro-future */
+    --ui-fg: #1f2937;
+    --ui-fg-muted: rgba(31, 41, 55, 0.65);
+    --ui-canvas: #fff7e6; /* cream */
+    --ui-shell: #fff3dd; /* slightly deeper cream */
+    --ui-sidebar: #fff3dd;
+    --ui-panel: #fffaf0; /* card surface */
+    --ui-border: rgba(124, 45, 18, 0.14); /* warm cocoa border */
+    --ui-muted: #ffedd5; /* soft orange tint */
+
+    /* Orange -> amber gradient */
+    --ui-grad-from: #f97316;
+    --ui-grad-to: #ea580c;
+
     /* Button glow */
-    --ui-btn-glow: rgba(246, 196, 83, 0.38);
-    --ui-btn-glow2: rgba(124, 58, 237, 0.24);
+    --ui-btn-glow: rgba(249, 115, 22, 0.35);
+    --ui-btn-glow2: rgba(234, 88, 12, 0.22);
     --ui-bubble-mine: rgba(255, 255, 255, 0.14);
     --ui-bubble-mine-border: rgba(255, 255, 255, 0.28);
-    --ui-accent: #7c3aed;
-    --ui-accent-hover: #6d28d9;
+    --ui-accent: #ea580c;
+    --ui-accent-hover: #c2410c;
     --ui-on-accent: #ffffff;
-    --ui-accent-subtle: rgba(142, 45, 226, 0.12);
-    --ui-accent-text: #5b21b6;
+    --ui-accent-subtle: rgba(249, 115, 22, 0.14);
+    --ui-accent-text: #9a3412;
     --ui-bubble-other: #e8eaef;
     --ui-bubble-other-border: rgba(52, 58, 64, 0.09);
-    --ui-thread-bg: #fbfaf6;
-    --ui-composer-bg: #fbfaf6;
+    --ui-thread-bg: #fff7e6;
+    --ui-composer-bg: #fff7e6;
     --ui-composer-pill: #ffffff;
     --ui-rail-bg: #ffffff;
-    --ui-rail-active: #7c3aed;
-    --ui-rail-fg: #495057;
-    --ui-rail-fg-muted: #adb5bd;
-    /* Selected chat row should match theme (warm in light mode) */
-    --ui-chat-active-bg: rgba(246, 196, 83, 0.26);
+    --ui-rail-active: #ea580c;
+    --ui-rail-fg: #374151;
+    --ui-rail-fg-muted: rgba(55, 65, 81, 0.5);
+    /* Selected chat row should match theme */
+    --ui-chat-active-bg: rgba(249, 115, 22, 0.14);
     --ui-chat-active-fg: #1f2937;
-    --ui-chat-active-muted: rgba(31, 41, 55, 0.7);
-    --ui-row-selected: #ede9fe;
-    --ui-row-selected-border: rgba(124, 58, 237, 0.28);
-    --ui-link: #6d28d9;
-    --ui-focus: rgba(246, 196, 83, 0.28);
-    --ui-menu-hover: #fff1cf;
-    --ui-pinned-bg: rgba(124, 58, 237, 0.09);
-    --ui-poll-bg: #4a00e0;
-    --ui-poll-bar: #c4b5fd;
-    --ui-poll-muted: rgba(245, 243, 255, 0.92);
+    --ui-chat-active-muted: rgba(31, 41, 55, 0.66);
+    --ui-row-selected: #ffedd5;
+    --ui-row-selected-border: rgba(234, 88, 12, 0.28);
+    --ui-link: #c2410c;
+    --ui-focus: rgba(249, 115, 22, 0.26);
+    --ui-menu-hover: rgba(249, 115, 22, 0.08);
+    --ui-pinned-bg: rgba(249, 115, 22, 0.12);
+    --ui-poll-bg: #9a3412;
+    --ui-poll-bar: #fdba74;
+    --ui-poll-muted: rgba(255, 247, 237, 0.95);
  }
 
   html.brand-warm {
-    --ui-grad-from: #e9b949;
-    --ui-grad-to: #b45309;
-    --ui-accent: #d97706;
-    --ui-accent-hover: #b45309;
-    --ui-accent-subtle: rgba(217, 119, 6, 0.14);
-    --ui-accent-text: #92400e;
-    --ui-link: #b45309;
-    --ui-focus: rgba(217, 119, 6, 0.28);
-    --ui-poll-bg: #92400e;
-    --ui-poll-bar: #fcd34d;
-    --ui-chat-active-bg: #4a3f2a;
-    --ui-row-selected: #fef3c7;
-    --ui-row-selected-border: rgba(217, 119, 6, 0.35);
+    /* Keep brand-warm as a slightly richer Sunset Chrome variant */
+    --ui-shell: #fff1d6;
+    --ui-sidebar: #fff1d6;
+    --ui-panel: #fff8ea;
+    --ui-grad-from: #f97316;
+    --ui-grad-to: #7c2d12; /* cocoa */
+    --ui-accent: #f97316;
+    --ui-accent-hover: #ea580c;
+    --ui-accent-subtle: rgba(249, 115, 22, 0.18);
+    --ui-accent-text: #7c2d12;
+    --ui-link: #9a3412;
+    --ui-focus: rgba(249, 115, 22, 0.28);
+    --ui-poll-bg: #7c2d12;
+    --ui-poll-bar: #fed7aa;
+    --ui-chat-active-bg: rgba(124, 45, 18, 0.12);
+    --ui-row-selected: rgba(249, 115, 22, 0.14);
+    --ui-row-selected-border: rgba(124, 45, 18, 0.22);
   }
 
   .dark {
@@ -184,8 +190,8 @@
   .app-shell {
     @apply min-h-screen;
     background:
-      radial-gradient(1000px circle at 12% 0%, rgba(246, 196, 83, 0.12), transparent 55%),
-      radial-gradient(900px circle at 90% 20%, rgba(124, 58, 237, 0.06), transparent 50%),
+      radial-gradient(1000px circle at 10% 0%, rgba(249, 115, 22, 0.12), transparent 55%),
+      radial-gradient(900px circle at 92% 16%, rgba(124, 45, 18, 0.08), transparent 52%),
       var(--ui-canvas);
   }
 
@@ -198,8 +204,8 @@
 
   html.brand-warm .app-shell {
     background:
-      radial-gradient(1000px circle at 10% 0%, rgba(217, 119, 6, 0.07), transparent 55%),
-      radial-gradient(900px circle at 90% 20%, rgba(180, 83, 9, 0.05), transparent 50%),
+      radial-gradient(1000px circle at 10% 0%, rgba(249, 115, 22, 0.11), transparent 55%),
+      radial-gradient(900px circle at 90% 20%, rgba(124, 45, 18, 0.07), transparent 52%),
       var(--ui-canvas);
   }
 
