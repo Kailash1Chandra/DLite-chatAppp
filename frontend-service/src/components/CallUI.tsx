@@ -767,7 +767,7 @@ export default function CallUI({
         currentUserId,
         async (rejected) => {
           if (!rejected) return;
-          setError(`Call rejected by ${rejected.byUserId}.`);
+          setError(rejected.message?.trim() || `Call rejected by ${rejected.byUserId}.`);
           await endCall({ userId: currentUserId, peerUserId: targetUserId });
           await hardCleanup();
           setStatus("ended");

@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { listenForIncomingHostedCall } from '@/lib/call';
+import { HOSTED_CALL_DECLINED_MESSAGE, listenForIncomingHostedCall, rejectCall } from '@/lib/call';
 import { buildHostedCallUrl } from '@/lib/callRoom';
 import { getUserProfileById } from '@/services/chatClient';
 import { notificationSounds } from '@/lib/notificationSounds';
@@ -31,12 +31,28 @@ export function IncomingCallProvider({ children }) {
     router.push(nextUrl);
   }, [incoming, router]);
 
-  const reject = useCallback(() => {
-    setIncoming(null);
-    ringing.current = false;
-    notificationSounds.stop('incoming-call');
-    notificationSounds.stopVibration();
-  }, []);
+  const reject = useCallback(
+    async (opts) => {
+      const fromId = String(incoming?.fromUserId || '').trim();
+      const uid = String(user?.id || '').trim();
+      if (fromId && uid && opts?.reason !== 'timeout') {
+        try {
+          await rejectCall({
+            userId: uid,
+            callerId: fromId,
+            message: HOSTED_CALL_DECLINED_MESSAGE,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+      setIncoming(null);
+      ringing.current = false;
+      notificationSounds.stop('incoming-call');
+      notificationSounds.stopVibration();
+    },
+    [incoming?.fromUserId, user?.id]
+  );
 
   useEffect(() => {
     if (!user?.id) return;

@@ -22,8 +22,18 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { buildHostedCallUrl, getInviteCodeFromRoomId } from "@/lib/callRoom";
+import { getUserProfileById } from "@/services/chatClient";
 import { cn } from "@/lib/utils";
-import { endCall, endHostedCallRoom, joinHostedCallRoom, leaveHostedCallRoom, listenForCallEnded, listenForHostedCallEnded } from "@/lib/call";
+import {
+  endCall,
+  endHostedCallRoom,
+  HOSTED_CALL_DECLINED_MESSAGE,
+  joinHostedCallRoom,
+  leaveHostedCallRoom,
+  listenForCallEnded,
+  listenForHostedCallEnded,
+  listenForRejection,
+} from "@/lib/call";
 
 // Ensure ZEGO remote logger is disabled as early as possible (before engine init).
 try {
@@ -50,14 +60,21 @@ function buildMainPublishStreamId(roomId: string, uid: string) {
   return `${sanitizeZegoIdPart(roomId)}_${sanitizeZegoIdPart(uid)}`;
 }
 
-/** Best-effort label from deterministic main stream id (roomPeer suffix). */
-function peerLabelFromMainStreamId(roomId: string, streamId: string) {
+/** Full user-key suffix from main publish stream id (for profile lookup; not truncated). */
+function peerStreamUserKey(roomId: string, streamId: string) {
   const prefix = `${sanitizeZegoIdPart(roomId)}_`;
   if (streamId.startsWith(prefix)) {
-    const tail = streamId.slice(prefix.length);
-    if (tail) return tail.length > 24 ? `${tail.slice(0, 10)}…` : tail;
+    const tail = streamId.slice(prefix.length).trim();
+    if (tail) return tail;
   }
-  return "Participant";
+  return "";
+}
+
+/** Best-effort short label from deterministic main stream id (roomPeer suffix). */
+function peerLabelFromMainStreamId(roomId: string, streamId: string) {
+  const key = peerStreamUserKey(roomId, streamId);
+  if (!key) return "Participant";
+  return key.length > 24 ? `${key.slice(0, 10)}…` : key;
 }
 
 function getInitials(nameOrId: string) {
@@ -300,6 +317,7 @@ export default function ZegoCallRoomPage() {
   const [callNow, setCallNow] = useState<number>(Date.now());
   const [remotePlayQuality, setRemotePlayQuality] = useState<number>(-1);
   const [remotePeerDelayMs, setRemotePeerDelayMs] = useState<number | null>(null);
+  const [remotePeerProfileName, setRemotePeerProfileName] = useState("");
   const [speakerOn, setSpeakerOn] = useState(true);
   const streamPollRef = useRef<number | null>(null);
   const roomPeersRef = useRef<Set<string>>(new Set());
@@ -998,7 +1016,23 @@ export default function ZegoCallRoomPage() {
     );
   }, [peerUserId, router, userId]);
 
+  // Callee declined the ring — show message and leave (DM / known peer only).
+  useEffect(() => {
+    if (!userId || !peerUserId) return () => undefined;
+    return listenForRejection(
+      userId,
+      (payload) => {
+        if (!payload) return;
+        setError(payload.message?.trim() || HOSTED_CALL_DECLINED_MESSAGE);
+        setEndedOverlayVisible(true);
+        window.setTimeout(() => router.replace("/call"), 2200);
+      },
+      { fromUserId: peerUserId }
+    );
+  }, [peerUserId, router, userId]);
+
   const handleLeave = async () => {
+    setError("");
     // Tell the peer to close too (DM hosted room only).
     if (userId && peerUserId) {
       endCall({ userId, peerUserId }).catch(() => undefined);
@@ -1152,6 +1186,46 @@ export default function ZegoCallRoomPage() {
     });
   }, [mode, remoteTiles, speakerOn]);
 
+  const remotePrimaryStreamId = remoteTiles[0]?.streamId ?? "";
+
+  useEffect(() => {
+    let cancelled = false;
+    const streamId = String(remotePrimaryStreamId || "").trim();
+    const fromStream = streamId ? peerStreamUserKey(roomId, streamId) : "";
+    const lookupId = String(peerUserId || "").trim() || fromStream;
+    if (!lookupId || !roomId) {
+      setRemotePeerProfileName("");
+      return () => {
+        cancelled = true;
+      };
+    }
+    (async () => {
+      try {
+        const p = await getUserProfileById(lookupId).catch(() => null);
+        if (cancelled) return;
+        const usernameRaw =
+          (p as Record<string, unknown> | null)?.username ||
+          (p as { user_metadata?: Record<string, string> } | null)?.user_metadata?.username ||
+          (p as { user_metadata?: Record<string, string> } | null)?.user_metadata?.full_name ||
+          (p as { user_metadata?: Record<string, string> } | null)?.user_metadata?.name ||
+          (p as Record<string, unknown> | null)?.email ||
+          "";
+        const rawStr = String(usernameRaw || "").trim();
+        const isUuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawStr);
+        const emailStr = String((p as Record<string, unknown> | null)?.email || "").trim();
+        const fromEmail = emailStr && emailStr.includes("@") ? emailStr.split("@")[0] : "";
+        const next =
+          rawStr && !isUuidLike ? rawStr : fromEmail || "";
+        setRemotePeerProfileName(next);
+      } catch {
+        if (!cancelled) setRemotePeerProfileName("");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId, peerUserId, remotePrimaryStreamId]);
+
   const primaryRemoteStreamIdForLevel = mode === "audio" ? remoteTiles[0]?.streamId || "" : "";
   const activeRemoteWave =
     mode === "audio" && status === "connected" && Boolean(primaryRemoteStreamIdForLevel);
@@ -1174,12 +1248,15 @@ export default function ZegoCallRoomPage() {
   const primaryRemoteStreamId = remoteTiles[0]?.streamId || "";
   const localHasVideo = mode === "video" && isCameraEnabled;
   const localAvatarLabel = String(user?.username || user?.email || userId || "Me");
-  const remoteAvatarLabel = primaryRemoteStreamId ? peerLabelFromMainStreamId(roomId, primaryRemoteStreamId) : "User";
+  const remoteStreamKey = primaryRemoteStreamId ? peerStreamUserKey(roomId, primaryRemoteStreamId) : "";
   const peerNameQuery = String(searchParams?.get("peer") || searchParams?.get("peerName") || "").trim();
   const peerLocQuery = String(searchParams?.get("loc") || "").trim();
   const voicePeerDisplayName =
-    peerNameQuery || formatPeerIdAsDisplayName(primaryRemoteStreamId ? remoteAvatarLabel : "Participant");
-  const voicePeerHandleRaw = (peerUserId || (primaryRemoteStreamId ? remoteAvatarLabel : "")).replace(/\s+/g, "");
+    peerNameQuery ||
+    String(remotePeerProfileName || "").trim() ||
+    (remoteStreamKey ? formatPeerIdAsDisplayName(remoteStreamKey) : "") ||
+    "Participant";
+  const voicePeerHandleRaw = (peerUserId || remoteStreamKey || "").replace(/\s+/g, "");
   const voicePeerSubtitle = [voicePeerHandleRaw ? `@${voicePeerHandleRaw.slice(0, 48)}` : "", peerLocQuery]
     .filter(Boolean)
     .join(" · ");
@@ -1215,13 +1292,22 @@ export default function ZegoCallRoomPage() {
         "p-4 sm:p-5"
       )}
     >
-      {/* Hosted call premium styling for ZEGO-rendered <video> nodes */}
+      {/* ZEGO video: contain on main/solo so the full frame fits; cover in PiP & thumbs. */}
       <style jsx global>{`
-        #dlite-zego-local video,
-        [id^='dlite-zego-remote-'] video {
+        [data-zego-view='remote-main'] video,
+        [data-zego-view='solo'] video {
+          width: 100%;
+          height: 100%;
+          object-fit: contain !important;
+          object-position: center !important;
+          background: #000;
+        }
+        [data-zego-view='remote-thumb'] video,
+        [data-zego-view='pip'] video {
           width: 100%;
           height: 100%;
           object-fit: cover !important;
+          object-position: center !important;
           background: #000;
         }
       `}</style>
@@ -1322,7 +1408,11 @@ export default function ZegoCallRoomPage() {
                         key={streamId}
                         className="relative h-[88px] w-[132px] shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/50 shadow-lg"
                       >
-                        <div id={`dlite-zego-remote-${streamId}`} className="absolute inset-0" />
+                        <div
+                          id={`dlite-zego-remote-${streamId}`}
+                          data-zego-view="remote-thumb"
+                          className="absolute inset-0"
+                        />
                         {remoteVideoState[streamId] === false ? (
                           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/65 text-lg font-bold text-white/90">
                             {getInitials(peerLabelFromMainStreamId(roomId, streamId))}
@@ -1333,12 +1423,13 @@ export default function ZegoCallRoomPage() {
                   </div>
                 ) : null}
 
-                <div className="relative min-h-[min(52vh,520px)] flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black/40 shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)]">
+                <div className="relative flex min-h-[min(52vh,520px)] flex-1 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)]">
                   {!primaryRemoteStreamId ? (
                     <>
                       <div
                         id="dlite-zego-local"
                         ref={localRef}
+                        data-zego-view="solo"
                         className={cn("absolute inset-0", !localHasVideo && !isScreenSharing && "opacity-0")}
                       />
                       {!localHasVideo && !isScreenSharing ? (
@@ -1367,7 +1458,11 @@ export default function ZegoCallRoomPage() {
                     </>
                   ) : (
                     <>
-                      <div id={`dlite-zego-remote-${primaryRemoteStreamId}`} className="absolute inset-0" />
+                      <div
+                        id={`dlite-zego-remote-${primaryRemoteStreamId}`}
+                        data-zego-view="remote-main"
+                        className="absolute inset-0"
+                      />
                       {remoteVideoState[primaryRemoteStreamId] === false ? (
                         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/50 px-6 text-center">
                           <div className="flex h-36 w-36 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-600 to-violet-700 text-5xl font-extrabold text-white shadow-[0_0_60px_-10px_rgba(192,132,252,0.45)] ring-2 ring-white/15 sm:h-40 sm:w-40 sm:text-6xl">
@@ -1393,6 +1488,7 @@ export default function ZegoCallRoomPage() {
                           <div
                             id="dlite-zego-local"
                             ref={localRef}
+                            data-zego-view="pip"
                             className={cn("absolute inset-0", !localHasVideo && !isScreenSharing && "opacity-0")}
                           />
                           {!localHasVideo && !isScreenSharing ? (
@@ -1733,9 +1829,10 @@ export default function ZegoCallRoomPage() {
 
       {endedOverlayVisible ? (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="rounded-2xl border border-white/10 bg-black/50 px-5 py-4 text-center text-white shadow-xl">
+          <div className="max-w-sm rounded-2xl border border-white/10 bg-black/50 px-5 py-4 text-center text-white shadow-xl">
             <p className="text-sm font-semibold">Call ended</p>
-            <p className="mt-1 text-xs text-white/70">Returning to calls…</p>
+            {error ? <p className="mt-2 text-xs leading-relaxed text-amber-100/90">{error}</p> : null}
+            <p className="mt-2 text-xs text-white/70">Returning to calls…</p>
           </div>
         </div>
       ) : null}

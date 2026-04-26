@@ -93,7 +93,7 @@ export default function IncomingCallUI({
   useEffect(() => {
     const t = window.setTimeout(() => {
       stop();
-      onDecline?.();
+      onDecline?.({ reason: 'timeout' });
     }, 30_000);
     return () => window.clearTimeout(t);
   }, [onDecline, stop]);
@@ -103,7 +103,7 @@ export default function IncomingCallUI({
       if (e.key === 'Escape') {
         e.preventDefault();
         stop();
-        onDecline?.();
+        onDecline?.({ reason: 'declined' });
       }
       if (e.key === ' ') {
         e.preventDefault();
@@ -261,7 +261,7 @@ export default function IncomingCallUI({
                 onClick={() => {
                   stop();
                   onQuickReply?.(text);
-                  onDecline?.();
+                  onDecline?.({ reason: 'declined' });
                 }}
               >
                 {text}
@@ -277,7 +277,7 @@ export default function IncomingCallUI({
                 type="button"
                 onClick={() => {
                   stop();
-                  onDecline?.();
+                  onDecline?.({ reason: 'declined' });
                 }}
                 className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-gradient-to-b from-red-500 to-rose-500 text-white shadow-[0_10px_36px_rgba(239,68,68,0.55)] ring-1 ring-red-300/25 transition duration-200 hover:scale-[1.08] hover:brightness-110 active:scale-[0.96]"
                 aria-label="Decline"

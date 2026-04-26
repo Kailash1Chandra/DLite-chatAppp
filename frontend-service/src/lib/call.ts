@@ -253,7 +253,12 @@ export function listenForAnswer(
 
 export function listenForRejection(
   userId: string,
-  onRejected: (payload: { byUserId: string; createdAt: number } | null) => void,
+  onRejected: (payload: {
+    byUserId: string
+    message?: string
+    reason?: string
+    createdAt: number
+  } | null) => void,
   filter?: { fromUserId?: string }
 ) {
   let disposed = false
@@ -268,7 +273,14 @@ export function listenForRejection(
         if (!payload) return
         const fromUserId = String(payload.fromUserId || '')
         if (filter?.fromUserId && fromUserId !== filter.fromUserId) return
-        onRejected({ byUserId: fromUserId, createdAt: Date.now() })
+        const message = payload.message != null ? String(payload.message).trim() : ''
+        const reason = payload.reason != null ? String(payload.reason).trim() : ''
+        onRejected({
+          byUserId: fromUserId,
+          ...(message ? { message } : {}),
+          ...(reason ? { reason } : {}),
+          createdAt: Date.now(),
+        })
       }
 
       socket.on('call_rejected', handler)
@@ -397,9 +409,21 @@ export async function acceptCall(params: { userId: string; callerId: string; ans
   })
 }
 
-export async function rejectCall(params: { userId: string; callerId: string }) {
+/** Shown to the caller when the callee declines a hosted (or relayed) call — voice and video. */
+export const HOSTED_CALL_DECLINED_MESSAGE = 'User unable to connect to the user call.'
+
+export async function rejectCall(params: {
+  userId: string
+  callerId: string
+  reason?: string
+  message?: string
+}) {
   const socket = await ensureCallSocket(params.userId)
-  socket.emit('reject_call', { toUserId: params.callerId, reason: 'rejected' })
+  socket.emit('reject_call', {
+    toUserId: params.callerId,
+    reason: params.reason || 'rejected',
+    message: params.message || HOSTED_CALL_DECLINED_MESSAGE,
+  })
 }
 
 export async function publishIceCandidate(params: {

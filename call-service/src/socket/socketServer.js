@@ -207,6 +207,66 @@ function initSocketServer(httpServer) {
         })
       )
 
+      // ===== Hosted / legacy signaling relay (Zego room invites + WebRTC helpers) =====
+      socket.on("call_user", (payload) => {
+        try {
+          const toUserId = String(payload?.toUserId || "").trim()
+          if (!toUserId || toUserId === userId) return
+          emitToUser(toUserId, "call_user", {
+            fromUserId: userId,
+            callType: String(payload?.callType || "audio").trim() === "video" ? "video" : "audio",
+            roomId: payload?.roomId != null ? String(payload.roomId) : undefined,
+            offer: payload?.offer,
+            chatId: payload?.chatId != null ? String(payload.chatId) : undefined,
+            isGroupCall: Boolean(payload?.isGroupCall),
+          })
+        } catch (err) {
+          console.error("[socket:call_user]", err)
+        }
+      })
+
+      socket.on("reject_call", (payload) => {
+        try {
+          const toUserId = String(payload?.toUserId || "").trim()
+          if (!toUserId || toUserId === userId) return
+          const reason = String(payload?.reason || "declined").trim()
+          const message = String(payload?.message || "").trim()
+          emitToUser(toUserId, "call_rejected", {
+            fromUserId: userId,
+            reason,
+            ...(message ? { message } : {}),
+          })
+        } catch (err) {
+          console.error("[socket:reject_call]", err)
+        }
+      })
+
+      socket.on("accept_call", (payload) => {
+        try {
+          const toUserId = String(payload?.toUserId || "").trim()
+          if (!toUserId || toUserId === userId) return
+          emitToUser(toUserId, "call_answer", {
+            fromUserId: userId,
+            answer: payload?.answer,
+          })
+        } catch (err) {
+          console.error("[socket:accept_call]", err)
+        }
+      })
+
+      socket.on("ice_candidate", (payload) => {
+        try {
+          const toUserId = String(payload?.toUserId || "").trim()
+          if (!toUserId || toUserId === userId) return
+          emitToUser(toUserId, "ice_candidate", {
+            fromUserId: userId,
+            candidate: payload?.candidate,
+          })
+        } catch (err) {
+          console.error("[socket:ice_candidate]", err)
+        }
+      })
+
       // ===== Call lifecycle =====
       socket.on(
         "call:start",
