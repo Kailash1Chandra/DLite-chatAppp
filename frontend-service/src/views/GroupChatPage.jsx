@@ -1135,6 +1135,26 @@ export default function GroupChatPage() {
     e.preventDefault();
     if (!user?.id || !groupId.trim() || !message.trim()) return;
     const outgoingText = message.trim();
+    const optimisticId = `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const optimisticMsg = {
+      _id: optimisticId,
+      chatId: groupId.trim(),
+      senderId: user.id,
+      message: outgoingText,
+      content: outgoingText,
+      type: 'text',
+      createdAt: Date.now(),
+      reactions: {},
+      isDeleted: false,
+      _optimistic: true,
+    };
+
+    // Show instantly (real fast), then reconcile with server response.
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setMessage('');
+    const ta = groupComposerRef.current;
+    if (ta) ta.style.height = '40px';
+
     setSending(true);
     setPanelError('');
     setPanelSuccess('');
@@ -1163,18 +1183,18 @@ export default function GroupChatPage() {
 
         setMessages((prev) => {
           if (!normalizedSaved._id) return prev;
-          if (prev.some((item) => item._id === normalizedSaved._id)) return prev;
-          return [...prev, normalizedSaved];
+          // Replace optimistic message if present; otherwise append (dedupe by real id).
+          if (prev.some((item) => item._id === normalizedSaved._id)) {
+            return prev.map((m) => (m._id === optimisticId ? normalizedSaved : m));
+          }
+          const replaced = prev.map((m) => (m._id === optimisticId ? normalizedSaved : m));
+          if (replaced.some((m) => m._id === normalizedSaved._id)) return replaced;
+          return [...replaced, normalizedSaved];
         });
-      }
-
-      setMessage('');
-      const ta = groupComposerRef.current;
-      if (ta) {
-        ta.style.height = '40px';
       }
     } catch (err) {
       setPanelError(err?.message || 'Could not send message.');
+      setMessages((prev) => prev.filter((m) => m._id !== optimisticId));
     } finally {
       setSending(false);
     }
