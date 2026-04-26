@@ -1161,7 +1161,7 @@ export default function CallUI({
 
   if (typeof renderConnected === "function" && status === "connected") {
     return (
-      <>
+      <div className="flex min-h-0 flex-1 flex-col">
         {renderConnected({
           remoteUser: {
             name: peerDisplayName || calleeUsername || "User",
@@ -1211,7 +1211,7 @@ export default function CallUI({
             console.log("[call:more]");
           },
         })}
-      </>
+      </div>
     );
   }
 

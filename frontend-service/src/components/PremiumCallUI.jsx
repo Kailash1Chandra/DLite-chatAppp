@@ -583,7 +583,7 @@ export default function PremiumCallUI({
 
   return (
     <div
-      className="relative flex h-full w-full flex-col overflow-hidden rounded-[1.75rem] bg-black shadow-2xl shadow-black/35"
+      className="relative flex min-h-0 flex-1 w-full flex-col overflow-hidden rounded-[1.75rem] bg-black shadow-2xl shadow-black/35"
       style={{
         background:
           'radial-gradient(circle at 50% 30%, #7c2d12 0%, #431407 40%, #1a0f0a 80%)',
