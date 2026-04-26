@@ -143,41 +143,45 @@ function zegoReasonToString(reason: unknown): string {
 const FALLBACK_CALL_HINT =
   "Sign in, open a valid room link, and allow microphone (and camera for video). If it still fails, check the browser console (F12).";
 
-/** Extra fields some SDKs put on Error while leaving message as "[object Object]". */
-function errorStructuredDetail(err: Error): string {
-  const anyE = err as Error & Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const k of ["code", "name"]) {
-    const v = anyE[k];
-    if (typeof v === "number" || (typeof v === "string" && v.trim())) out[k] = v;
-  }
-  for (const k of ["reason", "reasonText"]) {
-    const v = anyE[k];
-    if (typeof v === "string" && v.trim()) out[k] = v.trim();
-  }
-  for (const k of ["details", "data", "info", "body"]) {
-    const v = anyE[k];
-    if (v != null && (typeof v === "string" || typeof v === "number" || typeof v === "boolean")) {
-      out[k] = v;
-    } else if (v != null && typeof v === "object") {
-      try {
-        out[k] = JSON.stringify(v);
-      } catch {
-        out[k] = String(v);
-      }
-    }
-  }
-  if (Object.keys(out).length === 0) return "";
-  try {
-    return JSON.stringify(out);
-  } catch {
-    return "";
-  }
-}
-
 function isGarbageErrorMessage(raw: string): boolean {
   const s = raw.trim();
   return s === "[object Object]" || s === "Error: [object Object]" || /^Error:\s*\[object Object\]$/i.test(s);
+}
+
+/**
+ * ZEGO / WebRTC often reject with `Error` whose `message` is literally "[object Object]" while
+ * codes live on other own properties. Walk `getOwnPropertyNames` (not only enumerable).
+ */
+function collectErrorOwnProperties(err: Error, depth = 0): Record<string, unknown> {
+  const anyE = err as Error & Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  const maxDepth = 2;
+  for (const k of Object.getOwnPropertyNames(anyE)) {
+    if (k === "stack") continue;
+    const v = anyE[k];
+    if (typeof v === "function") continue;
+    if (k === "message" && typeof v === "string" && isGarbageErrorMessage(v)) continue;
+    if (k === "name" && (v === "Error" || v === "TypeError" || v === "DOMException")) continue;
+    if (v === undefined) continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      out[k] = v;
+    } else if (v instanceof Error && depth < maxDepth) {
+      const inner = collectErrorOwnProperties(v, depth + 1);
+      if (Object.keys(inner).length) out[k] = inner;
+      else if (v.message && !isGarbageErrorMessage(v.message)) out[k] = v.message.trim();
+    } else if (v != null && typeof v === "object") {
+      try {
+        out[k] = JSON.parse(JSON.stringify(v)) as unknown;
+      } catch {
+        try {
+          out[k] = JSON.stringify(v);
+        } catch {
+          out[k] = "[object]";
+        }
+      }
+    }
+  }
+  return out;
 }
 
 function normalizeUiError(input: unknown): string {
@@ -191,23 +195,59 @@ function normalizeUiError(input: unknown): string {
   if (typeof input === "boolean") return String(input);
   if (input instanceof Error) {
     const raw = input.message?.trim() ?? "";
-    const isGarbage = isGarbageErrorMessage(raw);
-    if (raw && !isGarbage) return raw;
+    if (raw && !isGarbageErrorMessage(raw)) return raw;
     const cause = (input as Error & { cause?: unknown }).cause;
     if (cause !== undefined) {
       const fromCause = normalizeUiError(cause);
-      if (fromCause && fromCause !== FALLBACK_CALL_HINT) return fromCause;
+      if (fromCause && fromCause !== FALLBACK_CALL_HINT && !isGarbageErrorMessage(fromCause)) return fromCause;
     }
-    const structured = errorStructuredDetail(input);
-    if (structured) return `Call failed: ${structured}`;
-    return isGarbage || !raw ? FALLBACK_CALL_HINT : raw;
+    const extras = collectErrorOwnProperties(input);
+    const preferredKeys = [
+      "message",
+      "msg",
+      "reason",
+      "description",
+      "detail",
+      "state",
+      "desc",
+      "errorMessage",
+      "error_msg",
+      "errorMsg",
+    ];
+    for (const k of preferredKeys) {
+      const v = extras[k];
+      if (typeof v === "string" && v.trim() && !isGarbageErrorMessage(v)) return v.trim();
+    }
+    const codeVal = extras.code ?? extras.errorCode;
+    if (typeof codeVal === "number" && Number.isFinite(codeVal)) return `Error code: ${codeVal}`;
+    if (typeof codeVal === "string" && codeVal.trim()) return `Error code: ${codeVal.trim()}`;
+    if (Object.keys(extras).length) {
+      try {
+        const json = JSON.stringify(extras);
+        const clipped = json.length > 420 ? `${json.slice(0, 400)}…` : json;
+        return `Call failed: ${clipped}`;
+      } catch {
+        /* fall through */
+      }
+    }
+    return FALLBACK_CALL_HINT;
   }
   if (typeof input === "object") {
     if (typeof Response !== "undefined" && input instanceof Response) {
       return `HTTP ${input.status}${input.statusText ? ` ${input.statusText}` : ""}`.trim();
     }
     const o = input as Record<string, unknown>;
-    for (const k of ["message", "reason", "error", "msg", "description", "detail", "state"]) {
+    for (const k of [
+      "message",
+      "reason",
+      "error",
+      "msg",
+      "description",
+      "detail",
+      "state",
+      "extendedData",
+      "extraInfo",
+    ]) {
       const v = o[k];
       if (typeof v === "string" && v.trim()) return v.trim();
       if (v != null && typeof v === "object" && !(v instanceof Response)) {
@@ -250,6 +290,8 @@ function logCallRoomFailure(context: string, err: unknown, extra?: Record<string
     payload.stack = err.stack;
     const c = (err as Error & { cause?: unknown }).cause;
     if (c !== undefined) payload.cause = c;
+    const extras = collectErrorOwnProperties(err);
+    if (Object.keys(extras).length) payload.errorExtras = extras;
   }
   if (err && typeof err === "object" && !(err instanceof Error)) {
     if (typeof Response === "undefined" || !(err instanceof Response)) {
@@ -1211,8 +1253,10 @@ export default function ZegoCallRoomPage() {
               ? await zg.createZegoStream({ camera: { audio: true, video: false } })
               : await zg.createZegoStream({ camera: { audio: true, video: true } });
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          throw new Error(msg || "Could not access microphone/camera");
+          const msg = normalizeUiError(err);
+          const wrap = new Error(msg || "Could not access microphone/camera");
+          (wrap as Error & { cause?: unknown }).cause = err;
+          throw wrap;
         }
         localStreamRef.current = localStream;
         applyLocalTrackState(localStream);
