@@ -5,7 +5,7 @@ import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMem
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import Link from 'next/link';
-// Avatar in sidebar uses initials to match board styling.
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { startHostedCallInvite } from '@/lib/call';
 import { buildDirectCallRoomId, buildHostedCallUrl } from '@/lib/callRoom';
