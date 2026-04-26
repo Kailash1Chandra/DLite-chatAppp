@@ -650,12 +650,30 @@ export default function ZegoCallRoomPage() {
 
         tryPlayLocalVideo(localStream, localRef.current);
         window.setTimeout(() => tryPlayLocalVideo(localStream, localRef.current), 0);
+        window.setTimeout(() => tryPlayLocalVideo(localStream, localRef.current), 250);
 
         const streamId = `${roomId}-${userId}-${Date.now()}`;
         publishedStreamIdRef.current = streamId;
         if (!streamId.trim()) throw new Error("Invalid stream id");
         await zg.startPublishingStream(streamId, localStream);
         if (cancelled) return;
+
+        // Some ZEGO environments won't emit initial `roomStreamUpdate` until something changes.
+        // Actively read any existing streams and play them once after we publish.
+        try {
+          const listFn = (zg as unknown as { getRoomStreamList?: (r: string) => any }).getRoomStreamList;
+          const res = await Promise.resolve(listFn?.(roomId)).catch(() => null);
+          const streams = Array.isArray((res as any)?.streamList)
+            ? (res as any).streamList
+            : Array.isArray(res)
+              ? res
+              : [];
+          if (streams.length) {
+            onRoomStreamUpdate(roomId, "ADD", streams).catch(() => undefined);
+          }
+        } catch {
+          /* ignore */
+        }
 
         setStatus("waiting_remote");
       } catch (e) {
