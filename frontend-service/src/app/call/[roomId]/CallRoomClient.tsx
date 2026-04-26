@@ -1313,14 +1313,20 @@ export default function ZegoCallRoomPage() {
           background: #000;
         }
         [data-zego-view='remote-thumb'] video,
-        [data-zego-view='pip'] video,
-        [data-zego-view='dual-remote'] video,
-        [data-zego-view='dual-local'] video {
+        [data-zego-view='pip'] video {
           width: 100%;
           height: 100%;
           object-fit: cover !important;
           object-position: center !important;
           background: #000;
+        }
+        [data-zego-view='dual-remote'] video,
+        [data-zego-view='dual-local'] video {
+          width: 100%;
+          height: 100%;
+          object-fit: contain !important;
+          object-position: center !important;
+          background: #0d0d0d;
         }
       `}</style>
 
@@ -1476,31 +1482,50 @@ export default function ZegoCallRoomPage() {
                       ) : null}
                     </>
                   ) : videoLayout === "dual" ? (
-                    <div className="grid min-h-0 w-full flex-1 grid-cols-1 place-content-center gap-3 p-2 sm:grid-cols-2 sm:gap-4 sm:p-3">
-                      <div className="relative aspect-square w-full max-w-[min(92vw,440px)] justify-self-center overflow-hidden rounded-2xl border border-white/10 bg-black/80 shadow-xl sm:max-w-none">
+                    <div className="grid min-h-0 w-full flex-1 grid-cols-1 gap-px bg-black sm:grid-cols-2">
+                      <div
+                        data-dlite-dual-tile="remote"
+                        className="relative aspect-video w-full min-w-0 overflow-hidden rounded-xl bg-neutral-900 shadow-[inset_0_0_0_2px_rgba(34,211,238,0.85)]"
+                      >
                         <div
                           id={`dlite-zego-remote-${primaryRemoteStreamId}`}
                           data-zego-view="dual-remote"
                           className="absolute inset-0"
                         />
                         {remoteVideoState[primaryRemoteStreamId] === false ? (
-                          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50 px-4 text-center">
-                            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-600 to-violet-700 text-3xl font-extrabold text-white ring-2 ring-white/15 sm:h-28 sm:w-28 sm:text-4xl">
+                          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-neutral-900 px-4 text-center">
+                            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-neutral-700 text-2xl font-extrabold text-white/90 ring-2 ring-white/10 sm:h-24 sm:w-24 sm:text-3xl">
                               {getInitials(voicePeerDisplayName)}
                             </div>
-                            <p className="text-sm font-semibold text-white">{voicePeerDisplayName}</p>
-                            <p className="flex items-center justify-center gap-1 text-xs text-white/60">
+                            <p className="flex items-center justify-center gap-1 text-xs text-white/55">
                               <VideoOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                               Camera off
                             </p>
                           </div>
                         ) : null}
-                        <div className="pointer-events-none absolute bottom-2 left-2 z-[1] max-w-[calc(100%-1rem)] truncate rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md">
-                          <span>{voicePeerDisplayName}</span>
-                          <Mic className="ml-1.5 inline-block h-3 w-3 align-text-bottom text-white/70" aria-hidden="true" />
+                        <button
+                          type="button"
+                          className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-black/55 text-white/90 backdrop-blur-sm transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
+                          aria-label="Fullscreen this tile"
+                          title="Fullscreen"
+                          onClick={(e) => {
+                            const tile = (e.currentTarget as HTMLElement).closest("[data-dlite-dual-tile]") as HTMLElement | null;
+                            if (!tile) return;
+                            if (document.fullscreenElement === tile) void document.exitFullscreen?.();
+                            else void tile.requestFullscreen?.().catch(() => undefined);
+                          }}
+                        >
+                          <Maximize2 className="h-4 w-4" />
+                        </button>
+                        <div className="pointer-events-none absolute bottom-3 left-1/2 z-[1] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 truncate rounded-full bg-black/65 px-3 py-1.5 text-xs font-semibold text-white/95 backdrop-blur-sm">
+                          <span className="truncate">{voicePeerDisplayName}</span>
+                          <Mic className="h-3.5 w-3.5 shrink-0 text-white/70" aria-hidden="true" />
                         </div>
                       </div>
-                      <div className="relative aspect-square w-full max-w-[min(92vw,440px)] justify-self-center overflow-hidden rounded-2xl border border-white/15 bg-black/80 shadow-xl ring-1 ring-white/10 backdrop-blur-sm sm:max-w-none">
+                      <div
+                        data-dlite-dual-tile="local"
+                        className="relative aspect-video w-full min-w-0 overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-white/10"
+                      >
                         <div
                           id="dlite-zego-local"
                           ref={localRef}
@@ -1508,18 +1533,33 @@ export default function ZegoCallRoomPage() {
                           className={cn("absolute inset-0", !localHasVideo && !isScreenSharing && "opacity-0")}
                         />
                         {!localHasVideo && !isScreenSharing ? (
-                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-600 to-violet-700 text-lg font-bold text-white">
+                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-neutral-900">
+                            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-neutral-700 text-2xl font-extrabold text-white/90 ring-2 ring-white/10 sm:h-24 sm:w-24">
                               {getInitials(localAvatarLabel)}
                             </div>
                           </div>
                         ) : null}
-                        <div className="pointer-events-none absolute left-2 top-2 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-black/40" />
-                        <div className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white/90 backdrop-blur">
-                          You
-                        </div>
-                        <div className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-black/55 p-1 text-white/90 backdrop-blur">
-                          {isMicEnabled ? <Mic className="h-3.5 w-3.5" /> : <MicOff className="h-3.5 w-3.5" />}
+                        <button
+                          type="button"
+                          className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-black/55 text-white/90 backdrop-blur-sm transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                          aria-label="Fullscreen this tile"
+                          title="Fullscreen"
+                          onClick={(e) => {
+                            const tile = (e.currentTarget as HTMLElement).closest("[data-dlite-dual-tile]") as HTMLElement | null;
+                            if (!tile) return;
+                            if (document.fullscreenElement === tile) void document.exitFullscreen?.();
+                            else void tile.requestFullscreen?.().catch(() => undefined);
+                          }}
+                        >
+                          <Maximize2 className="h-4 w-4" />
+                        </button>
+                        <div className="pointer-events-none absolute bottom-3 left-1/2 z-[1] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 truncate rounded-full bg-black/65 px-3 py-1.5 text-xs font-semibold text-white/95 backdrop-blur-sm">
+                          <span className="truncate">{localAvatarLabel}</span>
+                          {isMicEnabled ? (
+                            <Mic className="h-3.5 w-3.5 shrink-0 text-white/70" aria-hidden="true" />
+                          ) : (
+                            <MicOff className="h-3.5 w-3.5 shrink-0 text-rose-300" aria-hidden="true" />
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1629,8 +1669,8 @@ export default function ZegoCallRoomPage() {
                       : "bg-white/10 hover:bg-white/20",
                     !primaryRemoteStreamId && "cursor-not-allowed opacity-45 hover:-translate-y-0 hover:shadow-none"
                   )}
-                  aria-label={videoLayout === "dual" ? "Spotlight layout" : "Equal square tiles"}
-                  title={videoLayout === "dual" ? "Spotlight (main + small You)" : "Grid: two equal squares"}
+                  aria-label={videoLayout === "dual" ? "Spotlight layout" : "Split view (two wide tiles)"}
+                  title={videoLayout === "dual" ? "Spotlight (main + small You)" : "Split: side-by-side 16:9 tiles"}
                 >
                   <LayoutGrid className="h-5 w-5" />
                 </button>
