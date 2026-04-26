@@ -11,7 +11,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { subscribeRecentDirectChats } from '@/services/chatClient';
 import { DoorOpen, PlusCircle, Video } from 'lucide-react';
 import { buildGroupCallRoomId, buildHostedCallUrl, formatInviteCode, generateInviteCode } from '@/lib/callRoom';
-// Use the original CallUI experience (no premium override).
+import VoiceCallUI from '@/components/call/VoiceCallUI';
+import VideoCallUI from '@/components/call/VideoCallUI';
 
 const CallUI = dynamic(() => import('@/components/CallUI'), {
   loading: () => (
@@ -236,6 +237,46 @@ export default function CallScreenPage() {
           showUserPanel={false}
           requireExplicitStart={false}
           showHero={false}
+          renderConnected={(ctx) =>
+            ctx.mode === 'video' ? (
+              <VideoCallUI
+                remoteUser={ctx.remoteUser}
+                localUser={ctx.localUser}
+                localStream={ctx.localStream}
+                remoteStream={ctx.remoteStream}
+                peerConnection={ctx.peerConnection}
+                startedAt={ctx.startedAt}
+                status={ctx.status}
+                participantCount={2}
+                onEnd={ctx.onEnd}
+                onToggleMic={ctx.onToggleMic}
+                onToggleVideo={ctx.onToggleVideo}
+                onScreenShare={ctx.onScreenShare}
+                onShowParticipants={() => undefined}
+                onReaction={ctx.onReaction}
+                onMore={ctx.onMore}
+                onLayoutChange={() => undefined}
+                onFullscreen={() => undefined}
+              />
+            ) : (
+              <VoiceCallUI
+                remoteUser={ctx.remoteUser}
+                localUser={ctx.localUser}
+                localStream={ctx.localStream}
+                remoteStream={ctx.remoteStream}
+                peerConnection={ctx.peerConnection}
+                startedAt={ctx.startedAt}
+                status={ctx.status}
+                stats={{ totalCalls: '—', totalDuration: '—', avgQuality: '—' }}
+                onEnd={ctx.onEnd}
+                onToggleMic={ctx.onToggleMic}
+                onToggleSpeaker={() => undefined}
+                onSwitchToVideo={() => undefined}
+                onReaction={ctx.onReaction}
+                onMore={ctx.onMore}
+              />
+            )
+          }
         />
       </section>
     </ChatAppShell>

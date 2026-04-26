@@ -6,38 +6,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { listenForIncomingHostedCall } from '@/lib/call';
 import { buildHostedCallUrl } from '@/lib/callRoom';
 import { getUserProfileById } from '@/services/chatClient';
+import { notificationSounds } from '@/lib/notificationSounds';
 
 const IncomingCallContext = createContext(null);
-
-function createBeeper() {
-  let intervalId = null;
-  let ac = null;
-  function beep() {
-    try {
-      if (!ac) ac = new AudioContext();
-      if (ac.state === 'suspended') ac.resume().catch(() => undefined);
-      const osc = ac.createOscillator();
-      const gain = ac.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = 840;
-      gain.gain.value = 0.07;
-      osc.connect(gain);
-      gain.connect(ac.destination);
-      osc.start();
-      osc.stop(ac.currentTime + 0.18);
-    } catch { /* ignore audio errors */ }
-  }
-  return {
-    start() { if (intervalId) return; beep(); intervalId = setInterval(beep, 1200); },
-    stop() { if (intervalId) { clearInterval(intervalId); intervalId = null; } }
-  };
-}
 
 export function IncomingCallProvider({ children }) {
   const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const beeper = useRef(createBeeper());
+  const ringing = useRef(false);
   const [incoming, setIncoming] = useState(null);
   const [callerProfile, setCallerProfile] = useState(null);
 
@@ -48,32 +25,43 @@ export function IncomingCallProvider({ children }) {
     if (!incoming?.roomId) return;
     const nextUrl = buildHostedCallUrl(incoming.roomId, incoming.mode || 'audio');
     setIncoming(null);
-    beeper.current.stop();
+    ringing.current = false;
+    notificationSounds.stop('incoming-call');
+    notificationSounds.stopVibration();
     router.push(nextUrl);
   }, [incoming, router]);
 
   const reject = useCallback(() => {
     setIncoming(null);
-    beeper.current.stop();
+    ringing.current = false;
+    notificationSounds.stop('incoming-call');
+    notificationSounds.stopVibration();
   }, []);
 
   useEffect(() => {
     if (!user?.id) return;
-    const beeperRef = beeper.current;
     const unsub = listenForIncomingHostedCall(user.id, (incoming) => {
       if (isOnCallPage) return;
       if (!incoming) {
         setIncoming(null);
         setCallerProfile(null);
-        beeperRef.stop();
+        ringing.current = false;
+        notificationSounds.stop('incoming-call');
+        notificationSounds.stopVibration();
         return;
       }
-      beeperRef.start();
+      if (!ringing.current) {
+        ringing.current = true;
+        notificationSounds.play('incoming-call', { loop: true, volume: 1 }).catch(() => undefined);
+        notificationSounds.startVibrationLoop([400, 200, 400, 200, 400], 1600);
+      }
       setIncoming(incoming);
     });
     return () => {
       unsub();
-      beeperRef.stop();
+      ringing.current = false;
+      notificationSounds.stop('incoming-call');
+      notificationSounds.stopVibration();
     };
   }, [user?.id, isOnCallPage, router]);
 
@@ -108,9 +96,10 @@ export function IncomingCallProvider({ children }) {
 
   // When navigating to /call page, hide global overlay
   useEffect(() => {
-    const beeperRef = beeper.current;
     if (isOnCallPage) {
-      beeperRef.stop();
+      ringing.current = false;
+      notificationSounds.stop('incoming-call');
+      notificationSounds.stopVibration();
       setIncoming(null);
     }
   }, [isOnCallPage]);
