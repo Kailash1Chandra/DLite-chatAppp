@@ -12,6 +12,26 @@ import { endCall, listenForCallEnded } from "@/lib/call";
 
 type RemoteTile = { streamId: string };
 
+async function applyZegoLoggingPolicy(zg?: InstanceType<typeof ZegoExpressEngine>) {
+  const config = { logLevel: "error", remoteLogLevel: "disable" } as const;
+
+  // Prefer configuring logging *before* engine init when supported.
+  try {
+    const preset = (ZegoExpressEngine as unknown as { presetLogConfig?: (c: unknown) => unknown }).presetLogConfig?.(config);
+    await Promise.resolve(preset).catch(() => undefined);
+  } catch {
+    /* ignore */
+  }
+
+  // Also apply on the instance (some builds only honor this path) and ensure promise rejections can't escape.
+  try {
+    const instCfg = (zg as unknown as { setLogConfig?: (c: unknown) => unknown }).setLogConfig?.(config);
+    await Promise.resolve(instCfg).catch(() => undefined);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * ZEGOCLOUD hosted room page.
  *
@@ -366,12 +386,13 @@ export default function ZegoCallRoomPage() {
         if (cancelled) return;
 
         setStatus("initializing");
+        await applyZegoLoggingPolicy();
         const zg = new ZegoExpressEngine(appId, server);
         engineRef.current = zg;
+        await applyZegoLoggingPolicy(zg);
 
-        // Avoid remote logger websocket being a hard failure in some networks/adblock setups.
         try {
-          (zg as any).setLogConfig?.({ logLevel: "error", remoteLogLevel: "disable" });
+          (zg as unknown as { setDebugVerbose?: (v: boolean) => void }).setDebugVerbose?.(false);
         } catch {
           /* ignore */
         }
