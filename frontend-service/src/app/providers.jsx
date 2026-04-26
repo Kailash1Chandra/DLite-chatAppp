@@ -3,11 +3,17 @@
 import dynamic from 'next/dynamic';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
-import { SocketProvider } from '@/context/SocketContext';
 import { IncomingCallProvider } from '@/context/IncomingCallContext';
 import { ToastProvider } from '@/context/ToastContext';
+import { ConfirmProvider } from '@/context/ConfirmContext';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const IncomingCallOverlay = dynamic(() => import('@/components/IncomingCallOverlay'), {
+  ssr: false,
+  loading: () => null,
+});
+
+const ConfirmDialog = dynamic(() => import('@/components/ConfirmDialog'), {
   ssr: false,
   loading: () => null,
 });
@@ -24,19 +30,22 @@ const InAppNotificationListener = dynamic(() => import('@/components/InAppNotifi
 
 export function Providers({ children }) {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <ToastProvider>
-          <SocketProvider>
-            <IncomingCallProvider>
-              <IncomingCallOverlay />
-              <InAppNotificationListener />
-              <ToastViewport />
-              {children}
-            </IncomingCallProvider>
-          </SocketProvider>
-        </ToastProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <ConfirmProvider>
+              <IncomingCallProvider>
+                <IncomingCallOverlay />
+                <InAppNotificationListener />
+                <ToastViewport />
+                <ConfirmDialog />
+                {children}
+              </IncomingCallProvider>
+            </ConfirmProvider>
+          </ToastProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

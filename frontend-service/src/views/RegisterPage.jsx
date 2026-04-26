@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../hooks/useAuth';
@@ -27,10 +27,23 @@ export default function RegisterPage() {
   const [usernameHints, setUsernameHints] = useState([]);
   const router = useRouter();
 
-  const previewUrl = useMemo(() => {
-    if (profileFile) return URL.createObjectURL(profileFile);
+  const [previewUrl, setPreviewUrl] = useState('');
+
+  useEffect(() => {
+    if (profileFile) {
+      const url = URL.createObjectURL(profileFile);
+      setPreviewUrl(url);
+      return () => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          /* ignore */
+        }
+      };
+    }
     const seed = `${gender || 'male'}:${username || email || 'user'}`;
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}`;
+    setPreviewUrl(`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}`);
+    return () => undefined;
   }, [profileFile, gender, username, email]);
 
   const readFileAsDataUrl = (file) =>

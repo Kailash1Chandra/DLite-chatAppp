@@ -11,6 +11,8 @@ import { startHostedCallInvite } from '@/lib/call';
 import { buildDirectCallRoomId, buildHostedCallUrl } from '@/lib/callRoom';
 import { formatPeerPresence } from '@/lib/formatPresence';
 import { cn } from '@/lib/utils';
+import { useConfirm } from '@/hooks/useConfirm';
+import { InlineEditMessage } from '@/components/InlineEditMessage';
 import { useAuth } from '../hooks/useAuth';
 import {
   deleteDirectMessage,
@@ -653,6 +655,8 @@ export default function ChatDashboardPage() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messageLoadError, setMessageLoadError] = useState('');
   const [deletingMessageId, setDeletingMessageId] = useState('');
+  const { confirm } = useConfirm();
+  const [editingMessageId, setEditingMessageId] = useState('');
   const [input, setInput] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -1259,33 +1263,18 @@ export default function ChatDashboardPage() {
       return;
     }
 
-    const next = window.prompt('Edit message', message.content || '');
-    if (next === null) return; // cancelled
-    const newContent = next.trim();
-    if (!newContent) return;
-
-    setActionError('');
-    try {
-      await editDirectMessage({
-        userId: user.id,
-        peerId: activeUserId.trim(),
-        messageId: message._id,
-        newContent
-      });
-      setMessages((prev) => prev.map((m) => (m._id === message._id ? { ...m, content: newContent } : m)));
-      setOpenMessageMenuId(null);
-    } catch (err) {
-      setActionError(err?.message || 'Could not edit message. Please try again.');
-    }
+    setEditingMessageId(message._id);
   };
 
   const handleDeleteMessage = async (messageId) => {
     if (!messageId || !user?.id || !activeUserId.trim()) return;
-    if (
-      typeof window !== 'undefined' &&
-      !window.confirm('Delete this message? It will also be deleted for the other user.')
-    )
-      return;
+    const ok = await confirm({
+      title: 'Delete message?',
+      description: 'This will be deleted for both users.',
+      confirmText: 'Delete',
+      variant: 'danger'
+    });
+    if (!ok) return;
     setDeletingMessageId(messageId);
     setActionError('');
     try {
@@ -1305,7 +1294,13 @@ export default function ChatDashboardPage() {
 
   const handleDeleteForMe = async (messageId) => {
     if (!messageId || !user?.id || !activeUserId.trim()) return;
-    if (typeof window !== 'undefined' && !window.confirm('Delete this message only for you?')) return;
+    const ok = await confirm({
+      title: 'Delete for me?',
+      description: 'This message will be removed only for you.',
+      confirmText: 'Delete',
+      variant: 'danger'
+    });
+    if (!ok) return;
     setActionError('');
     try {
       await hideDirectMessageForMe({
@@ -1849,11 +1844,13 @@ export default function ChatDashboardPage() {
                   role="menuitem"
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-700 transition-colors duration-150 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50"
                   onClick={async () => {
-                    if (
-                      typeof window !== 'undefined' &&
-                      !window.confirm('Delete this chat from recent list? This will not delete message history.')
-                    )
-                      return;
+                    const ok = await confirm({
+                      title: 'Delete chat?',
+                      description: 'This removes it from your recent list only. It will not delete message history.',
+                      confirmText: 'Delete',
+                      variant: 'danger'
+                    });
+                    if (!ok) return;
                     try {
                       await deleteRecentDirectChat({
                         userId: user?.id,
