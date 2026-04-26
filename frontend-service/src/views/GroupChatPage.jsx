@@ -1445,7 +1445,7 @@ export default function GroupChatPage() {
           groupInfoOpen && 'xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)_minmax(320px,360px)]'
         )}
       >
-        <aside className="flex max-h-[42vh] min-h-0 flex-col border-b border-ui-border bg-ui-sidebar lg:max-h-none lg:border-b-0 lg:border-r">
+        <aside className="flex min-h-0 flex-col border-b border-ui-border bg-ui-sidebar lg:border-b-0 lg:border-r">
           <div className="shrink-0 border-b border-ui-border">
             <ChatAppIconRail active="groups" dmUnreadCount={dmUnreadTotal} />
           </div>

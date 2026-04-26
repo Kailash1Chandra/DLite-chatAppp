@@ -73,7 +73,7 @@ export default function CallScreenPage() {
       topBar={<ChatAppTopBar />}
       gridClassName="grid-cols-1 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]"
     >
-      <aside className="flex max-h-[40vh] min-h-0 flex-col border-b border-ui-border bg-ui-sidebar lg:max-h-none lg:border-b-0 lg:border-r">
+      <aside className="flex min-h-0 flex-col border-b border-ui-border bg-ui-sidebar lg:border-b-0 lg:border-r">
         <div className="shrink-0 border-b border-ui-border">
           <ChatAppIconRail active="call" dmUnreadCount={dmUnreadTotal} />
         </div>
