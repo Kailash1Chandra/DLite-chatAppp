@@ -42,7 +42,22 @@ function ensureAudio(id) {
   if (players.has(id)) return players.get(id)
   const url = SOUND_FILES[id]
   const audio = typeof Audio !== 'undefined' ? new Audio(url) : null
-  const rec = { id, url, audio, beeper: null }
+  const rec = { id, url, audio, beeper: null, fileUnavailable: false }
+  if (audio) {
+    audio.preload = 'auto'
+    audio.addEventListener(
+      'error',
+      () => {
+        rec.fileUnavailable = true
+        try {
+          audio.pause()
+        } catch {
+          /* ignore */
+        }
+      },
+      { once: true }
+    )
+  }
   players.set(id, rec)
   return rec
 }
@@ -101,10 +116,14 @@ async function play(id, opts = {}) {
   const volume = Math.max(0, Math.min(1, Number(opts.volume ?? 1)))
   const loop = !!opts.loop
 
-  // If file missing or Audio fails, fallback to beeper for ringtone-style ids.
-  if (!rec.audio || !rec.url) {
+  const startBeeperFallback = () => {
     if (!rec.beeper) rec.beeper = createBeeper()
     rec.beeper.start()
+  }
+
+  // Missing file, 404 HTML, or prior load error → oscillator ring (no network retry storm).
+  if (!rec.audio || !rec.url || rec.fileUnavailable) {
+    startBeeperFallback()
     return
   }
 
@@ -114,9 +133,7 @@ async function play(id, opts = {}) {
     rec.audio.currentTime = 0
     await rec.audio.play()
   } catch {
-    // fallback for autoplay/file issues
-    if (!rec.beeper) rec.beeper = createBeeper()
-    rec.beeper.start()
+    startBeeperFallback()
   }
 }
 
@@ -150,7 +167,14 @@ async function preload() {
   for (const id of Object.keys(SOUND_FILES)) {
     try {
       const rec = ensureAudio(id)
-      if (rec.audio) rec.audio.preload = 'auto'
+      const url = rec.url
+      if (!url || rec.fileUnavailable) continue
+      // Fail fast when the server returns HTML (e.g. missing static file on deploy).
+      const head = await fetch(url, { method: 'HEAD', cache: 'force-cache' }).catch(() => null)
+      const ct = String(head?.headers?.get('content-type') || '')
+      if (head && head.ok && ct && !ct.includes('audio') && !ct.includes('octet-stream')) {
+        rec.fileUnavailable = true
+      }
     } catch {
       // ignore
     }

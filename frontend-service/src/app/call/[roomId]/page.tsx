@@ -23,6 +23,18 @@ try {
 
 type RemoteTile = { streamId: string };
 
+/** ZEGO streamID allows only alphanumeric plus '-' and '_'. */
+function sanitizeZegoIdPart(raw: string) {
+  const s = String(raw || "").trim();
+  if (!s) return "user";
+  return s.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 200) || "user";
+}
+
+/** Stable main camera/audio publish id so peers can pull via roomUserUpdate even if roomStreamUpdate is delayed. */
+function buildMainPublishStreamId(roomId: string, uid: string) {
+  return `${sanitizeZegoIdPart(roomId)}_${sanitizeZegoIdPart(uid)}`;
+}
+
 function getInitials(nameOrId: string) {
   const s = String(nameOrId || "").trim();
   if (!s) return "?";
@@ -43,11 +55,17 @@ function AvatarBadge({ label }: { label: string }) {
 
 function AudioWaveform({ active = false }: { active?: boolean }) {
   const bars = useMemo(() => Array.from({ length: 22 }, (_v, i) => i), []);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => setTick((n) => n + 1), 110);
+    return () => window.clearInterval(id);
+  }, [active]);
   return (
     <div className="flex items-end justify-center gap-[3px]" aria-hidden="true">
       {bars.map((i) => {
         const base = 0.22 + Math.sin(i * 0.5) * 0.1;
-        const wobble = active ? (Math.sin(Date.now() / 180 + i * 0.75) + 1) / 2 : 0.15;
+        const wobble = active ? (Math.sin(tick * 0.14 + i * 0.75) + 1) / 2 : 0.15;
         const h = 6 + (active ? wobble : base) * 26;
         return (
           <div
@@ -148,6 +166,7 @@ export default function ZegoCallRoomPage() {
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [callNow, setCallNow] = useState<number>(Date.now());
   const streamPollRef = useRef<number | null>(null);
+  const roomPeersRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     remoteTilesRef.current = remoteTiles;
@@ -287,7 +306,7 @@ export default function ZegoCallRoomPage() {
     tryPlayLocalVideo(nextStream, localRef.current);
     // In some layouts the node may mount a tick later; retry once.
     window.setTimeout(() => tryPlayLocalVideo(nextStream, localRef.current), 0);
-    const nextStreamId = `${roomId}-${userId}-${Date.now()}`;
+    const nextStreamId = buildMainPublishStreamId(roomId, userId);
     publishedStreamIdRef.current = nextStreamId;
     await zg.startPublishingStream(nextStreamId, nextStream);
   };
@@ -338,7 +357,7 @@ export default function ZegoCallRoomPage() {
       tryPlayLocalVideo(screenStream, localRef.current);
       window.setTimeout(() => tryPlayLocalVideo(screenStream, localRef.current), 0);
 
-      const screenId = `${roomId}-${userId}-screen-${Date.now()}`;
+      const screenId = `${sanitizeZegoIdPart(roomId)}_${sanitizeZegoIdPart(userId)}_scr_${Date.now()}`;
       screenStreamIdRef.current = screenId;
       await zg.startPublishingStream(screenId, screenStream);
 
@@ -368,6 +387,7 @@ export default function ZegoCallRoomPage() {
     if (!userId) return;
 
     let cancelled = false;
+    let peerPlayDebounceTimer: number | null = null;
 
     const stopRemoteStreams = (zg: ZegoExpressEngine | null) => {
       const remoteIds = Object.keys(remoteStreamsRef.current);
@@ -379,6 +399,7 @@ export default function ZegoCallRoomPage() {
         }
       });
       remoteStreamsRef.current = {};
+      roomPeersRef.current = new Set();
       setRemoteTiles([]);
     };
 
@@ -390,6 +411,10 @@ export default function ZegoCallRoomPage() {
     };
 
     const cleanup = async () => {
+      if (peerPlayDebounceTimer !== null) {
+        window.clearTimeout(peerPlayDebounceTimer);
+        peerPlayDebounceTimer = null;
+      }
       clearPendingEngineDestroy();
       if (streamPollRef.current !== null) {
         try {
@@ -466,6 +491,7 @@ export default function ZegoCallRoomPage() {
         setError("");
         setNeedsUserGesture(false);
         setRemoteTiles([]);
+        roomPeersRef.current = new Set();
         setStatus("getting_token");
 
         const tokenAbort = new AbortController();
@@ -546,16 +572,49 @@ export default function ZegoCallRoomPage() {
           });
         };
 
+        const tryPlayPeerMainStreams = async (opts?: { quiet?: boolean }) => {
+          const quiet = opts?.quiet !== false;
+          for (const peerId of roomPeersRef.current) {
+            if (peerId === userId) continue;
+            const sid = buildMainPublishStreamId(roomId, peerId);
+            if (!sid || sid === publishedStreamIdRef.current) continue;
+            if (remoteStreamsRef.current[sid]) continue;
+            try {
+              const remoteStream = await zg.startPlayingStream(sid);
+              upsertRemoteTile(sid, remoteStream);
+            } catch (e) {
+              if (!quiet) {
+                const msg = e instanceof Error ? e.message : String(e);
+                setError(msg ? `Could not play remote stream: ${msg}` : "Could not play remote stream");
+              }
+            }
+          }
+        };
+
+        const scheduleTryPlayPeerMainStreams = () => {
+          if (cancelled) return;
+          if (peerPlayDebounceTimer !== null) window.clearTimeout(peerPlayDebounceTimer);
+          peerPlayDebounceTimer = window.setTimeout(() => {
+            peerPlayDebounceTimer = null;
+            tryPlayPeerMainStreams({ quiet: true }).catch(() => undefined);
+          }, 140);
+        };
+
+        const zegoLog = (...args: unknown[]) => {
+          if (process.env.NODE_ENV !== "development") return;
+          try {
+            // eslint-disable-next-line no-console
+            console.log(...args);
+          } catch {
+            /* ignore */
+          }
+        };
+
         const onRoomStreamUpdate = async (_roomID: string, updateType: "ADD" | "DELETE", streamList: any[]) => {
           if (cancelled) return;
           if (!Array.isArray(streamList) || streamList.length === 0) return;
 
-          try {
-            // eslint-disable-next-line no-console
-            console.log("[zego] roomStreamUpdate", { updateType, count: streamList.length });
-          } catch {
-            /* ignore */
-          }
+          zegoLog("[zego] roomStreamUpdate", { updateType, count: streamList.length });
 
           if (updateType === "DELETE") {
             const deletedIds = streamList
@@ -580,6 +639,29 @@ export default function ZegoCallRoomPage() {
           }
         };
 
+        const onRoomUserUpdate = async (_roomID: string, updateType: "ADD" | "DELETE", userList: any[]) => {
+          if (cancelled) return;
+          if (!Array.isArray(userList)) return;
+          zegoLog("[zego] roomUserUpdate", { updateType, count: userList.length });
+          if (updateType === "DELETE") {
+            const removedStreamIds: string[] = [];
+            for (const u of userList) {
+              const pid = String(u?.userID || u?.userId || "").trim();
+              if (pid) {
+                roomPeersRef.current.delete(pid);
+                removedStreamIds.push(buildMainPublishStreamId(roomId, pid));
+              }
+            }
+            if (removedStreamIds.length) removeRemoteTiles(removedStreamIds);
+            return;
+          }
+          for (const u of userList) {
+            const pid = String(u?.userID || u?.userId || "").trim();
+            if (pid) roomPeersRef.current.add(pid);
+          }
+          scheduleTryPlayPeerMainStreams();
+        };
+
         const onRoomStateChanged = async (_roomID: string, reason: string, errorCode: number) => {
           if (cancelled) return;
           if (String(reason).toUpperCase() === "DISCONNECTED") {
@@ -596,7 +678,7 @@ export default function ZegoCallRoomPage() {
                 const nextToken = String(j?.token || "");
                 if (nextToken) {
                   try {
-                    await zg.renewToken(roomId, nextToken);
+                    await zg.renewToken(nextToken, roomId);
                   } catch {
                     /* ignore */
                   }
@@ -631,14 +713,9 @@ export default function ZegoCallRoomPage() {
         try {
           (zg as unknown as { on?: (event: string, cb: (...args: unknown[]) => void) => void }).on?.(
             "roomUserUpdate",
-            (_roomID: string, updateType: string, userList: any[]) => {
-              if (cancelled) return;
-              try {
-                // eslint-disable-next-line no-console
-                console.log("[zego] roomUserUpdate", { updateType, count: Array.isArray(userList) ? userList.length : 0 });
-              } catch {
-                /* ignore */
-              }
+            (rid: string, updateType: string, userList: any[]) => {
+              const ut = updateType === "DELETE" || updateType === "ADD" ? updateType : "ADD";
+              onRoomUserUpdate(rid, ut, userList).catch(() => undefined);
             }
           );
         } catch {
@@ -689,47 +766,32 @@ export default function ZegoCallRoomPage() {
         window.setTimeout(() => tryPlayLocalVideo(localStream, localRef.current), 0);
         window.setTimeout(() => tryPlayLocalVideo(localStream, localRef.current), 250);
 
-        const streamId = `${roomId}-${userId}-${Date.now()}`;
+        const streamId = buildMainPublishStreamId(roomId, userId);
         publishedStreamIdRef.current = streamId;
         if (!streamId.trim()) throw new Error("Invalid stream id");
         await zg.startPublishingStream(streamId, localStream);
         if (cancelled) return;
 
-        // Some ZEGO environments won't emit initial `roomStreamUpdate` reliably.
-        // Poll room stream list briefly until we discover the peer stream.
-        try {
-          const listFn = (zg as unknown as { getRoomStreamList?: (r: string) => any }).getRoomStreamList;
-          const pollOnce = async () => {
-            const res = await Promise.resolve(listFn?.(roomId)).catch(() => null);
-            const streams = Array.isArray((res as any)?.streamList)
-              ? (res as any).streamList
-              : Array.isArray(res)
-                ? res
-                : [];
-            if (streams.length) {
-              onRoomStreamUpdate(roomId, "ADD", streams).catch(() => undefined);
-            }
-          };
-          await pollOnce().catch(() => undefined);
-          let tries = 0;
-          if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
-          streamPollRef.current = window.setInterval(() => {
-            tries += 1;
-            if (cancelled) return;
-            if (remoteTilesRef.current.length > 0) {
-              if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
-              streamPollRef.current = null;
-              return;
-            }
-            pollOnce().catch(() => undefined);
-            if (tries >= 10) {
-              if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
-              streamPollRef.current = null;
-            }
-          }, 1200);
-        } catch {
-          /* ignore */
-        }
+        roomPeersRef.current.add(userId);
+        await tryPlayPeerMainStreams({ quiet: true });
+
+        // Web SDK has no public getRoomStreamList; roomStreamUpdate can be delayed. Retry deterministic peer pulls.
+        let tries = 0;
+        if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
+        streamPollRef.current = window.setInterval(() => {
+          tries += 1;
+          if (cancelled) return;
+          if (remoteTilesRef.current.length > 0) {
+            if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
+            streamPollRef.current = null;
+            return;
+          }
+          tryPlayPeerMainStreams({ quiet: true }).catch(() => undefined);
+          if (tries >= 20) {
+            if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
+            streamPollRef.current = null;
+          }
+        }, 750);
 
         setStatus("waiting_remote");
       } catch (e) {

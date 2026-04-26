@@ -24,7 +24,6 @@ export default function IncomingCallOverlay() {
         verified: true,
       }}
       callType={offer.mode === 'video' ? 'video' : 'audio'}
-      ringtoneUrl="/sounds/incoming-call.mp3"
       onAccept={accept}
       onDecline={reject}
       onQuickReply={(message) => {

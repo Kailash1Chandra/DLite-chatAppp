@@ -5,14 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Mic, Phone, PhoneOff, Shield, Video, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resumeAudioContext } from '@/lib/audioContext';
-
-function formatTimer(seconds) {
-  const s = Math.max(0, Math.floor(Number(seconds || 0)));
-  const mm = Math.floor((s % 3600) / 60);
-  const ss = s % 60;
-  const two = (n) => String(n).padStart(2, '0');
-  return `${two(mm)}:${two(ss)}`;
-}
+import { notificationSounds } from '@/lib/notificationSounds';
 
 function getInitial(nameOrId) {
   const s = String(nameOrId || '').trim();
@@ -46,90 +39,9 @@ function TypingDots() {
   );
 }
 
-function useRingtone(ringtoneUrl, active, muted) {
-  const audioRef = useRef(null);
-
-  useEffect(() => {
-    ensureDotKeyframes();
-  }, []);
-
-  useEffect(() => {
-    if (!active) return;
-    if (muted) return;
-    if (typeof Audio === 'undefined') return;
-    const url = String(ringtoneUrl || '').trim();
-    if (!url) return;
-
-    const a = new Audio(url);
-    a.loop = true;
-    a.volume = 1;
-    audioRef.current = a;
-    Promise.resolve(a.play()).catch(() => undefined);
-    return () => {
-      try {
-        a.pause();
-        a.currentTime = 0;
-      } catch {
-        /* ignore */
-      }
-      audioRef.current = null;
-    };
-  }, [active, muted, ringtoneUrl]);
-
-  const stop = useCallback(() => {
-    const a = audioRef.current;
-    if (!a) return;
-    try {
-      a.pause();
-      a.currentTime = 0;
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const resumeAfterGesture = useCallback(async () => {
-    await resumeAudioContext().catch(() => false);
-    const a = audioRef.current;
-    if (!a) return true;
-    try {
-      await a.play();
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
-
-  return { stop, resumeAfterGesture };
-}
-
-function useVibration(active) {
-  useEffect(() => {
-    if (!active) return;
-    const can = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
-    if (!can) return;
-    const pattern = [400, 200, 400, 200, 400];
-    let t = null;
-    try {
-      navigator.vibrate(pattern);
-      t = window.setInterval(() => navigator.vibrate(pattern), 1600);
-    } catch {
-      /* ignore */
-    }
-    return () => {
-      if (t) window.clearInterval(t);
-      try {
-        navigator.vibrate(0);
-      } catch {
-        /* ignore */
-      }
-    };
-  }, [active]);
-}
-
 export default function IncomingCallUI({
   caller,
   callType = 'audio',
-  ringtoneUrl,
   onAccept,
   onDecline,
   onQuickReply,
@@ -141,9 +53,42 @@ export default function IncomingCallUI({
 
   const [ringtoneMuted, setRingtoneMuted] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const muteEffectSkipFirst = useRef(true);
 
-  const { stop, resumeAfterGesture } = useRingtone(ringtoneUrl, true, ringtoneMuted);
-  useVibration(!ringtoneMuted);
+  useEffect(() => {
+    ensureDotKeyframes();
+  }, []);
+
+  // Ringtone + vibration are started in IncomingCallContext (single Audio / beeper). UI only toggles mute.
+  const stop = useCallback(() => {
+    notificationSounds.stop('incoming-call');
+    notificationSounds.stopVibration();
+  }, []);
+
+  const resumeAfterGesture = useCallback(async () => {
+    await resumeAudioContext().catch(() => false);
+    try {
+      await notificationSounds.play('incoming-call', { loop: true, volume: 1 });
+      notificationSounds.startVibrationLoop([400, 200, 400, 200, 400], 1600);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (muteEffectSkipFirst.current) {
+      muteEffectSkipFirst.current = false;
+      return;
+    }
+    if (ringtoneMuted) {
+      notificationSounds.stop('incoming-call');
+      notificationSounds.stopVibration();
+    } else {
+      notificationSounds.play('incoming-call', { loop: true, volume: 1 }).catch(() => undefined);
+      notificationSounds.startVibrationLoop([400, 200, 400, 200, 400], 1600);
+    }
+  }, [ringtoneMuted]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
