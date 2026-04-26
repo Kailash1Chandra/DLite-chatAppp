@@ -274,6 +274,21 @@ function errorToUserMessage(e: unknown, fallback = "Something went wrong"): stri
   return n.trim() || fallback;
 }
 
+function looksLikeMediaDeviceError(msg: string): boolean {
+  const s = String(msg || "");
+  return (
+    /NotFoundError/i.test(s) ||
+    /Requested device not found/i.test(s) ||
+    /device not found/i.test(s) ||
+    /NotAllowedError/i.test(s) ||
+    /Permission denied/i.test(s) ||
+    /denied/i.test(s) ||
+    /NotReadableError/i.test(s) ||
+    /Could not start video source/i.test(s) ||
+    /OverconstrainedError/i.test(s)
+  );
+}
+
 /**
  * DevTools: filter console by `[D-LITE call]` to see the real error (stack, cause, raw value).
  */
@@ -1246,7 +1261,7 @@ export default function ZegoCallRoomPage() {
         if (cancelled) return;
 
         setStatus("publishing");
-        let localStream: any;
+        let localStream: any = null;
         try {
           if (mode === "audio") {
             localStream = await zg.createZegoStream({ camera: { audio: true, video: false } });
@@ -1270,28 +1285,46 @@ export default function ZegoCallRoomPage() {
           }
         } catch (err) {
           const msg = normalizeUiError(err);
-          const wrap = new Error(msg || "Could not access microphone/camera");
-          (wrap as Error & { cause?: unknown }).cause = err;
-          throw wrap;
+          // Important: allow joining as a listener even if mic/camera is missing or blocked.
+          // This fixes "both sides can't connect" when one device can't publish but can still play.
+          if (looksLikeMediaDeviceError(msg)) {
+            callDiagInfo("local media unavailable; joining as listener", { roomId, localUserId: userId, msg });
+            setIsCameraEnabled(false);
+            setIsMicEnabled(false);
+            setError(
+              msg
+                ? `Mic/camera unavailable. Joining as listener. ${msg}`
+                : "Mic/camera unavailable. Joining as listener."
+            );
+            localStream = null;
+          } else {
+            const wrap = new Error(msg || "Could not access microphone/camera");
+            (wrap as Error & { cause?: unknown }).cause = err;
+            throw wrap;
+          }
         }
         localStreamRef.current = localStream;
-        applyLocalTrackState(localStream);
-        // Enable AEC/ANS/AGC to improve clarity and reduce perceived lag/echo.
-        try {
-          await zg.setAudioConfig?.(localStream, { AEC: true, AGC: true, ANS: true } as any);
-        } catch {
-          /* ignore */
+        if (localStream) {
+          applyLocalTrackState(localStream);
+          // Enable AEC/ANS/AGC to improve clarity and reduce perceived lag/echo.
+          try {
+            await zg.setAudioConfig?.(localStream, { AEC: true, AGC: true, ANS: true } as any);
+          } catch {
+            /* ignore */
+          }
+
+          tryPlayLocalVideo(localStream, localRef.current);
+          window.setTimeout(() => tryPlayLocalVideo(localStream, localRef.current), 0);
+          window.setTimeout(() => tryPlayLocalVideo(localStream, localRef.current), 250);
+
+          const streamId = buildMainPublishStreamId(roomId, userId);
+          publishedStreamIdRef.current = streamId;
+          if (!streamId.trim()) throw new Error("Invalid stream id");
+          await zg.startPublishingStream(streamId, localStream);
+          if (cancelled) return;
+        } else {
+          publishedStreamIdRef.current = "";
         }
-
-        tryPlayLocalVideo(localStream, localRef.current);
-        window.setTimeout(() => tryPlayLocalVideo(localStream, localRef.current), 0);
-        window.setTimeout(() => tryPlayLocalVideo(localStream, localRef.current), 250);
-
-        const streamId = buildMainPublishStreamId(roomId, userId);
-        publishedStreamIdRef.current = streamId;
-        if (!streamId.trim()) throw new Error("Invalid stream id");
-        await zg.startPublishingStream(streamId, localStream);
-        if (cancelled) return;
 
         roomPeersRef.current.add(userId);
         await tryPlayPeerMainStreams({ quiet: true });
@@ -1696,6 +1729,35 @@ export default function ZegoCallRoomPage() {
           background: #0d0d0d;
         }
       `}</style>
+
+      {error.trim() ? (
+        <div className="relative z-50 mb-3 w-full">
+          <div
+            role="alert"
+            className="flex w-full items-start justify-between gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-50 shadow-lg backdrop-blur"
+          >
+            <div className="min-w-0">
+              <p className="font-semibold text-rose-100">Call error</p>
+              <p className="mt-1 break-words text-rose-50/90">{error}</p>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-xl bg-black/40 px-3 py-2 text-xs font-semibold text-white/90 ring-1 ring-white/10 transition hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+              onClick={() => {
+                const text = String(error || "").trim();
+                if (!text) return;
+                try {
+                  void navigator.clipboard?.writeText(text);
+                } catch {
+                  /* ignore */
+                }
+              }}
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {mode === "video" ? (
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl">
