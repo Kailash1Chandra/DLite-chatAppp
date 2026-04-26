@@ -13,7 +13,9 @@ import { endCall, listenForCallEnded } from "@/lib/call";
 type RemoteTile = { streamId: string };
 
 async function applyZegoLoggingPolicy(zg?: InstanceType<typeof ZegoExpressEngine>) {
-  const config = { logLevel: "error", remoteLogLevel: "disable" } as const;
+  // Disable both local + remote logs (remote logger can open `weblogger-wss...` sockets).
+  // `logURL: ""` explicitly disables log reporting endpoint per ZEGO docs.
+  const config = { logLevel: "disable", remoteLogLevel: "disable", logURL: "" } as const;
 
   // Prefer configuring logging *before* engine init when supported.
   try {
