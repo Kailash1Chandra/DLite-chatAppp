@@ -326,9 +326,8 @@ function tryPlayLocalVideo(stream: any, localNode: HTMLDivElement | null) {
 }
 
 async function applyZegoLoggingPolicy(zg?: InstanceType<typeof ZegoExpressEngine>) {
-  // Disable both local + remote logs (remote logger can open `weblogger-wss...` sockets).
-  // `logURL: ""` explicitly disables log reporting endpoint per ZEGO docs.
-  const config = { logLevel: "disable", remoteLogLevel: "disable", logURL: "" } as const;
+  // Disable both local + remote logs (remote logger can open `weblogger-wss...` / `zglog/ws` sockets).
+  const config = { logLevel: "disable" as const, remoteLogLevel: "disable" as const, logURL: "" };
 
   // Prefer configuring logging *before* engine init when supported.
   try {
@@ -338,10 +337,33 @@ async function applyZegoLoggingPolicy(zg?: InstanceType<typeof ZegoExpressEngine
     /* ignore */
   }
 
-  // Also apply on the instance (some builds only honor this path) and ensure promise rejections can't escape.
+  // Instance API (typed `setLogConfig` returns boolean in SDK 3.12).
   try {
-    const instCfg = (zg as unknown as { setLogConfig?: (c: unknown) => unknown }).setLogConfig?.(config);
-    await Promise.resolve(instCfg).catch(() => undefined);
+    zg?.setLogConfig?.(config);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Zego 3.12 `presetLogConfig` does not persist `remoteLogLevel`; `setLogConfig` records it for
+ * telemetry but cloud bootstrap may still call `enableWebSocketLog(true)`. Turn off the weblogger
+ * socket on the internal logger (`an`) when the SDK exposes it.
+ */
+function tameZegoRemoteLogger(zg: InstanceType<typeof ZegoExpressEngine> | null | undefined) {
+  if (!zg) return;
+  const logger = (zg as unknown as { an?: Record<string, unknown> }).an as
+    | {
+        enableWebSocketLog?: (enabled: boolean) => void;
+        setRemoteLogLevel?: (level: string) => boolean;
+        setLogLevel?: (level: string) => boolean;
+      }
+    | undefined;
+  if (!logger) return;
+  try {
+    logger.setLogLevel?.("disable");
+    logger.setRemoteLogLevel?.("disable");
+    logger.enableWebSocketLog?.(false);
   } catch {
     /* ignore */
   }
@@ -620,6 +642,14 @@ export default function ZegoCallRoomPage() {
 
     let cancelled = false;
     let peerPlayDebounceTimer: number | null = null;
+    const loggerTameTimers: number[] = [];
+
+    const scheduleZegoLoggerTaming = (engine: InstanceType<typeof ZegoExpressEngine> | null) => {
+      tameZegoRemoteLogger(engine);
+      [320, 900, 2200].forEach((ms) => {
+        loggerTameTimers.push(window.setTimeout(() => tameZegoRemoteLogger(engine), ms));
+      });
+    };
 
     const stopRemoteStreams = (zg: ZegoExpressEngine | null) => {
       const remoteIds = Object.keys(remoteStreamsRef.current);
@@ -643,6 +673,7 @@ export default function ZegoCallRoomPage() {
     };
 
     const cleanup = async () => {
+      loggerTameTimers.splice(0).forEach((id) => window.clearTimeout(id));
       if (peerPlayDebounceTimer !== null) {
         window.clearTimeout(peerPlayDebounceTimer);
         peerPlayDebounceTimer = null;
@@ -750,6 +781,7 @@ export default function ZegoCallRoomPage() {
         const zg = new ZegoExpressEngine(appId, server);
         engineRef.current = zg;
         await applyZegoLoggingPolicy(zg);
+        scheduleZegoLoggerTaming(zg);
         if (cancelled) return;
 
         // Lower-latency realtime scenario (important for audio call "live voice" delay).
