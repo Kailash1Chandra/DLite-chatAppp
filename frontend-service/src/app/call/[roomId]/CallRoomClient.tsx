@@ -108,6 +108,43 @@ function formatPeerIdAsDisplayName(id: string) {
     .join(" ");
 }
 
+/** ZEGO sometimes passes an object as `reason`; stringifying avoids `[object Object]` in the UI. */
+function zegoReasonToString(reason: unknown): string {
+  if (reason == null) return "";
+  if (typeof reason === "string") return reason;
+  if (typeof reason === "number" || typeof reason === "boolean") return String(reason);
+  if (reason instanceof Error) return reason.message || "Error";
+  if (typeof reason === "object") {
+    const o = reason as Record<string, unknown>;
+    for (const k of ["message", "reason", "state", "desc", "error"]) {
+      const v = o[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    try {
+      return JSON.stringify(reason);
+    } catch {
+      return "Unknown room state";
+    }
+  }
+  return String(reason);
+}
+
+function errorToUserMessage(e: unknown, fallback = "Something went wrong"): string {
+  if (e instanceof Error) return e.message?.trim() || fallback;
+  if (typeof e === "string") return e.trim() || fallback;
+  if (typeof e === "number" || typeof e === "boolean") return String(e);
+  if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    if (typeof o.message === "string" && o.message.trim()) return o.message.trim();
+    try {
+      return JSON.stringify(e);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 function zegoLikeToMediaStream(s: unknown): MediaStream | null {
   if (!s) return null;
   if (s instanceof MediaStream) return s;
@@ -707,6 +744,7 @@ export default function ZegoCallRoomPage() {
             return [...current, { streamId }];
           });
           setStatus("connected");
+          setError("");
         };
 
         const removeRemoteTiles = (streamIds: string[]) => {
@@ -822,9 +860,10 @@ export default function ZegoCallRoomPage() {
           scheduleTryPlayPeerMainStreams();
         };
 
-        const onRoomStateChanged = async (_roomID: string, reason: string, errorCode: number) => {
+        const onRoomStateChanged = async (_roomID: string, reason: unknown, errorCode: number) => {
           if (cancelled) return;
-          if (String(reason).toUpperCase() === "DISCONNECTED") {
+          const reasonText = zegoReasonToString(reason);
+          if (reasonText.toUpperCase() === "DISCONNECTED") {
             if (!reconnectingRef.current) {
               reconnectingRef.current = true;
               setStatus("logging_in");
@@ -864,7 +903,8 @@ export default function ZegoCallRoomPage() {
             }
           }
           if (errorCode && errorCode !== 0) {
-            setError(`Room state: ${reason} (code ${errorCode})`);
+            const detail = reasonText || "unknown";
+            setError(`Room state: ${detail} (code ${errorCode})`);
           }
         };
 
@@ -980,7 +1020,7 @@ export default function ZegoCallRoomPage() {
       } catch (e) {
         if (cancelled) return;
         setStatus("error");
-        setError(e instanceof Error ? e.message : "Call failed");
+        setError(errorToUserMessage(e, "Call failed"));
         await cleanup();
       }
     };
@@ -1476,7 +1516,7 @@ export default function ZegoCallRoomPage() {
                       {(status !== "connected" || (!localHasVideo && !isScreenSharing)) ? (
                         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
                           <p className="max-w-sm rounded-2xl bg-black/55 px-4 py-3 text-center text-sm leading-relaxed text-white/85 backdrop-blur">
-                            {statusLabel}
+                            {status === "error" && error.trim() ? error : statusLabel}
                           </p>
                         </div>
                       ) : null}
@@ -1830,7 +1870,9 @@ export default function ZegoCallRoomPage() {
                 {voicePeerSubtitle ? (
                   <p className="mt-2 max-w-md text-sm text-white/55">{voicePeerSubtitle}</p>
                 ) : (
-                  <p className="mt-2 text-sm text-white/55">{status === "connected" ? "Voice call" : statusLabel}</p>
+                  <p className="mt-2 text-sm text-white/55">
+                    {status === "connected" ? "Voice call" : status === "error" && error.trim() ? error : statusLabel}
+                  </p>
                 )}
 
                 <div className="mt-8 w-full rounded-full border border-white/10 bg-black/50 px-2 py-3 shadow-inner backdrop-blur-md">
