@@ -746,9 +746,10 @@ export default function ChatDashboardPage() {
     if (!roomId) return;
 
     try {
-      await startHostedCallInvite({ callerId, calleeId, mode, roomId });
+      const callerName = String(user?.username || user?.email || '').trim() || undefined;
+      await startHostedCallInvite({ callerId, callerName, calleeId, mode, roomId });
       setActionError('');
-      router.push(buildHostedCallUrl(roomId, mode));
+      router.push(buildHostedCallUrl(roomId, mode, { peer: String(callerName || '').trim() || undefined }));
     } catch (e) {
       console.warn('Failed to send hosted call invite', e);
       setActionError('Could not start the call right now. Please try again.');

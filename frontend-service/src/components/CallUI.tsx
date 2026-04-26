@@ -426,6 +426,12 @@ export default function CallUI({
       return;
     }
 
+    const callerProvided = String(incomingOffer?.fromUserName || "").trim();
+    if (callerProvided) {
+      setPeerDisplayName(callerProvided);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
@@ -441,7 +447,7 @@ export default function CallUI({
     return () => {
       cancelled = true;
     };
-  }, [incomingOffer?.fromUserId, peerId]);
+  }, [incomingOffer?.fromUserId, incomingOffer?.fromUserName, peerId]);
 
   useEffect(() => {
     if (status === "connected") {
@@ -748,6 +754,7 @@ export default function CallUI({
       const offer = await createOffer(peerConnection);
       await startCall({
         callerId: currentUserId,
+        callerName: String(auth?.user?.username || auth?.user?.email || "").trim() || undefined,
         calleeId: targetUserId,
         offer,
         mode,

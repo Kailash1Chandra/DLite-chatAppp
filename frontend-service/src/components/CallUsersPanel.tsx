@@ -119,9 +119,10 @@ export function CallUsersPanel({ className }: { className?: string }) {
     if (!roomId) return;
 
     try {
-      await startHostedCallInvite({ callerId: currentUserId, calleeId, mode, roomId });
+      const callerName = String(auth?.user?.username || auth?.user?.email || "").trim() || undefined;
+      await startHostedCallInvite({ callerId: currentUserId, callerName, calleeId, mode, roomId });
       setCallActionError("");
-      router.push(buildHostedCallUrl(roomId, mode));
+      router.push(buildHostedCallUrl(roomId, mode, { peer: String(callerName || "").trim() || undefined }));
     } catch (e) {
       console.warn("Failed to send hosted call invite", e);
       setCallActionError("Could not start the call right now. Please try again.");

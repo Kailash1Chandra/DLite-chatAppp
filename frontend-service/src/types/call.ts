@@ -17,6 +17,7 @@ export interface SignalSessionDescription {
 
 export interface OfferPayload extends SignalSessionDescription {
   fromUserId: string;
+  fromUserName?: string;
   mode: CallMode;
   createdAt: number;
 }
@@ -42,6 +43,7 @@ export interface IncomingCall {
 
 export interface HostedCallInvitePayload {
   fromUserId: string;
+  fromUserName?: string;
   mode: CallMode;
   roomId: string;
   chatId?: string;

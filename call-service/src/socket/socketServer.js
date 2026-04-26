@@ -214,6 +214,7 @@ function initSocketServer(httpServer) {
           if (!toUserId || toUserId === userId) return
           emitToUser(toUserId, "call_user", {
             fromUserId: userId,
+            fromUserName: payload?.fromUserName != null ? String(payload.fromUserName) : undefined,
             callType: String(payload?.callType || "audio").trim() === "video" ? "video" : "audio",
             roomId: payload?.roomId != null ? String(payload.roomId) : undefined,
             offer: payload?.offer,

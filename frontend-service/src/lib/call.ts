@@ -93,31 +93,35 @@ async function ensureCallSocket(userId: string): Promise<CallSocket> {
 
 export async function startCall(params: {
   callerId: string
+  callerName?: string
   calleeId: string
   offer: RTCSessionDescriptionInit
   mode: 'audio' | 'video'
 }) {
-  const { callerId, calleeId, offer, mode } = params
+  const { callerId, callerName, calleeId, offer, mode } = params
   const socket = await ensureCallSocket(callerId)
   socket.emit('call_user', {
     toUserId: calleeId,
     callType: mode,
+    fromUserName: callerName ? String(callerName).trim() : undefined,
     offer: offer.type && offer.sdp ? { type: offer.type, sdp: offer.sdp } : offer,
   })
 }
 
 export async function startHostedCallInvite(params: {
   callerId: string
+  callerName?: string
   calleeId: string
   mode: 'audio' | 'video'
   roomId: string
 }) {
-  const { callerId, calleeId, mode, roomId } = params
+  const { callerId, callerName, calleeId, mode, roomId } = params
   const socket = await ensureCallSocket(callerId)
   socket.emit('call_user', {
     toUserId: calleeId,
     callType: mode,
     roomId,
+    fromUserName: callerName ? String(callerName).trim() : undefined,
   })
 }
 
@@ -141,6 +145,7 @@ export function listenForIncomingCall(userId: string, onIncoming: (payload: Offe
         if (!sdp || !type) return
         onIncoming({
           fromUserId: String(payload.fromUserId || ''),
+          fromUserName: payload?.fromUserName != null ? String(payload.fromUserName) : undefined,
           mode: payload.callType === 'video' ? 'video' : 'audio',
           type: 'offer',
           sdp,
@@ -184,6 +189,7 @@ export function listenForIncomingHostedCall(
         if (!roomId) return
         onIncoming({
           fromUserId: String(payload.fromUserId || ''),
+          fromUserName: payload?.fromUserName != null ? String(payload.fromUserName) : undefined,
           mode: payload.callType === 'video' ? 'video' : 'audio',
           roomId,
           chatId: payload.chatId ? String(payload.chatId) : undefined,

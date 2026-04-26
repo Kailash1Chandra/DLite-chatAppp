@@ -23,13 +23,15 @@ export function IncomingCallProvider({ children }) {
 
   const accept = useCallback(() => {
     if (!incoming?.roomId) return;
-    const nextUrl = buildHostedCallUrl(incoming.roomId, incoming.mode || 'audio');
+    const nextUrl = buildHostedCallUrl(incoming.roomId, incoming.mode || 'audio', {
+      peer: String(incoming?.fromUserName || callerProfile?.username || '').trim() || undefined,
+    });
     setIncoming(null);
     ringing.current = false;
     notificationSounds.stop('incoming-call');
     notificationSounds.stopVibration();
     router.push(nextUrl);
-  }, [incoming, router]);
+  }, [incoming, router, callerProfile?.username]);
 
   const reject = useCallback(
     async (opts) => {
@@ -90,9 +92,12 @@ export function IncomingCallProvider({ children }) {
     }
     (async () => {
       try {
-        const p = await getUserProfileById(fromId).catch(() => null);
+        // Prefer the caller-provided display name (so we never show raw UUIDs).
+        const callerProvided = String(incoming?.fromUserName || '').trim();
+        const p = callerProvided ? null : await getUserProfileById(fromId).catch(() => null);
         if (cancelled) return;
         const usernameRaw =
+          callerProvided ||
           p?.username ||
           p?.user_metadata?.username ||
           p?.user_metadata?.full_name ||

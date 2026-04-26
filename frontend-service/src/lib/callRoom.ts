@@ -14,6 +14,9 @@ export function buildHostedCallUrl(roomId: string, mode: CallMode, opts?: { admi
   const params = new URLSearchParams();
   params.set("mode", mode);
   if (opts?.admin) params.set("admin", "1");
+  // Optional: show a friendly peer label on the hosted room UI.
+  const peer = (opts as { peer?: string } | undefined)?.peer;
+  if (peer) params.set("peer", String(peer).trim());
   const query = params.toString();
   return `/call/${encodeURIComponent(roomId)}${query ? `?${query}` : ""}`;
 }
