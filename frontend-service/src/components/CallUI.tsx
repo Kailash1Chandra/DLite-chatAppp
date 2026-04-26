@@ -69,12 +69,11 @@ interface CallUIProps {
 function createRingtonePlayer() {
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let audioContext: AudioContext | null = null;
+  let blockedByAutoplay = false;
 
   function beep() {
     if (!audioContext) audioContext = new AudioContext();
-    if (audioContext.state === "suspended") {
-      audioContext.resume().catch(() => undefined);
-    }
+    if (audioContext.state === "suspended") return;
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     oscillator.type = "sine";
@@ -88,7 +87,14 @@ function createRingtonePlayer() {
 
   return {
     start() {
-      if (intervalId) return;
+      // Attempting to auto-start AudioContext without a gesture will spam console.
+      // If we've ever been blocked, only explicit resume() should restart.
+      if (intervalId || blockedByAutoplay) return;
+      if (!audioContext) audioContext = new AudioContext();
+      if (audioContext.state === "suspended") {
+        blockedByAutoplay = true;
+        return;
+      }
       beep();
       intervalId = setInterval(beep, 1200);
     },
@@ -97,6 +103,25 @@ function createRingtonePlayer() {
         clearInterval(intervalId);
         intervalId = null;
       }
+    },
+    async resumeAfterGesture() {
+      if (!audioContext) audioContext = new AudioContext();
+      blockedByAutoplay = false;
+      try {
+        if (audioContext.state === "suspended") await audioContext.resume();
+      } catch {
+        blockedByAutoplay = true;
+        return false;
+      }
+      // Start ringing if requested while we were blocked.
+      if (!intervalId) {
+        beep();
+        intervalId = setInterval(beep, 1200);
+      }
+      return true;
+    },
+    isBlocked() {
+      return blockedByAutoplay || audioContext?.state === "suspended";
     },
   };
 }
@@ -183,6 +208,7 @@ export default function CallUI({
   const [callDuration, setCallDuration] = useState(0);
   const [videoLayout, setVideoLayout] = useState<"split" | "pip">("split");
   const [endedOverlayVisible, setEndedOverlayVisible] = useState(false);
+  const [ringtoneNeedsGesture, setRingtoneNeedsGesture] = useState(false);
 
   useEffect(() => {
     setCalleeId(calleeParam);
@@ -587,6 +613,7 @@ export default function CallUI({
 
     setError(null);
     setIsBusy(true);
+    setRingtoneNeedsGesture(false);
     ringtoneRef.current.stop();
     clearSessionListeners();
 
@@ -653,6 +680,7 @@ export default function CallUI({
     try {
       await rejectCall({ userId: currentUserId, callerId: incomingOffer.fromUserId });
       ringtoneRef.current.stop();
+      setRingtoneNeedsGesture(false);
       setIncomingOffer(null);
       setStatus("ended");
       persistCallHistory({
@@ -692,6 +720,7 @@ export default function CallUI({
     } catch (endError) {
       console.error("Failed to end call", endError);
     } finally {
+      setRingtoneNeedsGesture(false);
       await hardCleanup();
       setStatus("ended");
       persistCallHistory({ outcome: "ended", endedAt: Date.now() });
@@ -855,6 +884,7 @@ export default function CallUI({
         return "ringing";
       });
       ringtoneRef.current.start();
+      setRingtoneNeedsGesture(ringtoneRef.current.isBlocked());
     });
 
     incomingCallUnsubRef.current = unsubscribeIncoming;
@@ -991,6 +1021,21 @@ export default function CallUI({
                   {isBrowserFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
                 </button>
               </div>
+            </div>
+          ) : null}
+
+          {ringtoneNeedsGesture && status === "ringing" ? (
+            <div className="absolute left-1/2 top-4 z-20 -translate-x-1/2">
+              <button
+                type="button"
+                className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-xs font-semibold text-white backdrop-blur hover:bg-black/60"
+                onClick={async () => {
+                  const ok = await ringtoneRef.current.resumeAfterGesture();
+                  setRingtoneNeedsGesture(!ok);
+                }}
+              >
+                Enable call sound
+              </button>
             </div>
           ) : null}
 
