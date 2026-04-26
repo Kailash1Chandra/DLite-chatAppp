@@ -133,16 +133,29 @@ function zegoReasonToString(reason: unknown): string {
  * Any value → safe UI string. Never relies on default `${obj}` / String(obj) for plain objects
  * (that becomes "[object Object]"). Used for error state and critical labels.
  */
+const UNREADABLE_ERROR_HINT =
+  "The app received an error it could not display. Check that you are signed in, the room link is valid, and microphone/camera permission is allowed. If it keeps happening, open DevTools (F12) → Console for details.";
+
 function normalizeUiError(input: unknown): string {
   if (input == null) return "";
   if (typeof input === "string") {
     const s = input.trim();
-    if (s === "[object Object]") return "Something went wrong. Please try again.";
+    if (s === "[object Object]" || s === "Error: [object Object]") return UNREADABLE_ERROR_HINT;
     return input;
   }
   if (typeof input === "number" && Number.isFinite(input)) return String(input);
   if (typeof input === "boolean") return String(input);
-  if (input instanceof Error) return input.message?.trim() || "Something went wrong";
+  if (input instanceof Error) {
+    const raw = input.message?.trim() ?? "";
+    const isGarbage = raw === "[object Object]" || raw === "Error: [object Object]";
+    if (raw && !isGarbage) return raw;
+    const cause = (input as Error & { cause?: unknown }).cause;
+    if (cause !== undefined) {
+      const fromCause = normalizeUiError(cause);
+      if (fromCause) return fromCause;
+    }
+    return isGarbage ? UNREADABLE_ERROR_HINT : "";
+  }
   if (typeof input === "object") {
     const o = input as Record<string, unknown>;
     for (const k of ["message", "reason", "error", "msg", "description", "detail", "state"]) {
@@ -768,7 +781,12 @@ export default function ZegoCallRoomPage() {
         window.clearTimeout(tokenTimeout);
         const tokenJson = await tokenRes.json().catch(() => ({}));
         if (!tokenRes.ok || tokenJson?.success === false) {
-          throw new Error(tokenJson?.message || "Could not get ZEGO token");
+          const apiDetail = normalizeUiError(tokenJson?.message);
+          const statusHint =
+            tokenRes.status === 401 || tokenRes.status === 403
+              ? "Not authorized to start this call. Sign in again and retry."
+              : "";
+          throw new Error(apiDetail || statusHint || `Could not get call token (HTTP ${tokenRes.status}).`);
         }
         const appId = Number(tokenJson?.appId);
         const token = String(tokenJson?.token || "");
