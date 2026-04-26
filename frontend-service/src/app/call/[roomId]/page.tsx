@@ -135,6 +135,7 @@ export default function ZegoCallRoomPage() {
   const [error, setError] = useState<string>("");
   const [needsUserGesture, setNeedsUserGesture] = useState(false);
   const [remoteTiles, setRemoteTiles] = useState<RemoteTile[]>([]);
+  const remoteTilesRef = useRef<RemoteTile[]>([]);
   const [copiedState, setCopiedState] = useState<"" | "code" | "link">("");
   const [isMicEnabled, setIsMicEnabled] = useState(true);
   const [isCameraEnabled, setIsCameraEnabled] = useState(mode === "video");
@@ -147,6 +148,10 @@ export default function ZegoCallRoomPage() {
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [callNow, setCallNow] = useState<number>(Date.now());
   const streamPollRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    remoteTilesRef.current = remoteTiles;
+  }, [remoteTiles]);
 
   const server = useMemo(() => "wss://webliveroom-api.zego.im/ws", []);
   const hostedCallPath = useMemo(() => buildHostedCallUrl(roomId, mode), [mode, roomId]);
@@ -711,7 +716,7 @@ export default function ZegoCallRoomPage() {
           streamPollRef.current = window.setInterval(() => {
             tries += 1;
             if (cancelled) return;
-            if (remoteTiles.length > 0) {
+            if (remoteTilesRef.current.length > 0) {
               if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
               streamPollRef.current = null;
               return;
