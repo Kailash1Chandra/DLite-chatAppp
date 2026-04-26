@@ -279,33 +279,6 @@ const ChatMessageRow = memo(function ChatMessageRow({
           className="h-9 w-9 shrink-0 self-end rounded-full border border-ui-border bg-ui-muted object-cover"
         />
         <div className={cn('min-w-0 flex-1', mine ? 'flex flex-col items-end' : '')}>
-          <div
-            className={cn(
-              'mb-1 max-w-full text-[12px]',
-              mine
-                ? 'pr-0.5 text-right text-slate-500 dark:text-slate-400'
-                : 'pl-0.5 text-slate-500 dark:text-slate-400'
-            )}
-          >
-            <span
-              className={cn('font-medium', mine ? 'text-slate-700 dark:text-slate-200' : 'text-slate-600 dark:text-slate-300')}
-            >
-              {senderLabel}
-            </span>
-            {m.createdAt ? (
-              <span className={cn('font-normal', mine ? 'text-slate-400 dark:text-slate-500' : 'text-slate-400 dark:text-slate-500')}>
-                {' '}
-                · {formatMessageMetaTime(m.createdAt)}
-              </span>
-            ) : null}
-            {isPinned ? <Pin className="ml-1 inline h-3 w-3 align-middle opacity-70" /> : null}
-            {mine ? (
-              <span className="ml-2 text-[10px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
-                {m.readBy?.[peerKey] ? 'Read' : m.deliveredBy?.[peerKey] ? 'Delivered' : 'Sent'}
-              </span>
-            ) : null}
-          </div>
-
           <div className="relative inline-block max-w-full">
             {isPollMessage ? (
               <div className="max-w-[min(100%,420px)] overflow-hidden rounded-2xl border border-ui-poll bg-ui-poll text-white shadow-md">
@@ -399,6 +372,20 @@ const ChatMessageRow = memo(function ChatMessageRow({
               </div>
             ) : (
               <div className={cn('relative max-w-full px-3.5 py-2.5 text-sm', bubbleBase)}>
+                <div
+                  className={cn(
+                    'mb-1.5 flex items-center justify-between gap-2 text-[11px] font-semibold',
+                    mine ? 'text-white/85' : 'text-slate-600 dark:text-slate-300'
+                  )}
+                >
+                  <span className="min-w-0 truncate">
+                    {senderLabel}
+                    {isPinned ? <Pin className="ml-1 inline h-3 w-3 align-middle opacity-70" /> : null}
+                  </span>
+                  <span className={cn('shrink-0 font-medium tabular-nums', mine ? 'text-white/70' : 'text-slate-400 dark:text-slate-500')}>
+                    {m.createdAt ? formatMessageMetaTime(m.createdAt) : ''}
+                  </span>
+                </div>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1" />
                   <div className="flex shrink-0 items-center gap-0.5">

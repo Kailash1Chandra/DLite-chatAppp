@@ -48,6 +48,9 @@ import { ChatAppIconRail } from '@/components/ChatAppIconRail';
 import { ChatAppTopBar } from '@/components/ChatAppTopBar';
 import { cn } from '@/lib/utils';
 
+const MESSAGE_MENU_WIDTH = 210;
+const MESSAGE_MENU_MAX_HEIGHT = 260;
+
 function formatGroupMessageTime(ts) {
   const n = Number(ts || 0);
   if (!n) return '';
@@ -172,6 +175,8 @@ export default function GroupChatPage() {
   const [groupTypingUsers, setGroupTypingUsers] = useState([]);
   const [groupPinnedMessages, setGroupPinnedMessages] = useState([]);
   const [openGroupReactionPickerId, setOpenGroupReactionPickerId] = useState(null);
+  const [openGroupMessageMenuId, setOpenGroupMessageMenuId] = useState(null);
+  const [groupMessageMenuAnchor, setGroupMessageMenuAnchor] = useState(null);
   const groupTypingTimeoutRef = useRef(null);
   const groupPhotoInputRef = useRef(null);
   const groupComposerRef = useRef(null);
@@ -266,6 +271,7 @@ export default function GroupChatPage() {
         const msgType = String(m.type || 'text');
         const rawContent = String(m.content || m.message || '');
         const isHttpUrl = /^https?:\/\/\S+$/i.test(rawContent.trim());
+        const canEditDelete = Boolean(mine);
 
         return (
           <div className={cn('group flex w-full flex-col', mine ? 'items-end' : 'items-start')}>
@@ -288,55 +294,154 @@ export default function GroupChatPage() {
                 className="h-8 w-8 shrink-0 self-end rounded-full border border-ui-border bg-ui-panel object-cover"
               />
               <div className={cn('min-w-0 flex-1', mine ? 'flex flex-col items-end' : '')}>
-                <div
-                  className={cn(
-                    'mb-1 max-w-full text-[11px]',
-                    mine ? 'text-right text-white/75' : 'text-left text-slate-500 dark:text-slate-400'
-                  )}
-                >
-                  <span className={cn('font-semibold', mine ? 'text-white/95' : 'text-slate-600 dark:text-slate-300')}>
-                    {senderName}
-                  </span>
-                  {t ? (
-                    <span className={mine ? 'text-white/65' : 'text-slate-400 dark:text-slate-500'}> · {t}</span>
-                  ) : null}
-                  {isPinned ? <Pin className="ml-1 inline h-3 w-3 align-middle opacity-70" /> : null}
-                  {mine && memberCount > 1 ? (
-                    <span className="ml-2 text-[10px] font-medium text-white/85">
-                      {readCount > 0 ? `Read ${readCount}/${memberCount - 1}` : 'Sent'}
-                    </span>
-                  ) : null}
-                </div>
-
                 <div className="relative inline-block max-w-full">
-                  <div className={cn('px-3.5 py-2.5 text-sm leading-relaxed', bubble)}>
-                    {(mine || isGroupAdmin) && (
-                      <div className="mb-1.5 flex items-start justify-end gap-1">
-                        <div className="flex shrink-0 items-center gap-0.5">
-                          {(mine || isGroupAdmin) && (
-                            <button
-                              type="button"
-                              className={cn('rounded-lg p-1 transition', mine ? iconMine : iconTheirs)}
-                              onClick={() => (isPinned ? handleUnpinGroupMessage(m._id) : handlePinGroupMessage(m))}
-                              title={isPinned ? 'Unpin' : 'Pin'}
-                            >
-                              {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-                            </button>
-                          )}
-                          {mine && (
-                            <button
-                              type="button"
-                              className={cn('rounded-lg p-1 transition', iconMine)}
-                              onClick={() => handleDeleteGroupMessage(m._id)}
-                              disabled={deletingMessageId === m._id}
-                              aria-label="Delete message"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
+                  <div className={cn('relative max-w-full px-3.5 py-2.5 text-sm', bubble)}>
+                    <div
+                      className={cn(
+                        'mb-1.5 flex items-center justify-between gap-2 text-[11px] font-semibold',
+                        mine ? 'text-white/85' : 'text-slate-600 dark:text-slate-300'
+                      )}
+                    >
+                      <span className="min-w-0 truncate">
+                        {senderName}
+                        {isPinned ? <Pin className="ml-1 inline h-3 w-3 align-middle opacity-70" /> : null}
+                      </span>
+                      <span className={cn('shrink-0 font-medium tabular-nums', mine ? 'text-white/70' : 'text-slate-400 dark:text-slate-500')}>
+                        {t || ''}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1" />
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button
+                          type="button"
+                          className={cn('rounded-md p-1.5 transition', mine ? iconMine : iconTheirs)}
+                          onClick={() => setOpenGroupReactionPickerId((prev) => (prev === m._id ? null : m._id))}
+                          aria-label="React to message"
+                          title="React"
+                        >
+                          <SmilePlus className="h-4 w-4" />
+                        </button>
+
+                        <div className="relative" data-group-message-menu>
+                          <button
+                            type="button"
+                            className={cn('rounded-md p-1.5 transition', mine ? iconMine : iconTheirs)}
+                            onClick={(e) => {
+                              const rect = e.currentTarget?.getBoundingClientRect?.();
+                              if (rect) {
+                                setGroupMessageMenuAnchor({
+                                  messageId: m._id,
+                                  left: rect.right,
+                                  top: rect.bottom,
+                                  bottom: rect.top,
+                                });
+                              }
+                              setOpenGroupMessageMenuId((prev) => (prev === m._id ? null : m._id));
+                            }}
+                            aria-label="Message actions"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+
+                          {openGroupMessageMenuId === m._id &&
+                            createPortal(
+                              <div
+                                role="menu"
+                                className="anim-pop fixed z-[220] min-w-[200px] overflow-hidden rounded-2xl border border-ui-border bg-ui-panel py-1.5 shadow-2xl"
+                                style={{
+                                  width: MESSAGE_MENU_WIDTH,
+                                  left: Math.max(
+                                    12,
+                                    Math.min(
+                                      (groupMessageMenuAnchor?.left || 0) - MESSAGE_MENU_WIDTH,
+                                      (typeof window !== 'undefined' ? window.innerWidth : 1200) - MESSAGE_MENU_WIDTH - 12
+                                    )
+                                  ),
+                                  top: (() => {
+                                    const below = (groupMessageMenuAnchor?.top || 0) + 10;
+                                    const above = (groupMessageMenuAnchor?.bottom || 0) - MESSAGE_MENU_MAX_HEIGHT - 10;
+                                    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+                                    if (below + MESSAGE_MENU_MAX_HEIGHT <= vh - 12) return below;
+                                    if (above >= 12) return above;
+                                    return Math.max(12, Math.min(below, vh - MESSAGE_MENU_MAX_HEIGHT - 12));
+                                  })(),
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover dark:hover:bg-ui-menu-hover"
+                                  onClick={() => {
+                                    setOpenGroupMessageMenuId(null);
+                                    setOpenGroupReactionPickerId((prev) => (prev === m._id ? null : m._id));
+                                  }}
+                                >
+                                  <SmilePlus className="h-4 w-4 shrink-0 opacity-80" />
+                                  React
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover disabled:pointer-events-none disabled:opacity-50 dark:text-slate-100"
+                                  onClick={() => {
+                                    setOpenGroupMessageMenuId(null);
+                                    // group messages don't support inline edit yet → keep disabled (DM parity)
+                                  }}
+                                  disabled
+                                >
+                                  <Pencil className="h-4 w-4 shrink-0 opacity-80" />
+                                  Edit message
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-600 transition-colors duration-150 hover:bg-red-50 disabled:pointer-events-none disabled:opacity-45 dark:text-red-400 dark:hover:bg-red-950/40"
+                                  onClick={() => {
+                                    if (!canEditDelete) return;
+                                    setOpenGroupMessageMenuId(null);
+                                    handleDeleteGroupMessage(m._id);
+                                  }}
+                                  disabled={!canEditDelete || deletingMessageId === m._id}
+                                >
+                                  <Trash2 className="h-4 w-4 shrink-0" />
+                                  {deletingMessageId === m._id ? 'Unsending…' : 'Unsend message'}
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover disabled:pointer-events-none disabled:opacity-50 dark:text-slate-100"
+                                  onClick={() => {
+                                    setOpenGroupMessageMenuId(null);
+                                    if (!(mine || isGroupAdmin)) return;
+                                    isPinned ? handleUnpinGroupMessage(m._id) : handlePinGroupMessage(m);
+                                  }}
+                                  disabled={!(mine || isGroupAdmin)}
+                                >
+                                  {isPinned ? (
+                                    <PinOff className="h-4 w-4 shrink-0 opacity-80" />
+                                  ) : (
+                                    <Pin className="h-4 w-4 shrink-0 opacity-80" />
+                                  )}
+                                  {isPinned ? 'Unpin message' : 'Pin message'}
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-ui-menu-hover disabled:pointer-events-none disabled:opacity-50 dark:text-slate-100"
+                                  disabled
+                                >
+                                  <Trash2 className="h-4 w-4 shrink-0 opacity-80" />
+                                  Delete for me
+                                </button>
+                              </div>,
+                              document.body
+                            )}
                         </div>
                       </div>
-                    )}
+                    </div>
+
                     <div
                       className={cn(
                         'whitespace-pre-wrap break-words [overflow-wrap:anywhere] pr-1',
@@ -373,25 +478,15 @@ export default function GroupChatPage() {
                         >
                           <span className="truncate">Open file</span>
                         </a>
+                      ) : isHttpUrl ? (
+                        <span className="opacity-90">{safeUrlPreviewLabel(rawContent, msgType) || 'Link'}</span>
                       ) : (
-                        isHttpUrl ? <span className="opacity-90">{safeUrlPreviewLabel(rawContent, msgType) || 'Link'}</span> : linkifyGroupMessage(rawContent)
+                        linkifyGroupMessage(rawContent)
                       )}
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    data-group-reaction-picker
-                    className={cn(
-                      'absolute -bottom-0.5 flex h-7 w-7 items-center justify-center rounded-full border border-ui-border bg-ui-panel text-base shadow-md transition',
-                      'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100',
-                      mine ? '-left-8' : '-right-8'
-                    )}
-                    onClick={() => setOpenGroupReactionPickerId((prev) => (prev === m._id ? null : m._id))}
-                    title="React"
-                  >
-                    <SmilePlus className="h-3.5 w-3.5 text-ui-accent" />
-                  </button>
+                  {/* reaction button moved into header row */}
                 </div>
               </div>
             </div>
@@ -771,6 +866,17 @@ export default function GroupChatPage() {
   useEffect(() => {
     const onDoc = (e) => {
       if (!e.target?.closest?.('[data-group-reaction-picker]')) setOpenGroupReactionPickerId(null);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  useEffect(() => {
+    const onDoc = (e) => {
+      const target = e.target;
+      if (target?.closest?.('[data-group-message-menu]')) return;
+      setOpenGroupMessageMenuId(null);
+      setGroupMessageMenuAnchor(null);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
