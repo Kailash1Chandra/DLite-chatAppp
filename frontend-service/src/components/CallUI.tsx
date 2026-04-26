@@ -69,6 +69,7 @@ interface CallUIProps {
     localUser: { name: string; avatarUrl?: string; initial?: string };
     localStream: MediaStream | null;
     remoteStream: MediaStream | null;
+    streamVersion?: number;
     peerConnection: RTCPeerConnection | null;
     mode: "audio" | "video";
     status: "connecting" | "connected" | "reconnecting";
@@ -284,6 +285,10 @@ export default function CallUI({
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  // React state mirrors refs so connected UI re-renders when streams/tracks change.
+  const [localStreamState, setLocalStreamState] = useState<MediaStream | null>(null);
+  const [remoteStreamState, setRemoteStreamState] = useState<MediaStream | null>(null);
+  const [remoteStreamTick, setRemoteStreamTick] = useState(0);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const currentUserIdRef = useRef<string | undefined>(currentUserId);
   const peerIdRef = useRef<string | null>(null);
@@ -466,6 +471,9 @@ export default function CallUI({
     remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     remoteStreamRef.current = null;
+    setLocalStreamState(null);
+    setRemoteStreamState(null);
+    setRemoteStreamTick((v) => v + 1);
   }, []);
 
   const clearMediaElements = useCallback(() => {
@@ -508,6 +516,7 @@ export default function CallUI({
         video: mode === "video",
       });
       localStreamRef.current = stream;
+      setLocalStreamState(stream);
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
@@ -571,6 +580,8 @@ export default function CallUI({
     remoteDescriptionSetRef.current = false;
     const remoteStream = new MediaStream();
     remoteStreamRef.current = remoteStream;
+    setRemoteStreamState(remoteStream);
+    setRemoteStreamTick((v) => v + 1);
     console.log("[call] peer connection created", { senderUserId: userId, targetPeerId });
     attachRemoteStreamToAll();
     if (remoteAudioRef.current) {
@@ -609,6 +620,8 @@ export default function CallUI({
         });
 
         attachRemoteStreamToAll();
+        // Trigger a re-render so connected UI receives updated streams/tracks.
+        setRemoteStreamTick((v) => v + 1);
 
         track.onended = () => {
           try {
@@ -617,6 +630,7 @@ export default function CallUI({
             /* ignore */
           }
           console.log("[call] remote track ended", { kind: track.kind });
+          setRemoteStreamTick((v) => v + 1);
         };
         track.onmute = () => {
           console.log("[call] remote track muted", { kind: track.kind });
@@ -624,6 +638,7 @@ export default function CallUI({
         track.onunmute = () => {
           console.log("[call] remote track unmuted", { kind: track.kind });
           attachRemoteStreamToAll();
+          setRemoteStreamTick((v) => v + 1);
         };
       },
       onConnectionStateChange: (nextState) => {
@@ -1158,8 +1173,11 @@ export default function CallUI({
             avatarUrl: String((auth?.user as any)?.photoURL || "").trim() || undefined,
             initial: String(auth?.user?.username || "Y").slice(0, 1).toUpperCase(),
           },
-          localStream: localStreamRef.current,
-          remoteStream: remoteStreamRef.current,
+          // Use state-backed streams so UI updates as tracks arrive.
+          localStream: localStreamState,
+          remoteStream: remoteStreamState,
+          // Force re-render of connected UI when tracks change (even if stream object identity stays same).
+          streamVersion: remoteStreamTick,
           peerConnection: peerConnectionRef.current,
           mode: activeMode === "video" ? "video" : "audio",
           status: "connected",
