@@ -82,6 +82,107 @@ interface CallUIProps {
   }) => React.ReactNode;
 }
 
+interface RemoteVideoElementProps {
+  registerRef: (el: HTMLVideoElement | null) => void;
+  className?: string;
+  remoteStream: MediaStream | null;
+  peerName?: string;
+}
+
+function RemoteVideoElement({
+  registerRef,
+  className,
+  remoteStream,
+  peerName,
+}: RemoteVideoElementProps) {
+  const [hasVideo, setHasVideo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (!remoteStream) {
+      setHasVideo(false);
+      return;
+    }
+
+    const checkTracks = () => {
+      const videoTracks = remoteStream.getVideoTracks();
+      const hasActiveVideo = videoTracks.some(
+        (t) => t.enabled && t.readyState === "live" && !(t as any).muted
+      );
+      setHasVideo(hasActiveVideo);
+    };
+
+    checkTracks();
+
+    const onAdd = () => checkTracks();
+    const onRemove = () => checkTracks();
+    remoteStream.addEventListener("addtrack", onAdd);
+    remoteStream.addEventListener("removetrack", onRemove);
+
+    const interval = window.setInterval(checkTracks, 1000);
+
+    return () => {
+      remoteStream.removeEventListener("addtrack", onAdd);
+      remoteStream.removeEventListener("removetrack", onRemove);
+      window.clearInterval(interval);
+    };
+  }, [remoteStream]);
+
+  return (
+    <div className="relative h-full w-full">
+      <video
+        ref={(el) => {
+          videoRef.current = el;
+          registerRef(el);
+        }}
+        autoPlay
+        playsInline
+        className={className}
+        onError={(e) => {
+          console.error("[call] remote video error", e);
+          setError("Video playback failed");
+        }}
+        onLoadedMetadata={() => {
+          console.log("[call] remote video metadata loaded");
+          videoRef.current?.play().catch((err) => {
+            console.error("[call] remote video play() failed", err);
+            setError("Click to start video");
+          });
+        }}
+      />
+
+      {!hasVideo && !error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/95 text-white">
+          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 via-pink-500 to-violet-600 text-4xl font-bold">
+            {peerName?.[0]?.toUpperCase() ?? "?"}
+          </div>
+          <div className="text-center">
+            <div className="text-base font-semibold">{peerName || "Connected"}</div>
+            <div className="mt-1 text-xs text-white/60">Camera is off</div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/95 text-white">
+          <div className="text-sm text-amber-400">{error}</div>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              videoRef.current?.play().catch(() => undefined);
+            }}
+            className="rounded-full bg-white/10 px-4 py-2 text-sm hover:bg-white/20"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function createRingtonePlayer() {
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let audioContext: AudioContext | null = null;
@@ -180,7 +281,6 @@ export default function CallUI({
   const explicitReady = searchParams.get("ready") === "1";
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
@@ -202,9 +302,39 @@ export default function CallUI({
 
   const screenStreamRef = useRef<MediaStream | null>(null);
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const overlayVideoRef = useRef<HTMLVideoElement>(null);
+  // Remote videos are registered via registerRemoteVideo().
   const callScreenRef = useRef<HTMLDivElement>(null);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState(false);
+
+  // Track which video elements need the remote stream (layout toggles can remount video nodes).
+  const remoteVideoElements = useRef(new Set<HTMLVideoElement>());
+
+  const attachRemoteStreamToAll = useCallback(() => {
+    const stream = remoteStreamRef.current;
+    if (!stream) return;
+    remoteVideoElements.current.forEach((el) => {
+      if (el && el.srcObject !== stream) {
+        el.srcObject = stream;
+        el.play().catch(() => undefined);
+      }
+    });
+  }, []);
+
+  const registerRemoteVideo = useCallback((el: HTMLVideoElement | null) => {
+    if (!el) return;
+    remoteVideoElements.current.add(el);
+    const stream = remoteStreamRef.current;
+    if (stream && el.srcObject !== stream) {
+      el.srcObject = stream;
+      el.play().catch(() => undefined);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      remoteVideoElements.current.clear();
+    };
+  }, []);
 
   const [calleeId, setCalleeId] = useState(calleeParam);
   const [calleeUsername, setCalleeUsername] = useState<string>("");
@@ -336,7 +466,13 @@ export default function CallUI({
 
   const clearMediaElements = useCallback(() => {
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    remoteVideoElements.current.forEach((el) => {
+      try {
+        if (el) el.srcObject = null;
+      } catch {
+        /* ignore */
+      }
+    });
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
   }, []);
 
@@ -431,9 +567,8 @@ export default function CallUI({
     remoteDescriptionSetRef.current = false;
     const remoteStream = new MediaStream();
     remoteStreamRef.current = remoteStream;
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
+    console.log("[call] peer connection created", { senderUserId: userId, targetPeerId });
+    attachRemoteStreamToAll();
     if (remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = remoteStream;
     }
@@ -447,15 +582,49 @@ export default function CallUI({
             fromUserId: userId,
             candidate,
           });
+          console.log("[call] ice candidate added", { type: candidate?.candidate ? "candidate" : "unknown" });
         } catch (candidateError) {
           console.error("Failed to publish ICE candidate", candidateError);
         }
       },
       onTrack: (event) => {
-        event.streams[0]?.getTracks().forEach((track) => remoteStream.addTrack(track));
+        const track = event.track;
+        if (!track) return;
+
+        const existing = remoteStream.getTracks().find((t) => t.id === track.id);
+        if (!existing) {
+          remoteStream.addTrack(track);
+          console.log("[call] remote track added", { kind: track.kind, id: track.id });
+        }
+
+        event.streams.forEach((stream) => {
+          stream.getTracks().forEach((t) => {
+            const exists = remoteStream.getTracks().find((rt) => rt.id === t.id);
+            if (!exists) remoteStream.addTrack(t);
+          });
+        });
+
+        attachRemoteStreamToAll();
+
+        track.onended = () => {
+          try {
+            remoteStream.removeTrack(track);
+          } catch {
+            /* ignore */
+          }
+          console.log("[call] remote track ended", { kind: track.kind });
+        };
+        track.onmute = () => {
+          console.log("[call] remote track muted", { kind: track.kind });
+        };
+        track.onunmute = () => {
+          console.log("[call] remote track unmuted", { kind: track.kind });
+          attachRemoteStreamToAll();
+        };
       },
       onConnectionStateChange: (nextState) => {
         setConnectionState(nextState);
+        console.log("[call] connection state", nextState);
         if (nextState === "connected") {
           setStatus("connected");
           setError(null);
@@ -833,10 +1002,10 @@ export default function CallUI({
   }
 
   useEffect(() => {
-    if (status === "connected" && overlayVideoRef.current && remoteStreamRef.current) {
-      overlayVideoRef.current.srcObject = remoteStreamRef.current;
+    if (status === "connected") {
+      attachRemoteStreamToAll();
     }
-  }, [status]);
+  }, [status, attachRemoteStreamToAll]);
 
   useEffect(() => {
     const wantsShare = searchParams.get("share") === "1";
@@ -1040,7 +1209,12 @@ export default function CallUI({
                 {videoLayout === "split" ? (
                   <div className="grid h-full w-full grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-                      <video ref={overlayVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+                      <RemoteVideoElement
+                        registerRef={registerRemoteVideo}
+                        className="h-full w-full object-cover"
+                        remoteStream={remoteStreamRef.current}
+                        peerName={peerDisplayName}
+                      />
                     </div>
                     <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
                       <video ref={localVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
@@ -1048,7 +1222,12 @@ export default function CallUI({
                   </div>
                 ) : (
                   <div className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-                    <video ref={overlayVideoRef} autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
+                    <RemoteVideoElement
+                      registerRef={registerRemoteVideo}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      remoteStream={remoteStreamRef.current}
+                      peerName={peerDisplayName}
+                    />
                     <div className="absolute bottom-4 right-4 h-[140px] w-[210px] overflow-hidden rounded-xl bg-black/50 ring-1 ring-white/15 shadow-lg sm:h-[160px] sm:w-[240px]">
                       <video ref={localVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
                     </div>
@@ -1571,7 +1750,12 @@ export default function CallUI({
                     </div>
                     <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
                     {activeMode === "video" ? (
-                      <video ref={remoteVideoRef} autoPlay playsInline className={videoFrameClassName} />
+                      <RemoteVideoElement
+                        registerRef={registerRemoteVideo}
+                        className={videoFrameClassName}
+                        remoteStream={remoteStreamRef.current}
+                        peerName={peerDisplayName}
+                      />
                     ) : (
                       <div className={audioFrameClassName}>
                         <div className="space-y-3 text-center text-slate-100">

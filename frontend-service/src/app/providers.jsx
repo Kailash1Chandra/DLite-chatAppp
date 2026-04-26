@@ -8,6 +8,11 @@ import { ToastProvider } from '@/context/ToastContext';
 import { ConfirmProvider } from '@/context/ConfirmContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
+const QuickSwitcher = dynamic(() => import('@/components/QuickSwitcher'), {
+  ssr: false,
+  loading: () => null,
+});
+
 const IncomingCallOverlay = dynamic(() => import('@/components/IncomingCallOverlay'), {
   ssr: false,
   loading: () => null,
@@ -37,6 +42,7 @@ export function Providers({ children }) {
             <ConfirmProvider>
               <IncomingCallProvider>
                 <IncomingCallOverlay />
+                <QuickSwitcher />
                 <InAppNotificationListener />
                 <ToastViewport />
                 <ConfirmDialog />

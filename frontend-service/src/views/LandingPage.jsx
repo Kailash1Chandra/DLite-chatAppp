@@ -1,14 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
+  Bell,
+  Github,
   LayoutDashboard,
   Lock,
   MessageCircle,
+  Monitor,
   Radio,
   Sparkles,
+  Star,
+  Twitter,
   Users,
   Zap
 } from 'lucide-react';
@@ -19,6 +25,9 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { AppBrandRow } from '@/components/AppBrandRow';
 import { AppLogo } from '@/components/AppLogo';
 import { cn } from '@/lib/utils';
+import AnimatedChatPreview from '@/components/AnimatedChatPreview';
+import AnimatedCounter from '@/components/AnimatedCounter';
+import { prefersReducedMotion } from '@/lib/utils';
 
 /** Primary “Dashboard” CTA — shimmer + glow ring (header uses compact size) */
 const dashboardCtaClass = (compact) =>
@@ -49,14 +58,31 @@ const fadeUp = {
 
 export default function LandingPage() {
   const { isAuthenticated, user } = useAuth();
+  const reduce = useMemo(() => prefersReducedMotion(), []);
+  const [cycleIdx, setCycleIdx] = useState(0);
+  const cycleWords = useMemo(() => ['teams', 'friends', 'communities', 'creators'], []);
+
+  useEffect(() => {
+    if (reduce) return () => undefined;
+    const t = window.setInterval(() => setCycleIdx((i) => (i + 1) % cycleWords.length), 2500);
+    return () => window.clearInterval(t);
+  }, [reduce, cycleWords.length]);
 
   return (
     <div className="app-shell min-h-screen">
-      {/* Background: dots + glow */}
+      {/* Background: grid + glow */}
       <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="landing-dots absolute inset-0 opacity-80" />
-        <div className="anim-glow absolute -left-24 top-20 h-72 w-72 rounded-full bg-violet-400/25 dark:bg-violet-600/20" />
-        <div className="anim-glow absolute -right-20 top-36 h-64 w-64 rounded-full bg-indigo-300/20 [animation-delay:2s] dark:bg-indigo-500/15" />
+        <div
+          className="absolute inset-0 opacity-[0.55]"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(15,23,42,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,0.06) 1px, transparent 1px)',
+            backgroundSize: '64px 64px',
+            maskImage: 'radial-gradient(circle at 50% 20%, black 40%, transparent 72%)',
+          }}
+        />
+        <div className="anim-glow absolute -left-24 top-20 h-72 w-72 rounded-full bg-orange-400/20 dark:bg-orange-500/10" />
+        <div className="anim-glow absolute -right-24 top-28 h-72 w-72 rounded-full bg-pink-400/18 [animation-delay:2s] dark:bg-pink-500/10" />
       </div>
 
       {/* Sticky glass header */}
@@ -129,7 +155,7 @@ export default function LandingPage() {
               transition={{ ...fadeUp.transition, delay: 0.06 }}
             >
               Messaging that feels{' '}
-              <span className="bg-gradient-to-r from-violet-600 via-violet-500 to-indigo-500 bg-clip-text text-transparent dark:from-violet-300 dark:via-violet-200 dark:to-indigo-200">
+              <span className="bg-gradient-to-r from-ui-grad-from via-pink-500 to-amber-500 bg-clip-text text-transparent">
                 instant
               </span>
               .
@@ -157,89 +183,78 @@ export default function LandingPage() {
                 </Button>
               ) : (
                 <>
-                  <Button asChild className="anim-shimmer relative overflow-hidden">
+                  <Button asChild className="anim-shimmer relative h-12 overflow-hidden">
                     <Link href="/register">
                       Get started free <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
-                  <Button asChild variant="secondary">
+                  <Button asChild variant="secondary" className="h-12">
                     <Link href="/login">I have an account</Link>
                   </Button>
                 </>
               )}
             </motion.div>
 
-            {/* Quick tags */}
-            <motion.div
-              className="mt-8 flex flex-wrap gap-2"
-              {...fadeUp}
-              transition={{ ...fadeUp.transition, delay: 0.24 }}
-            >
-              <span className="badge inline-flex items-center gap-1.5">
-                <MessageCircle className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" />
-                DMs
-              </span>
-              <span className="badge inline-flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5 text-violet-700 dark:text-violet-300" />
-                Groups
-              </span>
-              <span className="badge inline-flex items-center gap-1.5">
-                <Radio className="h-3.5 w-3.5 text-pink-600 dark:text-pink-300" />
-                WebSockets
-              </span>
+            <motion.div className="mt-8 flex flex-col gap-5" {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.24 }}>
+              <div className="flex items-center gap-2">
+                <div className="-space-x-2">
+                  {['A', 'S', 'M', 'R', 'K'].map((c, i) => (
+                    <span
+                      key={c}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-ui-border bg-white/70 text-xs font-bold text-slate-800 shadow-[var(--shadow-soft)] dark:bg-white/10 dark:text-slate-100"
+                      style={{ zIndex: 10 - i }}
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
+                <div className="text-sm text-slate-700 dark:text-slate-200">
+                  <span className="font-semibold">Join 1000+ users</span>
+                </div>
+              </div>
+
+              <div className="text-sm text-slate-600 dark:text-slate-300">
+                Build for{' '}
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={cycleWords[cycleIdx]}
+                    initial={reduce ? { opacity: 1 } : { opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduce ? { opacity: 1 } : { opacity: 0, y: -6 }}
+                    transition={{ duration: reduce ? 0 : 0.2 }}
+                    className="inline-block font-semibold text-slate-900 dark:text-slate-50"
+                  >
+                    {cycleWords[cycleIdx]}
+                  </motion.span>
+                </AnimatePresence>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <span className="badge inline-flex items-center gap-1.5">
+                  <MessageCircle className="h-3.5 w-3.5 text-[color:var(--ui-accent)]" />
+                  DMs
+                </span>
+                <span className="badge inline-flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-[color:var(--ui-accent)]" />
+                  Groups
+                </span>
+                <span className="badge inline-flex items-center gap-1.5">
+                  <Radio className="h-3.5 w-3.5 text-[color:var(--ui-accent)]" />
+                  Realtime
+                </span>
+              </div>
             </motion.div>
           </section>
 
           {/* Preview card */}
           <motion.section
             id="preview"
-            className="card anim-fade-up relative scroll-mt-24 p-5 md:p-6"
+            className="relative scroll-mt-24"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, delay: 0.06, ease: [0.2, 0.9, 0.2, 1] }}
           >
-            <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-violet-500/10 via-transparent to-indigo-400/10" />
-            <div className="relative mb-4 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Live preview</p>
-                <p className="text-sm text-slate-600 dark:text-slate-300">How the app feels — glass-style UI</p>
-              </div>
-              <span className="badge border-emerald-600/30 bg-emerald-500/15 text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
-                Online
-              </span>
-            </div>
-            <div className="relative grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
-                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Private Chat</div>
-                <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">Message a specific user by user ID.</div>
-                <div className="mt-4 space-y-2">
-                  <div className="relative w-[92%] rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-xs text-slate-800 dark:border-transparent dark:bg-white/7 dark:text-slate-200">
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400">You</div>
-                    Hey! quick update?
-                  </div>
-                  <div className="relative ml-auto w-[86%] rounded-2xl bg-violet-600/15 px-3 py-2 text-xs text-slate-900 dark:bg-violet-500/20 dark:text-slate-100">
-                    <div className="text-[10px] text-slate-600 dark:text-slate-300">Teammate</div>
-                    Done. Shipping now.
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
-                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Group Chat</div>
-                <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">Broadcast to a group by group ID.</div>
-                <div className="mt-4 space-y-2">
-                  <div className="relative w-[90%] rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-xs text-slate-800 dark:border-transparent dark:bg-white/7 dark:text-slate-200">
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400">#design</div>
-                    New landing animations?
-                  </div>
-                  <div className="relative ml-auto w-[84%] rounded-2xl bg-emerald-500/10 px-3 py-2 text-xs text-slate-900 dark:text-slate-100">
-                    <div className="text-[10px] text-slate-600 dark:text-slate-300">#team</div>
-                    Looks clean. Approved.
-                  </div>
-                </div>
-              </div>
-
-            </div>
+            <AnimatedChatPreview />
           </motion.section>
         </div>
 
@@ -253,17 +268,63 @@ export default function LandingPage() {
             transition={{ duration: 0.28 }}
           >
             {[
-              { label: 'Stack', value: 'Next.js + React', sub: 'Modern frontend' },
-              { label: 'Realtime', value: 'Socket.io', sub: 'Low-latency events' },
-              { label: 'UX', value: 'One dashboard', sub: 'Chat, groups, calls' }
-            ].map((s) => (
+              {
+                label: 'Messages',
+                value: 1000,
+                suffix: '+ messages/sec',
+                sub: 'Optimized UI + realtime updates',
+                icon: Zap,
+              },
+              {
+                label: 'Uptime',
+                value: 99,
+                suffix: '.9% uptime',
+                sub: 'Stable sessions and retries',
+                icon: Bell,
+              },
+              {
+                label: 'Cold start',
+                value: 0,
+                suffix: 'ms cold start',
+                sub: 'Fast navigation + caching',
+                icon: Monitor,
+              },
+            ].map((s, idx) => (
               <div
                 key={s.label}
-                className="rounded-2xl border border-slate-200 bg-white/80 px-5 py-4 backdrop-blur-sm dark:border-white/10 dark:bg-white/[0.04]"
+                className="glass group relative overflow-hidden rounded-2xl px-5 py-4"
               >
-                <div className="text-xs font-medium uppercase tracking-wider text-slate-500">{s.label}</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{s.value}</div>
-                <div className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{s.sub}</div>
+                <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-gradient-to-br from-ui-grad-from/25 to-transparent" />
+                <div className="relative flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wider text-slate-600/80 dark:text-slate-200/70">
+                      {s.label}
+                    </div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                      <AnimatedCounter
+                        value={s.value}
+                        durationMs={900}
+                        format={(v) => (s.label === 'Uptime' ? `${v}` : `${v.toLocaleString()}`)}
+                      />
+                      <span>{s.suffix}</span>
+                    </div>
+                    <div className="mt-0.5 text-sm text-slate-600/70 dark:text-slate-300/70">{s.sub}</div>
+                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-ui-border bg-white/60 text-[color:var(--ui-accent)] shadow-[var(--shadow-soft)] dark:bg-white/10">
+                    <s.icon className="h-5 w-5" aria-hidden />
+                  </div>
+                </div>
+                <div className="mt-3 overflow-hidden rounded-xl border border-ui-border/60 bg-white/40 dark:bg-white/5">
+                  <details className="group/details">
+                    <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold text-slate-700/80 dark:text-slate-200/80">
+                      More
+                      <span className="float-right opacity-60 group-open/details:opacity-100">→</span>
+                    </summary>
+                    <div className="px-3 pb-3 text-xs text-slate-600/80 dark:text-slate-300/80">
+                      Tuned for smooth typing, quick loads, and clean UI state.
+                    </div>
+                  </details>
+                </div>
               </div>
             ))}
           </motion.div>
@@ -290,65 +351,58 @@ export default function LandingPage() {
 
           <div className="grid gap-4 md:grid-cols-3">
             {[
-              {
-                icon: MessageCircle,
-                title: 'Private messages',
-                desc: 'Direct userId based chat — simple API, clear UI.',
-                accent: 'from-violet-500/25 to-transparent'
-              },
-              {
-                icon: Users,
-                title: 'Group rooms',
-                desc: 'Broadcast with a group ID — team updates stay in one thread.',
-                accent: 'from-indigo-500/25 to-transparent'
-              },
-              {
-                icon: Zap,
-                title: 'Realtime feel',
-                desc: 'WebSockets for instant updates — typing indicators and delivery receipts can come later.',
-                accent: 'from-violet-400/15 to-transparent'
-              }
+              { icon: MessageCircle, title: 'Chat', desc: 'Fast DMs with a clean thread UI.', href: '#preview' },
+              { icon: Users, title: 'Groups', desc: 'Rooms that feel like modern messengers.', href: '#features' },
+              { icon: Radio, title: 'Calls', desc: 'Jump from chat to calls quickly.', href: '#features' },
+              { icon: Sparkles, title: 'AI Friend', desc: 'Playful assistant vibes (optional).', href: '#features' },
+              { icon: Lock, title: 'Encryption', desc: 'Security messaging ready for your policy.', href: '#features' },
+              { icon: Monitor, title: 'Cross-platform', desc: 'Responsive UI across screens.', href: '#features' },
             ].map((f, i) => (
               <motion.div
                 key={f.title}
-                className="card group relative overflow-hidden p-6"
+                className="card group relative overflow-hidden p-6 transition duration-200 hover:-translate-y-[2px] hover:border-ui-accent/40"
                 initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.28, delay: i * 0.04 }}
               >
                 <div
-                  className={`pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-gradient-to-br ${f.accent} opacity-80`}
+                  className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-gradient-to-br from-ui-grad-from/20 to-transparent opacity-80"
                 />
-                <div className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-violet-200/80 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/40 dark:text-violet-200">
-                  <f.icon className="h-5 w-5" />
+                <div className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-ui-border bg-ui-muted/60 text-[color:var(--ui-accent)] transition duration-200 group-hover:scale-[1.07] dark:bg-ui-muted/40">
+                  <f.icon className="h-5 w-5" aria-hidden />
                 </div>
                 <h3 className="relative mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">{f.title}</h3>
                 <p className="relative mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">{f.desc}</p>
+                <a href={f.href} className="relative mt-4 inline-flex text-sm font-semibold text-ui-link hover:underline">
+                  Learn more →
+                </a>
               </motion.div>
             ))}
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <section className="mt-14">
             <motion.div
-              className="card flex items-start gap-4 p-5"
+              className="mb-6 flex items-end justify-between gap-3"
               initial={{ opacity: 0, y: 12 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.28, delay: 0.08 }}
+              transition={{ duration: 0.28 }}
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-violet-600 dark:border-white/10 dark:bg-white/5 dark:text-violet-200">
-                <Lock className="h-5 w-5" />
-              </div>
               <div>
-                <h3 className="font-semibold text-slate-900 dark:text-slate-100">Account & access</h3>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                  JWT-based auth — one login to move between chat, groups, and calls. Customize this security messaging
-                  anytime.
+                <p className="badge mb-3 inline-flex items-center gap-1.5">
+                  <Star className="h-3.5 w-3.5 text-[color:var(--ui-accent)]" aria-hidden />
+                  Testimonials
                 </p>
+                <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-3xl">
+                  People love the speed
+                </h2>
               </div>
+              <p className="hidden text-sm text-slate-600 dark:text-slate-400 md:block">Auto-advances every 5s</p>
             </motion.div>
-          </div>
+
+            <Testimonials />
+          </section>
         </section>
 
         {/* CTA */}
@@ -392,18 +446,100 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="mx-auto mt-8 max-w-6xl border-t border-slate-200 px-4 py-10 dark:border-white/10">
-        <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
+      <Footer isAuthenticated={isAuthenticated} />
+    </div>
+  );
+}
+
+function Testimonials() {
+  const reduce = useMemo(() => prefersReducedMotion(), []);
+  const [idx, setIdx] = useState(0);
+  const list = useMemo(
+    () => [
+      { quote: '“Feels instant. Like Telegram but cleaner.”', name: 'Aarav', role: 'Designer' },
+      { quote: '“The UI is smooth — no weird refreshes.”', name: 'Sana', role: 'Frontend Dev' },
+      { quote: '“Groups + DMs in one dashboard is perfect.”', name: 'Rohit', role: 'Team Lead' },
+    ],
+    []
+  );
+
+  useEffect(() => {
+    if (reduce) return () => undefined;
+    const t = window.setInterval(() => setIdx((i) => (i + 1) % list.length), 5000);
+    return () => window.clearInterval(t);
+  }, [reduce, list.length]);
+
+  return (
+    <div className="relative">
+      <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {list.map((t, i) => (
+          <motion.div
+            key={t.name}
+            className={cn(
+              'glass snap-center shrink-0 rounded-3xl p-5',
+              'w-[85%] sm:w-[360px]',
+              i === idx ? 'ring-2 ring-[var(--ui-accent)]/25' : 'ring-1 ring-ui-border/60'
+            )}
+            whileHover={reduce ? undefined : { y: -2 }}
+            transition={{ duration: 0.2 }}
+          >
+            <p className="text-sm leading-relaxed text-slate-900 dark:text-slate-50">{t.quote}</p>
+            <div className="mt-4 flex items-center gap-3">
+              <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-ui-grad-from to-ui-grad-to text-white shadow-[var(--shadow-accent)]" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-900 dark:text-slate-50">{t.name}</div>
+                <div className="text-xs text-slate-600 dark:text-slate-300">{t.role}</div>
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="mt-4 flex items-center justify-center gap-2">
+        {list.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            aria-label={`Go to testimonial ${i + 1}`}
+            onClick={() => setIdx(i)}
+            className={cn(
+              'h-2 w-2 rounded-full transition',
+              i === idx ? 'bg-[color:var(--ui-accent)]' : 'bg-ui-border'
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Footer({ isAuthenticated }) {
+  return (
+    <footer className="mt-16 border-t border-ui-border bg-ui-shell/60 backdrop-blur-sm">
+      <div className="mx-auto max-w-6xl px-4 py-12">
+        <div className="grid gap-10 md:grid-cols-[1.2fr_2fr]">
           <div>
             <div className="flex items-center gap-2">
               <AppLogo variant="footer" />
               <span className="font-semibold text-slate-800 dark:text-slate-200">D-Lite</span>
             </div>
-            <p className="mt-3 max-w-xs text-sm text-slate-600 dark:text-slate-500">
-              Chat, groups & calls — a lightweight experience.
+            <p className="mt-3 max-w-xs text-sm text-slate-600 dark:text-slate-400">
+              Premium chat UI with groups and calls — tuned for speed.
             </p>
+            <div className="mt-5 flex items-center gap-2 text-slate-600 dark:text-slate-300">
+              <a className="rounded-xl p-2 hover:bg-ui-muted" href="#" aria-label="Twitter">
+                <Twitter className="h-5 w-5" aria-hidden />
+              </a>
+              <a className="rounded-xl p-2 hover:bg-ui-muted" href="#" aria-label="GitHub">
+                <Github className="h-5 w-5" aria-hidden />
+              </a>
+              <a className="rounded-xl p-2 hover:bg-ui-muted" href="#" aria-label="LinkedIn">
+                <Bell className="h-5 w-5" aria-hidden />
+              </a>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
+
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Product</div>
               <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-400">
@@ -412,15 +548,21 @@ export default function LandingPage() {
                     Features
                   </a>
                 </li>
-                {isAuthenticated && (
+                <li>
+                  <a href="#preview" className="no-underline hover:text-slate-900 dark:hover:text-slate-200">
+                    Live preview
+                  </a>
+                </li>
+                {isAuthenticated ? (
                   <li>
                     <Link href="/dashboard" className="no-underline hover:text-slate-900 dark:hover:text-slate-200">
                       Dashboard
                     </Link>
                   </li>
-                )}
+                ) : null}
               </ul>
             </div>
+
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Account</div>
               <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-400">
@@ -434,19 +576,65 @@ export default function LandingPage() {
                     Register
                   </Link>
                 </li>
+                <li>
+                  <Link href="/forgot-password" className="no-underline hover:text-slate-900 dark:hover:text-slate-200">
+                    Forgot password
+                  </Link>
+                </li>
               </ul>
             </div>
-            <div className="col-span-2 sm:col-span-1">
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Build</div>
-              <p className="mt-3 text-sm text-slate-600 dark:text-slate-500">Next.js · React · Tailwind</p>
+
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Resources</div>
+              <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <li>
+                  <a href="#" className="no-underline hover:text-slate-900 dark:hover:text-slate-200">
+                    Docs
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="no-underline hover:text-slate-900 dark:hover:text-slate-200">
+                    Status
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="no-underline hover:text-slate-900 dark:hover:text-slate-200">
+                    Support
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Legal</div>
+              <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <li>
+                  <a href="#" className="no-underline hover:text-slate-900 dark:hover:text-slate-200">
+                    Privacy
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="no-underline hover:text-slate-900 dark:hover:text-slate-200">
+                    Terms
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="no-underline hover:text-slate-900 dark:hover:text-slate-200">
+                    Cookies
+                  </a>
+                </li>
+              </ul>
             </div>
           </div>
         </div>
-        <div className="mt-8 flex flex-col items-center gap-1 text-center text-xs text-slate-500 dark:text-slate-600">
-          <p>Contact the developer: <a className="underline underline-offset-2 hover:text-slate-900 dark:hover:text-slate-200" href="mailto:developer@d-lite.com">developer@d-lite.com</a></p>
+
+        <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-ui-border pt-6 text-xs text-slate-500 dark:text-slate-500 sm:flex-row">
           <p>© {new Date().getFullYear()} D-Lite</p>
+          <p>
+            Made with <span aria-hidden="true">❤️</span> in India
+          </p>
         </div>
-      </footer>
-    </div>
+      </div>
+    </footer>
   );
 }

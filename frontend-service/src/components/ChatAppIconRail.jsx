@@ -5,7 +5,6 @@ import {
   BarChart2,
   Database,
   Gift,
-  LayoutGrid,
   Megaphone,
   MessageCircle,
   Phone,
@@ -17,19 +16,32 @@ import { AppHeaderMenu } from '@/components/AppHeaderMenu';
 import { ProfileMenu } from '@/components/ProfileMenu';
 
 const linkInactiveH =
-  'flex min-h-[3.25rem] w-[4.25rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-1.5 py-1.5 text-slate-600 transition hover:bg-ui-muted hover:text-ui-accent dark:text-slate-300';
+  'flex min-h-[3.25rem] w-[4.25rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-1.5 py-1.5 text-slate-600 transition hover:scale-[1.05] hover:bg-ui-muted hover:text-ui-accent active:scale-[0.98] dark:text-slate-300';
 
 const linkActiveH =
-  'flex min-h-[3.25rem] w-[4.25rem] flex-col items-center justify-center gap-0.5 rounded-2xl bg-ui-accent px-1.5 py-1.5 text-ui-on-accent shadow-sm shadow-violet-900/15 dark:shadow-black/25';
+  'flex min-h-[3.25rem] w-[4.25rem] flex-col items-center justify-center gap-0.5 rounded-2xl bg-ui-accent px-1.5 py-1.5 text-ui-on-accent shadow-[var(--shadow-accent)] ring-1 ring-white/15 dark:shadow-black/25';
 
 const linkInactiveV =
-  'flex h-10 w-10 items-center justify-center rounded-xl text-ui-rail-fg-muted transition hover:bg-ui-muted hover:text-ui-accent dark:hover:bg-white/10 dark:hover:text-ui-rail-fg';
+  'flex h-10 w-10 items-center justify-center rounded-xl text-ui-rail-fg-muted transition hover:scale-[1.05] hover:bg-ui-muted hover:text-ui-accent active:scale-[0.98] dark:hover:bg-white/10 dark:hover:text-ui-rail-fg';
 
 const linkActiveV =
-  'flex h-10 w-10 items-center justify-center rounded-xl bg-ui-accent text-ui-on-accent shadow-sm dark:shadow-inner dark:ring-1 dark:ring-white/15';
+  'flex h-10 w-10 items-center justify-center rounded-xl bg-ui-accent text-ui-on-accent shadow-[var(--shadow-accent)] ring-1 ring-white/20 dark:shadow-inner dark:ring-white/15';
 
 const iconBtnGhost =
   'flex h-10 w-10 cursor-not-allowed items-center justify-center rounded-xl text-ui-rail-fg-muted opacity-45';
+
+function SoonIcon({ Icon, title }) {
+  return (
+    <span className="relative">
+      <span className={iconBtnGhost} title={title}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="absolute -right-1 -top-1 rounded-full border border-ui-border bg-ui-panel px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-slate-600 dark:text-slate-200">
+        soon
+      </span>
+    </span>
+  );
+}
 
 /**
  * @param {'horizontal' | 'vertical'} [props.variant]
@@ -59,26 +71,13 @@ export function ChatAppIconRail({
             <Phone className="h-5 w-5" />
           </Link>
           <div className="my-1 h-px w-7 bg-ui-border" aria-hidden />
-          <Link href="/" className={linkInactiveV} title="Home">
-            <LayoutGrid className="h-5 w-5" />
-          </Link>
-          <span className={iconBtnGhost} title="Analytics — coming soon">
-            <BarChart2 className="h-5 w-5" />
-          </span>
-          <span className={iconBtnGhost} title="Campaigns — coming soon">
-            <Megaphone className="h-5 w-5" />
-          </span>
-          <span className={iconBtnGhost} title="Data — coming soon">
-            <Database className="h-5 w-5" />
-          </span>
+          <SoonIcon Icon={BarChart2} title="Analytics — coming soon" />
+          <SoonIcon Icon={Megaphone} title="Campaigns — coming soon" />
+          <SoonIcon Icon={Database} title="Data — coming soon" />
         </div>
         <div className="mt-auto flex flex-col items-center gap-2 border-t border-ui-border pt-3">
-          <span className={iconBtnGhost} title="Rewards — coming soon">
-            <Gift className="h-5 w-5" />
-          </span>
-          <span className={iconBtnGhost} title="Settings — use profile menu">
-            <Settings className="h-5 w-5" />
-          </span>
+          <SoonIcon Icon={Gift} title="Rewards — coming soon" />
+          <SoonIcon Icon={Settings} title="Settings — coming soon" />
           <div className="flex flex-col items-center gap-1 [&_button]:text-ui-rail-fg [&_button:hover]:bg-ui-muted dark:[&_button:hover]:bg-white/10">
             <AppHeaderMenu
               collapseActionsInMenu
@@ -86,7 +85,10 @@ export function ChatAppIconRail({
               chatsUnreadCount={dmUnreadCount}
               menuLinks={menuLinks}
             />
-            <ProfileMenu />
+            <div className="relative">
+              <ProfileMenu />
+              <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-ui-rail" />
+            </div>
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import '@/styles/globals.css';
-import { Providers } from './providers';
+import ClientLayout from './ClientLayout';
 import { Inter } from 'next/font/google';
 
 const inter = Inter({
@@ -31,7 +31,7 @@ export default function RootLayout({ children }) {
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className={`min-h-screen font-sans antialiased ${inter.className}`}>
-        <Providers>{children}</Providers>
+        <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
   );

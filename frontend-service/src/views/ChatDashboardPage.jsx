@@ -1643,15 +1643,59 @@ export default function ChatDashboardPage() {
                       Loading…
                     </div>
                   ) : displayedRecentChats.length === 0 ? (
-                    <p className="px-2 py-4 text-center text-xs text-slate-500">
-                      {inboxMailbox === 'archived' ? 'No archived threads.' : 'No conversations yet. Search above to start.'}
-                    </p>
+                    <div className="px-2 py-6">
+                      <div className="glass rounded-[1.5rem] px-5 py-6 text-center">
+                        <svg width="64" height="64" viewBox="0 0 64 64" className="mx-auto" aria-hidden="true">
+                          <defs>
+                            <linearGradient id="dliteBubbles" x1="0" y1="0" x2="1" y2="1">
+                              <stop offset="0" stopColor="#f97316" />
+                              <stop offset="0.55" stopColor="#ea580c" />
+                              <stop offset="1" stopColor="#c2410c" />
+                            </linearGradient>
+                          </defs>
+                          <path
+                            d="M12 20c0-5 4-9 9-9h22c5 0 9 4 9 9v12c0 5-4 9-9 9H31l-8 7v-7h-2c-5 0-9-4-9-9V20Z"
+                            fill="url(#dliteBubbles)"
+                            opacity="0.92"
+                          />
+                          <path
+                            d="M20 22h24M20 28h18"
+                            stroke="rgba(255,255,255,0.55)"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <p className="mt-3 text-sm font-extrabold tracking-tight text-slate-900 dark:text-slate-50">
+                          {inboxMailbox === 'archived' ? 'No archived chats' : 'Quiet around here'}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                          {inboxMailbox === 'archived'
+                            ? 'When you archive chats, they’ll show up here.'
+                            : 'Find someone to chat with.'}
+                        </p>
+                        {inboxMailbox !== 'archived' ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="mt-4 h-9 rounded-full px-4 text-xs"
+                            onClick={() => {
+                              setAddUserOpen(true);
+                              setChatFilterOpen(false);
+                              setTimeout(() => addUserInputRef.current?.focus(), 50);
+                            }}
+                          >
+                            Start a chat
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
                   ) : (
                     displayedRecentChats.map((chat) => {
                       const selected = activeUserId.trim() === chat.peerId;
                       const unread = Number(chat.unreadCount || 0);
                       const displayName = String(chat.peerUsername || '').trim() || 'User';
                       const initials = getInitials(displayName);
+                      const isTypingHere = selected && typingUsers.length > 0;
                       return (
                         <div
                           key={chat.threadId}
@@ -1683,19 +1727,23 @@ export default function ChatDashboardPage() {
                             });
                           }}
                           className={cn(
-                            'group relative flex w-full cursor-pointer gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus)]',
+                            'group relative flex w-full cursor-pointer gap-3 rounded-3xl border px-3 py-3 text-left transition outline-none',
+                            'focus-visible:ring-2 focus-visible:ring-[var(--ui-focus)]',
                             selected
-                              ? 'bg-violet-50 text-slate-900 shadow-sm ring-1 ring-violet-200 dark:bg-violet-500/10 dark:text-slate-100 dark:ring-violet-500/25'
-                              : 'text-slate-800 hover:bg-ui-panel dark:text-slate-100 dark:hover:bg-ui-muted'
+                              ? 'border-ui-row-selected-border bg-ui-row-selected text-slate-900 shadow-[var(--shadow-soft)]'
+                              : 'border-ui-border/40 bg-ui-panel/60 hover:bg-ui-panel dark:bg-ui-panel/70 dark:hover:bg-ui-muted'
                           )}
                         >
                           {selected ? (
-                            <span className="absolute left-0 top-2.5 h-[calc(100%-20px)] w-1.5 rounded-r-full bg-violet-500" aria-hidden />
+                            <span className="absolute left-0 top-3 h-[calc(100%-24px)] w-1 rounded-r-full bg-[color:var(--ui-accent)]" aria-hidden />
                           ) : null}
                           <div
                             className={cn(
-                              'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-1 ring-black/5 dark:ring-white/10',
-                              avatarTone(displayName)
+                              'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xs font-extrabold ring-1 ring-black/5 dark:ring-white/10',
+                              avatarTone(displayName),
+                              'after:absolute after:inset-[-2px] after:rounded-[1.1rem] after:ring-2 after:ring-transparent',
+                              'after:transition after:duration-200',
+                              selected ? 'after:ring-[color:var(--ui-accent)]/25' : null
                             )}
                             aria-hidden
                           >
@@ -1706,41 +1754,75 @@ export default function ChatDashboardPage() {
                               <p
                                 className={cn(
                                   'flex min-w-0 items-center gap-1 truncate text-sm font-semibold',
-                                  selected ? 'text-slate-900 dark:text-slate-100' : 'text-slate-800 dark:text-slate-100'
+                                  'text-slate-900 dark:text-slate-100'
                                 )}
                               >
-                                <span className="truncate">{chat.peerUsername}</span>
+                                <span className="truncate">{displayName}</span>
                                 {chat.locked && <Lock className="h-3.5 w-3.5 shrink-0 opacity-80" />}
                                 {chat.archived && <Archive className="h-3.5 w-3.5 shrink-0 opacity-80" />}
                               </p>
-                              <span
-                                className={cn(
-                                  'shrink-0 text-[11px] tabular-nums',
-                                  selected ? 'text-violet-700/70 dark:text-violet-200/70' : 'text-slate-400 dark:text-slate-500'
-                                )}
-                              >
-                                {formatListTime(chat.lastAt)}
-                              </span>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <span
+                                  className={cn(
+                                    'shrink-0 text-[11px] tabular-nums',
+                                    selected ? 'text-ui-accent-text/80' : 'text-slate-400 dark:text-slate-500'
+                                  )}
+                                >
+                                  {formatListTime(chat.lastAt)}
+                                </span>
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    'ml-1 hidden h-8 w-8 items-center justify-center rounded-xl text-slate-500 transition',
+                                    'hover:bg-ui-muted hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-50',
+                                    'group-hover:inline-flex'
+                                  )}
+                                  aria-label="More"
+                                  title="More"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const r = e.currentTarget.getBoundingClientRect();
+                                    setRecentMenu({
+                                      x: Math.round(r.right),
+                                      y: Math.round(r.bottom),
+                                      chat
+                                    });
+                                  }}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+                              </div>
                             </div>
                             <div className="mt-0.5 flex items-center justify-between gap-2">
                               <p
                                 className={cn(
                                   'min-w-0 flex-1 truncate text-xs',
-                                  selected ? 'text-violet-700/80 dark:text-violet-200/80' : 'text-slate-500 dark:text-slate-400'
+                                  selected ? 'text-ui-accent-text/80' : 'text-slate-500 dark:text-slate-400'
                                 )}
                               >
-                                {safeMessagePreview(chat.lastMessage) || 'Message'}
+                                {isTypingHere ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className="font-semibold">typing</span>
+                                    <span className="inline-flex items-center gap-1" aria-hidden="true">
+                                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--ui-accent)] [animation-delay:-0.25s]" />
+                                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--ui-accent)] [animation-delay:-0.12s]" />
+                                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--ui-accent)]" />
+                                    </span>
+                                  </span>
+                                ) : (
+                                  safeMessagePreview(chat.lastMessage) || 'Message'
+                                )}
                               </p>
                               {unread > 0 ? (
                                 <span
                                   className={cn(
-                                    'inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
-                                    selected
-                                      ? 'bg-violet-600 text-white'
-                                      : 'bg-gradient-to-r from-ui-grad-from to-ui-grad-to text-white shadow-sm'
+                                    'inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-extrabold',
+                                    'bg-gradient-to-r from-ui-grad-from to-ui-grad-to text-white shadow-[var(--shadow-soft)]',
+                                    'motion-safe:animate-[pulse_1.2s_ease-in-out_1]'
                                   )}
                                 >
-                                  {unread > 99 ? '99+' : unread}
+                                  ({unread > 99 ? '99+' : unread})
                                 </span>
                               ) : null}
                             </div>
@@ -2206,49 +2288,71 @@ export default function ChatDashboardPage() {
                 </div>
               )}
 
-              {messages.length === 0 && (
+              {!activeUserId.trim() ? (
+                <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-14 text-center">
+                  <div className="glass w-full max-w-md rounded-[2rem] px-7 py-8">
+                    <svg width="84" height="84" viewBox="0 0 84 84" className="mx-auto" aria-hidden="true">
+                      <defs>
+                        <linearGradient id="dlitePlane" x1="0" y1="0" x2="1" y2="1">
+                          <stop offset="0" stopColor="#f97316" />
+                          <stop offset="0.55" stopColor="#ea580c" />
+                          <stop offset="1" stopColor="#c2410c" />
+                        </linearGradient>
+                      </defs>
+                      <path
+                        d="M10 42L74 12 56 72 38 50 10 42Z"
+                        fill="url(#dlitePlane)"
+                        opacity="0.95"
+                      />
+                      <path
+                        d="M10 42L74 12 38 50"
+                        stroke="rgba(255,255,255,0.55)"
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M38 50L56 72"
+                        stroke="rgba(255,255,255,0.55)"
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <p className="mt-4 text-base font-extrabold tracking-tight text-slate-900 dark:text-slate-50">
+                      Pick a chat to start messaging
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                      Tip: Press <span className="font-semibold">Ctrl/Cmd + K</span> to search.
+                    </p>
+                  </div>
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-12 text-center">
-                  <div className="rounded-3xl border border-dashed border-ui-border bg-ui-panel px-6 py-8">
+                  <div className="glass w-full max-w-md rounded-[2rem] px-7 py-8">
                     <MessageCircle className="mx-auto h-10 w-10 text-ui-accent" />
-                    <p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-100">No messages yet</p>
-                    <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
-                      Say hi to start the conversation.
+                    <p className="mt-3 text-base font-extrabold tracking-tight text-slate-900 dark:text-slate-50">
+                      Say hi to {peerUsername || peerShort || 'them'} 👋
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                      Quick starters
                     </p>
                     <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="h-8 rounded-full px-4 text-xs"
-                        disabled={!activeUserId.trim() || sendingMessage}
-                        onClick={() => sendQuickMessage('hi')}
-                      >
-                        Hi
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="h-8 rounded-full px-4 text-xs"
-                        disabled={!activeUserId.trim() || sendingMessage}
-                        onClick={() => sendQuickMessage('hello')}
-                      >
-                        Hello
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="h-8 rounded-full px-4 text-xs"
-                        disabled={!activeUserId.trim() || sendingMessage}
-                        onClick={() => sendQuickMessage('namaste')}
-                      >
-                        Namaste
-                      </Button>
+                      {['Hi!', 'Hey 👋', 'How are you?'].map((t) => (
+                        <Button
+                          key={t}
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="h-9 rounded-full px-4 text-xs"
+                          disabled={!activeUserId.trim() || sendingMessage}
+                          onClick={() => setInput((prev) => (prev ? `${prev} ${t}` : t))}
+                        >
+                          {t}
+                        </Button>
+                      ))}
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
               </div>
 
             </div>
