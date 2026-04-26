@@ -1926,10 +1926,10 @@ export default function ZegoCallRoomPage() {
                       ) : null}
                     </>
                   ) : videoLayout === "dual" ? (
-                    <div className="grid min-h-0 w-full flex-1 grid-cols-1 gap-px bg-black sm:grid-cols-2">
+                    <div className="grid min-h-0 w-full flex-1 grid-cols-1 grid-rows-2 gap-px bg-black">
                       <div
                         data-dlite-dual-tile="remote"
-                        className="relative aspect-video w-full min-w-0 overflow-hidden rounded-xl bg-neutral-900 shadow-[inset_0_0_0_2px_rgba(34,211,238,0.85)]"
+                        className="relative min-h-0 w-full min-w-0 overflow-hidden rounded-xl bg-neutral-900 shadow-[inset_0_0_0_2px_rgba(34,211,238,0.85)]"
                       >
                         <div
                           id={`dlite-zego-remote-${primaryRemoteStreamId}`}
@@ -1968,7 +1968,7 @@ export default function ZegoCallRoomPage() {
                       </div>
                       <div
                         data-dlite-dual-tile="local"
-                        className="relative aspect-video w-full min-w-0 overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-white/10"
+                        className="relative min-h-0 w-full min-w-0 overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-white/10"
                       >
                         <div
                           id="dlite-zego-local"
