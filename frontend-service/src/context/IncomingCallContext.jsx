@@ -76,17 +76,21 @@ export function IncomingCallProvider({ children }) {
       try {
         const p = await getUserProfileById(fromId).catch(() => null);
         if (cancelled) return;
-        const username =
+        const usernameRaw =
           p?.username ||
           p?.user_metadata?.username ||
           p?.user_metadata?.full_name ||
           p?.user_metadata?.name ||
           p?.email ||
           fromId;
+        const isUuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          String(usernameRaw || '').trim()
+        );
+        const username = isUuidLike ? 'Unknown user' : usernameRaw;
         const photoURL = p?.avatarUrl || p?.avatar_url || p?.photoURL || p?.picture || '';
         setCallerProfile({ id: fromId, username, photoURL });
       } catch {
-        if (!cancelled) setCallerProfile({ id: fromId, username: fromId, photoURL: '' });
+        if (!cancelled) setCallerProfile({ id: fromId, username: 'Unknown user', photoURL: '' });
       }
     })();
     return () => {

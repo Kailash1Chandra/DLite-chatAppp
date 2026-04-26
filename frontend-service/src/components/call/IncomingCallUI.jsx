@@ -334,7 +334,7 @@ export default function IncomingCallUI({
                   stop();
                   onDecline?.();
                 }}
-                className="flex h-[70px] w-[70px] items-center justify-center rounded-full bg-gradient-to-b from-red-500 to-rose-500 text-white shadow-[0_8px_32px_rgba(239,68,68,0.5)] transition hover:scale-105 active:scale-95"
+                className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-gradient-to-b from-red-500 to-rose-500 text-white shadow-[0_10px_36px_rgba(239,68,68,0.55)] ring-1 ring-red-300/25 transition duration-200 hover:scale-[1.08] hover:brightness-110 active:scale-[0.96]"
                 aria-label="Decline"
               >
                 <PhoneOff className="h-7 w-7 rotate-[135deg]" />
@@ -362,7 +362,7 @@ export default function IncomingCallUI({
                     setAutoplayBlocked(!ok);
                     onAccept?.();
                   }}
-                  className="relative flex h-[70px] w-[70px] items-center justify-center rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-[0_8px_32px_rgba(16,185,129,0.5)] transition hover:scale-105 active:scale-95"
+                  className="relative flex h-[72px] w-[72px] items-center justify-center rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-[0_10px_36px_rgba(16,185,129,0.55)] ring-1 ring-emerald-200/25 transition duration-200 hover:scale-[1.08] hover:brightness-110 active:scale-[0.96]"
                   aria-label="Accept"
                 >
                   <Phone className="h-7 w-7" />

@@ -10,14 +10,16 @@ export default function IncomingCallOverlay() {
   if (!offer) return null;
   if (isOnCallPage) return null;
 
-  const callerName = callerProfile?.username || offer.fromUserId || 'Unknown user';
+  const rawCallerName = callerProfile?.username || '';
+  const isUuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawCallerName);
+  const callerName = rawCallerName && !isUuidLike ? rawCallerName : 'Unknown user';
   const photoURL = String(callerProfile?.photoURL || '').trim();
   return (
     <IncomingCallUI
       caller={{
         name: callerName,
         initial: String(callerName || 'U').slice(0, 1).toUpperCase(),
-        username: callerProfile?.username || undefined,
+        username: rawCallerName && !isUuidLike ? rawCallerName : undefined,
         avatarUrl: photoURL || undefined,
         verified: true,
       }}

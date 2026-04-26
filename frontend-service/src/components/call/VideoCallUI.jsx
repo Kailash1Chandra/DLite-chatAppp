@@ -303,6 +303,17 @@ export default function VideoCallUI({
     }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      try {
+        const setRef = remoteVideoElements.current;
+        setRef.clear();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, []);
+
   const localVideoRef = useRef(null);
   useEffect(() => {
     const el = localVideoRef.current;
@@ -358,6 +369,17 @@ export default function VideoCallUI({
     }
     onToggleVideo?.(next);
   }, [localStream, onToggleVideo, videoOff]);
+
+  useEffect(() => {
+    // If the local video track is already disabled, reflect it in UI.
+    try {
+      const t = localStream?.getVideoTracks?.()?.[0];
+      if (!t) return;
+      setVideoOff(!t.enabled);
+    } catch {
+      /* ignore */
+    }
+  }, [localStream]);
 
   const remoteHasVideo = useMemo(() => {
     const tracks = remoteStream?.getVideoTracks?.() || [];
