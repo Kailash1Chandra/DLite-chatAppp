@@ -1,15 +1,14 @@
 const { HttpError } = require("../utils/httpError");
 const { parse, createRoomSchema, joinRoomSchema, leaveRoomSchema, inviteSchema } = require("../utils/validation");
-const { getRoom, createRoom, addUserToRoom, removeUserFromRoom, listUsers } = require("../services/roomStore");
+const { getRoom, ensureRoom, listUsers } = require("../services/roomStore");
+const { getDisplayName } = require("../utils/displayName")
 
 async function createRoomHandler(req, res, next) {
   try {
     const { roomID } = parse(createRoomSchema, req.body);
-    if (getRoom(roomID)) throw new HttpError(409, "Room already exists");
-
-    const room = createRoom(roomID);
-    addUserToRoom(roomID, { userID: req.user.id, username: req.user.email || "User" });
-    res.json({ ok: true, roomID: room.roomID, users: listUsers(room) });
+    // Socket is the source of truth for membership. REST only validates / ensures room shell exists.
+    const room = ensureRoom(roomID, { status: "ringing", createdBy: String(req.user?.id || "").trim() })
+    res.json({ ok: true, roomID: room.roomID, users: listUsers(room) })
   } catch (e) {
     next(e);
   }
@@ -18,11 +17,9 @@ async function createRoomHandler(req, res, next) {
 async function joinRoomHandler(req, res, next) {
   try {
     const { roomID } = parse(joinRoomSchema, req.body);
-    const room = getRoom(roomID);
-    if (!room) throw new HttpError(404, "Room not found");
-
-    addUserToRoom(roomID, { userID: req.user.id, username: req.user.email || "User" });
-    res.json({ ok: true, roomID: room.roomID, users: listUsers(room) });
+    const room = getRoom(roomID)
+    if (!room) throw new HttpError(404, "Room not found")
+    res.json({ ok: true, roomID: room.roomID, users: listUsers(room) })
   } catch (e) {
     next(e);
   }
@@ -33,9 +30,8 @@ async function leaveRoomHandler(req, res, next) {
     const { roomID } = parse(leaveRoomSchema, req.body);
     const room = getRoom(roomID);
     if (!room) throw new HttpError(404, "Room not found");
-
-    const updated = removeUserFromRoom(roomID, req.user.id);
-    res.json({ ok: true, roomID, users: updated ? listUsers(updated) : [] });
+    // Informational only; actual leave happens via socket "room:leave".
+    res.json({ ok: true, roomID, users: listUsers(room) })
   } catch (e) {
     next(e);
   }
@@ -55,10 +51,10 @@ async function inviteToRoomHandler(req, res, next) {
     const delivered = typeof emitToUser === "function"
       ? emitToUser(inviteeUserID, "room:invite", {
           roomID,
-          invitedBy: { userID: inviterId, email: req.user?.email || null },
+          invitedBy: { userID: inviterId, displayName: getDisplayName(req.user), avatar: req.user?.user_metadata?.avatar_url || null },
           mode: "voice_or_video",
         })
-      : false;
+      : false
 
     res.json({ ok: true, roomID, inviteeUserID, delivered });
   } catch (e) {

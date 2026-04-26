@@ -12,6 +12,8 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@supabase/supabase-js": "^2.49.8",
     "@tanstack/react-virtual": "^3.13.24",
+    "@zeego/dropdown-menu": "^0.0.2-alpha.28",
+    "@zeego/menu": "^0.0.2-alpha.28",
     "framer-motion": "^12.35.2",
     "lucide-react": "^0.577.0",
     "mongodb": "^7.1.1",

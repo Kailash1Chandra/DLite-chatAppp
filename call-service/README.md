@@ -29,6 +29,8 @@ npm run dev
 - `ZEGO_SERVER_SECRET` (32 chars)
 - `PORT` (default `6000`)
 - `ALLOWED_ORIGINS` (comma-separated; optional)
+- `INVITE_TIMEOUT_MS` (default `30000`)
+- `NODE_ENV` (set to `production` in prod)
 
 ### API
 
@@ -117,6 +119,79 @@ Join a room channel to receive member updates:
 socket.emit("room:join", { roomID });
 socket.on("room:membersUpdated", ({ roomID, users }) => {});
 ```
+
+### Call lifecycle (Socket.IO)
+
+Client → Server events:
+
+- `call:start` `{ calleeID, type: "audio"|"video" }` → ack `{ ok, roomID, expiresAt }`
+- `call:accept` `{ roomID }` → ack `{ ok, roomID }`
+- `call:reject` `{ roomID, reason?: "declined"|"busy"|"other" }` → ack `{ ok, roomID }`
+- `call:cancel` `{ roomID }` → ack `{ ok, roomID }`
+- `call:end` `{ roomID }` → ack `{ ok, roomID }`
+
+Server → Client events:
+
+- `call:incoming` `{ roomID, caller: { userID, displayName, avatar? }, type, expiresAt }`
+- `call:accepted` `{ roomID, by: userID }`
+- `call:rejected` `{ roomID, by: userID, reason }`
+- `call:cancelled` `{ roomID, by: userID }`
+- `call:ended` `{ roomID, endedBy: userID, durationSeconds }`
+- `call:missed` `{ roomID, callee: userID, type }`
+- `call:timeout` `{ roomID }`
+
+Error codes (ack `ok:false`):
+
+- `BAD_REQUEST`
+- `USER_NOT_FOUND`
+- `USER_OFFLINE`
+- `USER_BUSY`
+- `ROOM_NOT_FOUND`
+- `FORBIDDEN`
+- `INVALID_STATE`
+- `NOT_INVITED`
+- `INTERNAL`
+
+Call flow (ASCII):
+
+```
+Caller                        Server                          Callee
+  | call:start(callee,type)     |                               |
+  |---------------------------->| validate + create room         |
+  |<----------- ack(ok,roomID)--| emit call:incoming             |
+  |                              |------------------------------>|
+  |                              | 30s timeout timer starts      |
+  | call:accept(roomID)?         |                               |
+  |<-----------------------------| callee emits call:accept       |
+  | emit call:accepted           |                               |
+  |<---------------------------->|------------------------------>|
+  | (room becomes active)        |                               |
+  | call:end(roomID)             |                               |
+  |----------------------------->| emit call:ended               |
+  |<---------------------------->|------------------------------>|
+```
+
+### Testing manually
+
+1. Start the service:
+
+```bash
+cd call-service
+cp .env.example .env
+npm install
+npm run dev
+```
+
+2. Open 2 browser tabs and connect Socket.IO with two different Supabase JWTs.
+
+3. Scenarios:
+- A calls B → B receives `call:incoming`
+- B accepts → both get `call:accepted`
+- B rejects → A gets `call:rejected`
+- A cancels ringing → B gets `call:cancelled`
+- No answer for 30s → A gets `call:missed` and B gets `call:timeout`
+- Active call end → both get `call:ended`
+- Refresh/disconnect tab mid ringing/active → expect cancel/reject/end behavior
 
 ### Notes
 

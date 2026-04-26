@@ -48,11 +48,60 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // Socket.IO (optional realtime)
-const { io, emitToUser } = initSocketServer(server);
+const { io, emitToUser, shutdown: shutdownSockets } = initSocketServer(server);
 app.set("io", io);
 app.set("emitToUser", emitToUser);
 
 server.listen(PORT, () => {
   console.log(`call-service listening on :${PORT}`);
 });
+
+function ts() {
+  return new Date().toISOString()
+}
+
+let shuttingDown = false
+
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return
+  shuttingDown = true
+  const startedAt = Date.now()
+  console.log(`[shutdown] begin`, { ts: ts(), signal })
+
+  // Stop accepting new connections
+  let serverClosed = false
+  try {
+    server.close(() => {
+      serverClosed = true
+      console.log(`[shutdown] http server closed`, { ts: ts() })
+    })
+  } catch (e) {
+    console.error(`[shutdown] server.close failed`, { ts: ts(), err: e?.message || String(e) })
+  }
+
+  // Disconnect sockets
+  try {
+    if (typeof shutdownSockets === "function") shutdownSockets("server_shutdown")
+  } catch (e) {
+    console.error(`[shutdown] socket shutdown failed`, { ts: ts(), err: e?.message || String(e) })
+  }
+
+  const timeoutMs = 10_000
+  const pollMs = 250
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (serverClosed) {
+      console.log(`[shutdown] complete`, { ts: ts(), ms: Date.now() - startedAt })
+      process.exit(0)
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, pollMs))
+  }
+
+  console.error(`[shutdown] timeout`, { ts: ts(), ms: Date.now() - startedAt })
+  process.exit(1)
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"))
+process.on("SIGINT", () => gracefulShutdown("SIGINT"))
 

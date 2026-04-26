@@ -27,5 +27,17 @@ const supabaseAdmin = (() => {
   return buildSupabaseClient(serviceKey);
 })();
 
-module.exports = { supabasePublic, supabaseAdmin, requireEnv };
+async function getUserByID(userID) {
+  const id = String(userID || "").trim()
+  if (!id) return null
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(id)
+    if (error || !data?.user) return null
+    return data.user
+  } catch {
+    return null
+  }
+}
+
+module.exports = { supabasePublic, supabaseAdmin, requireEnv, getUserByID };
 

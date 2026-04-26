@@ -1,4 +1,5 @@
 const { z } = require("zod");
+const { HttpError } = require("./httpError")
 
 const roomIDSchema = z
   .string()
@@ -19,9 +20,7 @@ function parse(schema, body) {
   const result = schema.safeParse(body);
   if (!result.success) {
     const msg = result.error.issues?.[0]?.message || "Invalid input";
-    const err = new Error(msg);
-    err.status = 400;
-    throw err;
+    throw new HttpError(400, msg)
   }
   return result.data;
 }

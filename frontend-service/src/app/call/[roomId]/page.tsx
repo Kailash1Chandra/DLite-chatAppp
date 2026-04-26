@@ -658,6 +658,7 @@ export default function ZegoCallRoomPage() {
 
   useEffect(() => {
     if (!engineRef.current) return;
+    const zg = engineRef.current;
     remoteTiles.forEach(({ streamId }) => {
       const remoteStream = remoteStreamsRef.current[streamId];
       const mountId = `dlite-zego-remote-${streamId}`;
@@ -670,26 +671,50 @@ export default function ZegoCallRoomPage() {
           mountNode.innerHTML = "";
           (mountNode as HTMLElement).dataset.boundStreamId = streamId;
         }
-        // Attach via a real <video> element so audio reliably plays too.
-        let el = mountNode.querySelector("video") as HTMLVideoElement | null;
-        if (!el) {
-          el = document.createElement("video");
-          el.autoplay = true;
-          el.playsInline = true;
-          el.muted = false;
-          el.style.width = "100%";
-          el.style.height = "100%";
-          el.style.objectFit = "cover";
-          mountNode.appendChild(el);
+
+        // Use ZEGO's renderer for video (most reliable across stream object shapes).
+        const remoteView = zg.createRemoteStreamView(remoteStream);
+        remoteView.play(mountId);
+
+        // Additionally attach audio via a hidden <audio> element to ensure voice plays.
+        const audioId = `dlite-zego-audio-${streamId}`;
+        let audio = document.getElementById(audioId) as HTMLAudioElement | null;
+        if (!audio) {
+          audio = document.createElement("audio");
+          audio.id = audioId;
+          audio.autoplay = true;
+          // `playsInline` is a video-only property; keep audio simple.
+          audio.style.display = "none";
+          document.body.appendChild(audio);
         }
-        (el as any).srcObject = remoteStream;
-        // If autoplay is blocked, the existing "Enable" UI calls resumeAudioContext.
-        // Still attempt a best-effort play here.
-        Promise.resolve(el.play()).catch(() => undefined);
+        (audio as any).srcObject = remoteStream;
+        Promise.resolve(audio.play()).catch(() => undefined);
       } catch {
         /* ignore */
       }
     });
+  }, [remoteTiles]);
+
+  useEffect(() => {
+    // Cleanup any dangling remote audio elements when streams go away.
+    const active = new Set(remoteTiles.map((t) => t.streamId));
+    const els = Array.from(document.querySelectorAll('audio[id^="dlite-zego-audio-"]')) as HTMLAudioElement[];
+    for (const el of els) {
+      const id = String(el.id || "");
+      const streamId = id.replace("dlite-zego-audio-", "");
+      if (!active.has(streamId)) {
+        try {
+          (el as any).srcObject = null;
+        } catch {
+          /* ignore */
+        }
+        try {
+          el.remove();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
   }, [remoteTiles]);
 
   useEffect(() => {
