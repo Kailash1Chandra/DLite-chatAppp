@@ -628,15 +628,26 @@ export default function ZegoCallRoomPage() {
 
   useEffect(() => {
     if (!engineRef.current) return;
-    const zg = engineRef.current;
     remoteTiles.forEach(({ streamId }) => {
       const remoteStream = remoteStreamsRef.current[streamId];
       const mountId = `dlite-zego-remote-${streamId}`;
       const mountNode = document.getElementById(mountId);
       if (!remoteStream || !mountNode || mountNode.childElementCount > 0) return;
       try {
-        const remoteView = zg.createRemoteStreamView(remoteStream);
-        remoteView.play(mountId);
+        // Attach via a real <video> element so audio reliably plays too.
+        // Some ZEGO view helpers can render video without unmuted audio depending on browser policies.
+        const el = document.createElement("video");
+        el.autoplay = true;
+        el.playsInline = true;
+        el.muted = false;
+        (el as any).srcObject = remoteStream;
+        el.style.width = "100%";
+        el.style.height = "100%";
+        el.style.objectFit = "cover";
+        mountNode.appendChild(el);
+        // If autoplay is blocked, the existing "Enable" UI calls resumeAudioContext.
+        // Still attempt a best-effort play here.
+        Promise.resolve(el.play()).catch(() => undefined);
       } catch {
         /* ignore */
       }
