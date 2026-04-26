@@ -321,7 +321,11 @@ export default function CallUI({
   }, []);
 
   const registerRemoteVideo = useCallback((el: HTMLVideoElement | null) => {
-    if (!el) return;
+    // React calls ref with null on unmount/remount; clearing avoids stale nodes in the Set.
+    if (!el) {
+      remoteVideoElements.current.clear();
+      return;
+    }
     remoteVideoElements.current.add(el);
     const stream = remoteStreamRef.current;
     if (stream && el.srcObject !== stream) {
