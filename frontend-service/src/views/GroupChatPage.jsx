@@ -79,6 +79,21 @@ function avatarTone(seed) {
   return tones[sum % tones.length];
 }
 
+function safeUrlPreviewLabel(url, msgType) {
+  const text = String(url || '').trim();
+  if (!/^https?:\/\/\S+$/i.test(text)) return '';
+  const noQuery = text.split('?')[0] || text;
+  const lower = noQuery.toLowerCase();
+
+  if (msgType === 'image' || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(lower)) return 'Photo';
+  if (msgType === 'video' || /\.(mp4|webm|mov|m4v|mkv)$/i.test(lower)) return 'Video';
+  if (msgType === 'audio' || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(lower)) return 'Audio';
+  if (msgType === 'file') return 'Attachment';
+
+  if (lower.includes('res.cloudinary.com/')) return 'Media';
+  return 'Link';
+}
+
 function linkifyGroupMessage(text) {
   if (text == null || text === '') return null;
   const str = String(text);
@@ -359,7 +374,7 @@ export default function GroupChatPage() {
                           <span className="truncate">Open file</span>
                         </a>
                       ) : (
-                        linkifyGroupMessage(m.message)
+                        isHttpUrl ? <span className="opacity-90">{safeUrlPreviewLabel(rawContent, msgType) || 'Link'}</span> : linkifyGroupMessage(rawContent)
                       )}
                     </div>
                   </div>

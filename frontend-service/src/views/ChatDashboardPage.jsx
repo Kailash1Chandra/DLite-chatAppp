@@ -183,6 +183,28 @@ function avatarTone(seed) {
   return tones[sum % tones.length];
 }
 
+function safeMessagePreview(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+
+  // Hide direct media URLs (Cloudinary, etc.) from previews.
+  const isUrl = /^https?:\/\/\S+$/i.test(text);
+  if (!isUrl) return text;
+
+  // Strip query string for extension checks.
+  const noQuery = text.split('?')[0] || text;
+  const lower = noQuery.toLowerCase();
+
+  if (/\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(lower)) return 'Photo';
+  if (/\.(mp4|webm|mov|m4v|mkv)$/i.test(lower)) return 'Video';
+  if (/\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(lower)) return 'Audio';
+
+  // Cloudinary image/video delivery URLs sometimes omit extensions.
+  if (lower.includes('res.cloudinary.com/')) return 'Media';
+
+  return 'Attachment';
+}
+
 const DM_POLL_PREFIX = '__DL_POLL__';
 
 function parseDmPoll(content) {
@@ -1684,7 +1706,7 @@ export default function ChatDashboardPage() {
                                   selected ? 'text-violet-700/80 dark:text-violet-200/80' : 'text-slate-500 dark:text-slate-400'
                                 )}
                               >
-                                {chat.lastMessage || 'Message'}
+                                {safeMessagePreview(chat.lastMessage) || 'Message'}
                               </p>
                               {unread > 0 ? (
                                 <span
