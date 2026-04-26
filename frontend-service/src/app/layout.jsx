@@ -14,7 +14,10 @@ export const metadata = {
   title: 'D-Lite',
   description: 'Chat • Groups • Calls',
   icons: {
-    icon: [{ url: '/images/logo.png', type: 'image/png' }],
+    icon: [
+      { url: '/favicon.ico', type: 'image/x-icon' },
+      { url: '/images/logo.png', type: 'image/png' },
+    ],
     apple: '/images/logo.png'
   }
 };
