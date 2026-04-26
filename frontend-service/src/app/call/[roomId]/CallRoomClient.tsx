@@ -133,34 +133,84 @@ function zegoReasonToString(reason: unknown): string {
  * Any value → safe UI string. Never relies on default `${obj}` / String(obj) for plain objects
  * (that becomes "[object Object]"). Used for error state and critical labels.
  */
-const UNREADABLE_ERROR_HINT =
-  "The app received an error it could not display. Check that you are signed in, the room link is valid, and microphone/camera permission is allowed. If it keeps happening, open DevTools (F12) → Console for details.";
+const FALLBACK_CALL_HINT =
+  "Sign in, open a valid room link, and allow microphone (and camera for video). If it still fails, check the browser console (F12).";
+
+/** Extra fields some SDKs put on Error while leaving message as "[object Object]". */
+function errorStructuredDetail(err: Error): string {
+  const anyE = err as Error & Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of ["code", "name"]) {
+    const v = anyE[k];
+    if (typeof v === "number" || (typeof v === "string" && v.trim())) out[k] = v;
+  }
+  for (const k of ["reason", "reasonText"]) {
+    const v = anyE[k];
+    if (typeof v === "string" && v.trim()) out[k] = v.trim();
+  }
+  for (const k of ["details", "data", "info", "body"]) {
+    const v = anyE[k];
+    if (v != null && (typeof v === "string" || typeof v === "number" || typeof v === "boolean")) {
+      out[k] = v;
+    } else if (v != null && typeof v === "object") {
+      try {
+        out[k] = JSON.stringify(v);
+      } catch {
+        out[k] = String(v);
+      }
+    }
+  }
+  if (Object.keys(out).length === 0) return "";
+  try {
+    return JSON.stringify(out);
+  } catch {
+    return "";
+  }
+}
+
+function isGarbageErrorMessage(raw: string): boolean {
+  const s = raw.trim();
+  return s === "[object Object]" || s === "Error: [object Object]" || /^Error:\s*\[object Object\]$/i.test(s);
+}
 
 function normalizeUiError(input: unknown): string {
   if (input == null) return "";
   if (typeof input === "string") {
     const s = input.trim();
-    if (s === "[object Object]" || s === "Error: [object Object]") return UNREADABLE_ERROR_HINT;
+    if (isGarbageErrorMessage(s)) return FALLBACK_CALL_HINT;
     return input;
   }
   if (typeof input === "number" && Number.isFinite(input)) return String(input);
   if (typeof input === "boolean") return String(input);
   if (input instanceof Error) {
     const raw = input.message?.trim() ?? "";
-    const isGarbage = raw === "[object Object]" || raw === "Error: [object Object]";
+    const isGarbage = isGarbageErrorMessage(raw);
     if (raw && !isGarbage) return raw;
     const cause = (input as Error & { cause?: unknown }).cause;
     if (cause !== undefined) {
       const fromCause = normalizeUiError(cause);
-      if (fromCause) return fromCause;
+      if (fromCause && fromCause !== FALLBACK_CALL_HINT) return fromCause;
     }
-    return isGarbage ? UNREADABLE_ERROR_HINT : "";
+    const structured = errorStructuredDetail(input);
+    if (structured) return `Call failed: ${structured}`;
+    return isGarbage || !raw ? FALLBACK_CALL_HINT : raw;
   }
   if (typeof input === "object") {
+    if (typeof Response !== "undefined" && input instanceof Response) {
+      return `HTTP ${input.status}${input.statusText ? ` ${input.statusText}` : ""}`.trim();
+    }
     const o = input as Record<string, unknown>;
     for (const k of ["message", "reason", "error", "msg", "description", "detail", "state"]) {
       const v = o[k];
       if (typeof v === "string" && v.trim()) return v.trim();
+      if (v != null && typeof v === "object" && !(v instanceof Response)) {
+        const nested = normalizeUiError(v);
+        if (nested && nested !== FALLBACK_CALL_HINT && !isGarbageErrorMessage(nested)) return nested;
+      }
+    }
+    for (const k of ["code", "errorCode"]) {
+      const v = o[k];
+      if (typeof v === "number" && Number.isFinite(v)) return `Error code ${v}`;
     }
     try {
       return JSON.stringify(input);
@@ -168,7 +218,8 @@ function normalizeUiError(input: unknown): string {
       return "Something went wrong";
     }
   }
-  return String(input);
+  const s = String(input).trim();
+  return isGarbageErrorMessage(s) ? FALLBACK_CALL_HINT : String(input);
 }
 
 function errorToUserMessage(e: unknown, fallback = "Something went wrong"): string {
@@ -365,9 +416,17 @@ async function applyZegoLoggingPolicy(zg?: InstanceType<typeof ZegoExpressEngine
  */
 function tameZegoRemoteLogger(zg: InstanceType<typeof ZegoExpressEngine> | null | undefined) {
   if (!zg) return;
+  try {
+    const zgv = zg as unknown as { appConfig?: { log_config?: { ws_log?: number } } };
+    const lc = zgv.appConfig?.log_config;
+    if (lc && typeof lc === "object") lc.ws_log = 0;
+  } catch {
+    /* ignore */
+  }
   const logger = (zg as unknown as { an?: Record<string, unknown> }).an as
     | {
-        enableWebSocketLog?: (enabled: boolean) => void;
+        /** Second arg `true` clears cache per zego-express-logger (default was hiding cleanup). */
+        enableWebSocketLog?: (enabled: boolean, clearCache?: boolean) => void;
         setRemoteLogLevel?: (level: string) => boolean;
         setLogLevel?: (level: string) => boolean;
       }
@@ -376,7 +435,7 @@ function tameZegoRemoteLogger(zg: InstanceType<typeof ZegoExpressEngine> | null 
   try {
     logger.setLogLevel?.("disable");
     logger.setRemoteLogLevel?.("disable");
-    logger.enableWebSocketLog?.(false);
+    logger.enableWebSocketLog?.(false, true);
   } catch {
     /* ignore */
   }
@@ -748,8 +807,14 @@ export default function ZegoCallRoomPage() {
 
       // Defer engine destruction slightly. ZEGO may still have in-flight post-login tasks
       // (cloud settings / loggers). Destroying immediately can trigger internal null deref errors.
+      // Close the weblogger socket first so Chrome is less likely to log a spurious WebSocket error.
       if (zg) {
         const zgToDestroy = zg;
+        try {
+          tameZegoRemoteLogger(zgToDestroy);
+        } catch {
+          /* ignore */
+        }
         engineDestroyTimerRef.current = window.setTimeout(() => {
           engineDestroyTimerRef.current = null;
           try {
@@ -757,7 +822,7 @@ export default function ZegoCallRoomPage() {
           } catch {
             /* ignore */
           }
-        }, 220);
+        }, 380);
       }
     };
 
@@ -779,7 +844,18 @@ export default function ZegoCallRoomPage() {
           signal: tokenAbort.signal,
         });
         window.clearTimeout(tokenTimeout);
-        const tokenJson = await tokenRes.json().catch(() => ({}));
+        const tokenRaw = await tokenRes.text();
+        let tokenJson: Record<string, unknown> = {};
+        if (tokenRaw.trim()) {
+          try {
+            tokenJson = JSON.parse(tokenRaw) as Record<string, unknown>;
+          } catch {
+            tokenJson = {
+              success: false,
+              message: `Token API returned non-JSON (HTTP ${tokenRes.status}). ${tokenRaw.slice(0, 180).trim()}${tokenRaw.length > 180 ? "…" : ""}`,
+            };
+          }
+        }
         if (!tokenRes.ok || tokenJson?.success === false) {
           const apiDetail = normalizeUiError(tokenJson?.message);
           const statusHint =
