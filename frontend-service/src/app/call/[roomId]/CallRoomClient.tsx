@@ -1,10 +1,25 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ZegoExpressEngine } from "zego-express-engine-webrtc";
-import { Mic, MicOff, Monitor, PhoneOff, Users, Video, VideoOff } from "lucide-react";
+import {
+  BadgeCheck,
+  Maximize2,
+  Mic,
+  MicOff,
+  Monitor,
+  MoreHorizontal,
+  PhoneOff,
+  PictureInPicture2,
+  Shield,
+  Sparkles,
+  Users,
+  Video,
+  VideoOff,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { buildHostedCallUrl, getInviteCodeFromRoomId } from "@/lib/callRoom";
 import { cn } from "@/lib/utils";
@@ -63,35 +78,143 @@ function AvatarBadge({ label }: { label: string }) {
   );
 }
 
-function AudioWaveform({ active = false }: { active?: boolean }) {
-  const bars = useMemo(() => Array.from({ length: 22 }, (_v, i) => i), []);
+function formatPeerIdAsDisplayName(id: string) {
+  const s = String(id || "")
+    .replace(/_/g, " ")
+    .trim();
+  if (!s) return "Participant";
+  return s
+    .split(/\s+/)
+    .map((w) => (w.length ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ""))
+    .filter(Boolean)
+    .join(" ");
+}
+
+function zegoLikeToMediaStream(s: unknown): MediaStream | null {
+  if (!s) return null;
+  if (s instanceof MediaStream) return s;
+  try {
+    const anyS = s as { getAudioTracks?: () => MediaStreamTrack[]; getVideoTracks?: () => MediaStreamTrack[] };
+    const at = anyS.getAudioTracks?.() || [];
+    const vt = anyS.getVideoTracks?.() || [];
+    const tracks = [...at, ...vt];
+    if (tracks.length) return new MediaStream(tracks);
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function useStreamAudioLevel(stream: MediaStream | null, active: boolean) {
+  const [level, setLevel] = useState(0);
+  useEffect(() => {
+    if (!active || !stream) {
+      setLevel(0);
+      return;
+    }
+    let ctx: AudioContext | null = null;
+    let raf = 0;
+    try {
+      ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.72;
+      src.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteFrequencyData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 1) sum += data[i];
+        const avg = sum / (data.length * 255);
+        setLevel(Math.min(1, avg * 3.2));
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    } catch {
+      setLevel(0);
+    }
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      try {
+        void ctx?.close();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [stream, active]);
+  return level;
+}
+
+function audioQualityFromZego(q: number): { label: string; bars: number } {
+  switch (q) {
+    case 0:
+      return { label: "Excellent", bars: 4 };
+    case 1:
+      return { label: "Good", bars: 3 };
+    case 2:
+      return { label: "Fair", bars: 2 };
+    case 3:
+      return { label: "Poor", bars: 1 };
+    case 4:
+      return { label: "Bad", bars: 0 };
+    default:
+      return { label: "—", bars: 0 };
+  }
+}
+
+function VoiceCallWaveform({ level, idle = false }: { level: number; idle?: boolean }) {
+  const bars = useMemo(() => Array.from({ length: 28 }, (_v, i) => i), []);
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (!active) return;
-    const id = window.setInterval(() => setTick((n) => n + 1), 110);
+    const id = window.setInterval(() => setTick((n) => n + 1), idle ? 100 : 66);
     return () => window.clearInterval(id);
-  }, [active]);
+  }, [idle]);
   return (
-    <div className="flex items-end justify-center gap-[3px]" aria-hidden="true">
+    <div className="flex h-12 w-full max-w-xl items-end justify-center gap-[2px] px-4" aria-hidden="true">
       {bars.map((i) => {
-        const base = 0.22 + Math.sin(i * 0.5) * 0.1;
-        const wobble = active ? (Math.sin(tick * 0.14 + i * 0.75) + 1) / 2 : 0.15;
-        const h = 6 + (active ? wobble : base) * 26;
+        const phase = tick * 0.12 + i * 0.55;
+        const idleWave = idle ? (Math.sin(phase) + 1) * 0.14 : 0;
+        const live = Math.max(0.1, level * (0.58 + Math.sin(i * 0.35) * 0.22));
+        const energy = idle ? Math.max(idleWave, live * 0.95) : live;
+        const h = 4 + energy * 40;
         return (
           <div
             // eslint-disable-next-line react/no-array-index-key
             key={i}
-            className="w-1 rounded-full"
+            className="w-[3px] max-w-[3px] shrink-0 rounded-full"
             style={{
               height: `${h}px`,
-              background: "linear-gradient(180deg, #fb923c, #ea580c)",
-              transition: "height 90ms ease-out",
-              filter: "drop-shadow(0 10px 22px rgba(234,88,12,0.20))",
-              opacity: 0.95,
+              background: "linear-gradient(180deg, #c084fc, #f472b6)",
+              transition: idle ? "height 95ms ease-out" : "height 45ms ease-out",
+              opacity: 0.85 + energy * 0.15,
+              boxShadow: "0 0 12px rgba(192,132,252,0.25)",
             }}
           />
         );
       })}
+    </div>
+  );
+}
+
+function ConnectionSignalBars({ bars, tone }: { bars: number; tone: "good" | "mid" | "bad" }) {
+  const h = [10, 16, 22];
+  const cls =
+    tone === "good"
+      ? "bg-emerald-400"
+      : tone === "mid"
+        ? "bg-amber-400"
+        : "bg-rose-400";
+  return (
+    <div className="flex items-end gap-0.5" aria-hidden="true">
+      {h.map((height, i) => (
+        <div
+          // eslint-disable-next-line react/no-array-index-key
+          key={i}
+          className={cn("w-1 rounded-[1px]", i < bars ? cls : "bg-white/20")}
+          style={{ height: `${height}px` }}
+        />
+      ))}
     </div>
   );
 }
@@ -150,6 +273,7 @@ export default function ZegoCallRoomPage() {
   const inviteCode = useMemo(() => getInviteCodeFromRoomId(roomId), [roomId]);
 
   const localRef = useRef<HTMLDivElement | null>(null);
+  const videoStageRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<ZegoExpressEngine | null>(null);
   const localStreamRef = useRef<any>(null);
   const publishedStreamIdRef = useRef<string>("");
@@ -174,6 +298,9 @@ export default function ZegoCallRoomPage() {
   const [remoteVideoState, setRemoteVideoState] = useState<Record<string, boolean>>({});
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [callNow, setCallNow] = useState<number>(Date.now());
+  const [remotePlayQuality, setRemotePlayQuality] = useState<number>(-1);
+  const [remotePeerDelayMs, setRemotePeerDelayMs] = useState<number | null>(null);
+  const [speakerOn, setSpeakerOn] = useState(true);
   const streamPollRef = useRef<number | null>(null);
   const roomPeersRef = useRef<Set<string>>(new Set());
 
@@ -214,15 +341,6 @@ export default function ZegoCallRoomPage() {
       default:
         return "Ready";
     }
-  }, [status]);
-
-  const statusTone = useMemo(() => {
-    if (status === "connected") return "text-emerald-700 dark:text-emerald-300";
-    if (status === "error") return "text-rose-700 dark:text-rose-300";
-    if (status === "logging_in" || status === "publishing" || status === "getting_token" || status === "initializing") {
-      return "text-amber-700 dark:text-amber-300";
-    }
-    return "text-slate-700 dark:text-slate-200";
   }, [status]);
 
   const applyLocalTrackState = useMemo(
@@ -755,6 +873,23 @@ export default function ZegoCallRoomPage() {
               if (code) setError(`Publish failed (${streamID}): code ${code}`);
             }
           );
+          (zg as unknown as { on?: (event: string, cb: (...args: unknown[]) => void) => void }).on?.(
+            "playQualityUpdate",
+            (...args: unknown[]) => {
+              if (cancelled) return;
+              const a1 = args[1];
+              const looksLikeStats = a1 !== null && typeof a1 === "object" && "audio" in (a1 as object);
+              const streamID = String(looksLikeStats ? args[0] : args[1] || "");
+              const stats = (looksLikeStats ? a1 : args[2]) as
+                | { audio?: { audioQuality?: number }; peerToPeerDelay?: number }
+                | undefined;
+              if (!streamID || streamID === publishedStreamIdRef.current) return;
+              const q = Number(stats?.audio?.audioQuality);
+              if (Number.isFinite(q)) setRemotePlayQuality(q);
+              const d = stats?.peerToPeerDelay;
+              if (typeof d === "number" && Number.isFinite(d)) setRemotePeerDelayMs(Math.round(d));
+            }
+          );
         } catch {
           /* ignore */
         }
@@ -888,6 +1023,16 @@ export default function ZegoCallRoomPage() {
     window.setTimeout(() => tryPlayLocalVideo(s, localRef.current), 0);
   }, [isScreenSharing]);
 
+  // Re-bind local preview when PiP vs solo layout changes (video mode).
+  useEffect(() => {
+    if (mode !== "video") return;
+    const s = localStreamRef.current || screenStreamRef.current;
+    if (!s) return;
+    tryPlayLocalVideo(s, localRef.current);
+    window.setTimeout(() => tryPlayLocalVideo(s, localRef.current), 0);
+    window.setTimeout(() => tryPlayLocalVideo(s, localRef.current), 250);
+  }, [mode, remoteTiles]);
+
   useEffect(() => {
     if (!engineRef.current) return;
     const zg = engineRef.current;
@@ -991,6 +1136,34 @@ export default function ZegoCallRoomPage() {
     return () => window.clearInterval(t);
   }, [callStartedAt, status]);
 
+  useEffect(() => {
+    if (remoteTiles.length === 0) {
+      setRemotePlayQuality(-1);
+      setRemotePeerDelayMs(null);
+    }
+  }, [remoteTiles.length]);
+
+  useEffect(() => {
+    if (mode !== "audio") return;
+    const audios = Array.from(document.querySelectorAll('audio[id^="dlite-zego-audio-"]')) as HTMLAudioElement[];
+    audios.forEach((a) => {
+      a.muted = !speakerOn;
+      a.volume = speakerOn ? 1 : 0;
+    });
+  }, [mode, remoteTiles, speakerOn]);
+
+  const primaryRemoteStreamIdForLevel = mode === "audio" ? remoteTiles[0]?.streamId || "" : "";
+  const activeRemoteWave =
+    mode === "audio" && status === "connected" && Boolean(primaryRemoteStreamIdForLevel);
+  const activeLocalWave = mode === "audio" && !activeRemoteWave;
+  const remoteMediaForLevel = activeRemoteWave
+    ? zegoLikeToMediaStream(remoteStreamsRef.current[primaryRemoteStreamIdForLevel])
+    : null;
+  const localMediaForLevel = activeLocalWave ? zegoLikeToMediaStream(localStreamRef.current) : null;
+  const remoteMicLevel = useStreamAudioLevel(remoteMediaForLevel, activeRemoteWave);
+  const localMicLevel = useStreamAudioLevel(localMediaForLevel, activeLocalWave);
+  const voiceWaveLevel = activeRemoteWave ? remoteMicLevel : localMicLevel;
+
   if (!roomId) {
     return <div className="p-6 text-sm text-slate-600">Missing roomId.</div>;
   }
@@ -999,13 +1172,35 @@ export default function ZegoCallRoomPage() {
   }
 
   const primaryRemoteStreamId = remoteTiles[0]?.streamId || "";
-  const totalTiles = remoteTiles.length + 1;
   const localHasVideo = mode === "video" && isCameraEnabled;
   const localAvatarLabel = String(user?.username || user?.email || userId || "Me");
   const remoteAvatarLabel = primaryRemoteStreamId ? peerLabelFromMainStreamId(roomId, primaryRemoteStreamId) : "User";
+  const peerNameQuery = String(searchParams?.get("peer") || searchParams?.get("peerName") || "").trim();
+  const peerLocQuery = String(searchParams?.get("loc") || "").trim();
+  const voicePeerDisplayName =
+    peerNameQuery || formatPeerIdAsDisplayName(primaryRemoteStreamId ? remoteAvatarLabel : "Participant");
+  const voicePeerHandleRaw = (peerUserId || (primaryRemoteStreamId ? remoteAvatarLabel : "")).replace(/\s+/g, "");
+  const voicePeerSubtitle = [voicePeerHandleRaw ? `@${voicePeerHandleRaw.slice(0, 48)}` : "", peerLocQuery]
+    .filter(Boolean)
+    .join(" · ");
   const durationSec = callStartedAt ? Math.max(0, Math.floor((callNow - callStartedAt) / 1000)) : 0;
   const mm = String(Math.floor(durationSec / 60)).padStart(2, "0");
   const ss = String(durationSec % 60).padStart(2, "0");
+  const voiceQuality = audioQualityFromZego(remotePlayQuality);
+  const connLabel =
+    status === "connected" && primaryRemoteStreamId
+      ? remotePlayQuality >= 0
+        ? voiceQuality.label
+        : "Excellent"
+      : statusLabel;
+  const connBars = status === "connected" && primaryRemoteStreamId ? (remotePlayQuality >= 0 ? voiceQuality.bars : 4) : 0;
+  const connTone: "good" | "mid" | "bad" =
+    remotePlayQuality >= 3 ? "bad" : remotePlayQuality === 2 ? "mid" : "good";
+  const videoConnText =
+    status === "connected" && primaryRemoteStreamId
+      ? `${connLabel}${remotePeerDelayMs != null ? ` ${remotePeerDelayMs}ms` : ""}`
+      : statusLabel;
+  const callParticipantCount = remoteTiles.length + 1;
 
   const controlBtn =
     "relative flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/10 backdrop-blur " +
@@ -1032,250 +1227,399 @@ export default function ZegoCallRoomPage() {
       `}</style>
 
       {mode === "video" ? (
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <div className="relative mx-auto w-full max-w-[1200px] flex-1">
-            <div className="flex h-full min-h-[min(68vh,640px)] flex-col gap-3 md:gap-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 backdrop-blur-md">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold tracking-tight text-white">Video call</span>
-                  {isScreenSharing ? (
-                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-100 ring-1 ring-amber-400/35">
-                      Sharing screen
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl">
+          <div
+            ref={videoStageRef}
+            className="relative z-10 flex min-h-[min(72vh,680px)] flex-1 flex-col overflow-hidden rounded-2xl border border-white/5 bg-[#07050c] px-3 pb-36 pt-3 shadow-2xl sm:px-5 sm:pb-40 sm:pt-5"
+          >
+            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+              <div className="absolute inset-0 bg-gradient-to-br from-violet-950/90 via-[#0a0612] to-black" />
+              <div className="absolute -left-24 -top-24 h-[380px] w-[380px] rounded-full bg-fuchsia-600/18 blur-[90px]" />
+              <div className="absolute -bottom-32 -right-20 h-[440px] w-[440px] rounded-full bg-violet-600/22 blur-[95px]" />
+              <div className="absolute inset-0 bg-black/35" />
+            </div>
+
+            <div className="relative z-10 flex w-full max-w-[1280px] flex-col gap-3 self-center">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-2">
+                  <div className="inline-flex w-fit flex-wrap items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3.5 py-2 text-xs font-semibold text-white/90 shadow-lg backdrop-blur-md">
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500/70 opacity-60" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
                     </span>
-                  ) : null}
-                  {isAdmin ? (
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/80 ring-1 ring-white/10">
-                      Host
+                    <span className="tabular-nums tracking-tight text-white">{mm}:{ss}</span>
+                    <span className="text-white/35" aria-hidden="true">
+                      |
                     </span>
-                  ) : null}
+                    <span className="text-white/85">Video · 720p</span>
+                    {isScreenSharing ? (
+                      <span className="rounded-full bg-amber-500/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-100 ring-1 ring-amber-400/35">
+                        Sharing
+                      </span>
+                    ) : null}
+                    {isAdmin ? (
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/75">Host</span>
+                    ) : null}
+                  </div>
+                  <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-100/95 backdrop-blur">
+                    <Shield className="h-3.5 w-3.5 text-emerald-300" aria-hidden="true" />
+                    E2E encrypted
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-white/65">
-                  <span className="tabular-nums font-medium text-white/90">{mm}:{ss}</span>
-                  <span className="hidden h-3 w-px bg-white/20 sm:block" aria-hidden="true" />
-                  <span className={cn("max-w-[200px] truncate sm:max-w-none", statusTone)}>{statusLabel}</span>
+
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2 text-xs font-semibold text-white/90 shadow-md backdrop-blur-md">
+                    <ConnectionSignalBars bars={connBars} tone={connTone} />
+                    <span className={cn(remotePlayQuality >= 3 ? "text-rose-200" : "text-emerald-100")}>{videoConnText}</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!primaryRemoteStreamId}
+                    onClick={async () => {
+                      if (!primaryRemoteStreamId) return;
+                      const mount = document.getElementById(`dlite-zego-remote-${primaryRemoteStreamId}`);
+                      const vid = mount?.querySelector("video") as HTMLVideoElement | undefined;
+                      if (!vid || !document.pictureInPictureEnabled) return;
+                      try {
+                        if (document.pictureInPictureElement === vid) await document.exitPictureInPicture();
+                        else await vid.requestPictureInPicture();
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                    className={cn(
+                      controlBtn,
+                      "h-10 w-10 disabled:cursor-not-allowed disabled:opacity-45",
+                      "focus-visible:ring-offset-[#0a0612]"
+                    )}
+                    aria-label="Picture in picture"
+                    title="Picture in picture"
+                  >
+                    <PictureInPicture2 className="h-[18px] w-[18px]" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = videoStageRef.current;
+                      if (!el) return;
+                      if (!document.fullscreenElement) void el.requestFullscreen?.().catch(() => undefined);
+                      else void document.exitFullscreen?.();
+                    }}
+                    className={cn(controlBtn, "h-10 w-10 focus-visible:ring-offset-[#0a0612]")}
+                    aria-label="Fullscreen"
+                    title="Fullscreen"
+                  >
+                    <Maximize2 className="h-[18px] w-[18px]" />
+                  </button>
                 </div>
               </div>
 
-              <div className="relative min-h-0 flex-1">
-                {!primaryRemoteStreamId ? (
-                  <div className="relative h-full min-h-[300px] overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)]">
-                    <div id="dlite-zego-local" ref={localRef} className={cn("absolute inset-0", !localHasVideo && "opacity-0")} />
-                    {!localHasVideo ? (
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30">
-                        {user?.photoURL ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={String(user.photoURL)}
-                            alt=""
-                            className="h-24 w-24 rounded-full object-cover ring-2 ring-white/10"
-                          />
-                        ) : (
-                          <AvatarBadge label={localAvatarLabel} />
-                        )}
+              <div className="relative mt-1 flex min-h-0 flex-1 flex-col">
+                {remoteTiles.length > 1 ? (
+                  <div className="mb-2 flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+                    {remoteTiles.slice(1).map(({ streamId }) => (
+                      <div
+                        key={streamId}
+                        className="relative h-[88px] w-[132px] shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/50 shadow-lg"
+                      >
+                        <div id={`dlite-zego-remote-${streamId}`} className="absolute inset-0" />
+                        {remoteVideoState[streamId] === false ? (
+                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/65 text-lg font-bold text-white/90">
+                            {getInitials(peerLabelFromMainStreamId(roomId, streamId))}
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
-                    <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white/90 backdrop-blur">
-                      You
-                    </div>
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-                      <p className="max-w-sm rounded-2xl bg-black/55 px-4 py-3 text-center text-sm leading-relaxed text-white/80 backdrop-blur">
-                        {statusLabel}
-                      </p>
-                    </div>
+                    ))}
                   </div>
-                ) : (
-                  <div
-                    className={cn(
-                      "grid h-full min-h-[300px] gap-3 md:gap-4",
-                      totalTiles <= 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
-                    )}
-                  >
-                    <div className="relative min-h-[220px] overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)] md:min-h-0">
-                      <div id="dlite-zego-local" ref={localRef} className={cn("absolute inset-0", !localHasVideo && "opacity-0")} />
-                      {!localHasVideo ? (
-                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30">
+                ) : null}
+
+                <div className="relative min-h-[min(52vh,520px)] flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black/40 shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)]">
+                  {!primaryRemoteStreamId ? (
+                    <>
+                      <div
+                        id="dlite-zego-local"
+                        ref={localRef}
+                        className={cn("absolute inset-0", !localHasVideo && !isScreenSharing && "opacity-0")}
+                      />
+                      {!localHasVideo && !isScreenSharing ? (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
                           {user?.photoURL ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={String(user.photoURL)}
                               alt=""
-                              className="h-20 w-20 rounded-full object-cover ring-2 ring-white/10"
+                              className="h-28 w-28 rounded-full object-cover ring-2 ring-white/15"
                             />
                           ) : (
-                            <AvatarBadge label={localAvatarLabel} />
+                            <div className="flex h-32 w-32 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-600 to-violet-700 text-4xl font-extrabold text-white ring-2 ring-white/15">
+                              {getInitials(localAvatarLabel)}
+                            </div>
                           )}
                         </div>
                       ) : null}
-                      <div className="pointer-events-none absolute bottom-2 left-2 max-w-[85%] truncate rounded-md bg-black/55 px-2 py-1 text-[10px] font-semibold text-white/90 backdrop-blur">
-                        {isScreenSharing ? "Your screen" : "You"}
-                      </div>
-                    </div>
-
-                    {remoteTiles.map(({ streamId }) => (
-                      <div
-                        key={streamId}
-                        className="relative min-h-[220px] overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)] md:min-h-0"
-                      >
-                        <div id={`dlite-zego-remote-${streamId}`} className="absolute inset-0" />
-                        {remoteVideoState[streamId] === false ? (
-                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30">
-                            <AvatarBadge label={peerLabelFromMainStreamId(roomId, streamId)} />
+                      {(status !== "connected" || (!localHasVideo && !isScreenSharing)) ? (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+                          <p className="max-w-sm rounded-2xl bg-black/55 px-4 py-3 text-center text-sm leading-relaxed text-white/85 backdrop-blur">
+                            {statusLabel}
+                          </p>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <div id={`dlite-zego-remote-${primaryRemoteStreamId}`} className="absolute inset-0" />
+                      {remoteVideoState[primaryRemoteStreamId] === false ? (
+                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/50 px-6 text-center">
+                          <div className="flex h-36 w-36 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-600 to-violet-700 text-5xl font-extrabold text-white shadow-[0_0_60px_-10px_rgba(192,132,252,0.45)] ring-2 ring-white/15 sm:h-40 sm:w-40 sm:text-6xl">
+                            {getInitials(voicePeerDisplayName)}
                           </div>
-                        ) : null}
-                        <div className="pointer-events-none absolute bottom-2 left-2 max-w-[85%] truncate rounded-md bg-black/55 px-2 py-1 text-[10px] font-semibold text-white/90 backdrop-blur">
-                          {peerLabelFromMainStreamId(roomId, streamId)}
+                          <div>
+                            <p className="text-xl font-bold tracking-tight text-white sm:text-2xl">{voicePeerDisplayName}</p>
+                            <p className="mt-2 flex items-center justify-center gap-2 text-sm text-white/60">
+                              <VideoOff className="h-4 w-4 shrink-0" aria-hidden="true" />
+                              Camera off · sharing audio
+                            </p>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="pointer-events-none absolute bottom-4 left-4 z-[1] max-w-[min(90%,280px)] truncate rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-md">
+                        <span>{voicePeerDisplayName}</span>
+                        <Mic className="ml-2 inline-block h-3.5 w-3.5 align-text-bottom text-white/70" aria-hidden="true" />
+                      </div>
+
+                      <div className="absolute bottom-4 right-4 z-[2] w-[min(32vw,220px)] overflow-hidden rounded-xl border border-white/15 bg-black/60 shadow-2xl ring-1 ring-white/10 backdrop-blur-sm">
+                        <div className="relative aspect-video w-full">
+                          <div
+                            id="dlite-zego-local"
+                            ref={localRef}
+                            className={cn("absolute inset-0", !localHasVideo && !isScreenSharing && "opacity-0")}
+                          />
+                          {!localHasVideo && !isScreenSharing ? (
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50">
+                              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-600 to-violet-700 text-lg font-bold text-white">
+                                {getInitials(localAvatarLabel)}
+                              </div>
+                            </div>
+                          ) : null}
+                          <div className="pointer-events-none absolute left-2 top-2 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-black/40" />
+                          <div className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white/90 backdrop-blur">
+                            You
+                          </div>
+                          <div className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-black/55 p-1 text-white/90 backdrop-blur">
+                            {isMicEnabled ? <Mic className="h-3.5 w-3.5" /> : <MicOff className="h-3.5 w-3.5" />}
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="mt-5 flex justify-center px-1">
-            <div className="flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#141018]/95 px-3 py-2.5 shadow-lg backdrop-blur-md">
-              <button
-                type="button"
-                onClick={toggleMic}
-                className={controlBtn}
-                aria-label={isMicEnabled ? "Mute" : "Unmute"}
-                title={isMicEnabled ? "Microphone" : "Microphone off"}
-              >
-                {isMicEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-              </button>
+            <div className="pointer-events-none absolute bottom-5 left-0 right-0 z-20 flex justify-center px-2 sm:bottom-7">
+              <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#141018]/95 px-3 py-2.5 shadow-[0_20px_50px_-28px_rgba(0,0,0,0.95)] backdrop-blur-md">
+                <button
+                  type="button"
+                  onClick={toggleMic}
+                  className={controlBtn}
+                  aria-label={isMicEnabled ? "Mute" : "Unmute"}
+                  title={isMicEnabled ? "Microphone" : "Microphone off"}
+                >
+                  {isMicEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+                </button>
 
-              <button
-                type="button"
-                onClick={toggleCamera}
-                className={controlBtn}
-                aria-label={isCameraEnabled ? "Camera off" : "Camera on"}
-                title={isCameraEnabled ? "Camera" : "Camera off"}
-              >
-                {isCameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
-              </button>
+                <button
+                  type="button"
+                  onClick={toggleCamera}
+                  className={cn(
+                    controlBtn,
+                    !isCameraEnabled && "!bg-red-600/95 !ring-red-500/45 hover:!bg-red-600"
+                  )}
+                  aria-label={isCameraEnabled ? "Camera off" : "Camera on"}
+                  title={isCameraEnabled ? "Camera" : "Camera off"}
+                >
+                  {isCameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+                </button>
 
-              <button
-                type="button"
-                onClick={toggleScreenShare}
-                className={cn(
-                  controlBtn,
-                  isScreenSharing ? "bg-white/20 hover:bg-white/25" : "bg-white/10 hover:bg-white/20"
-                )}
-                aria-label={isScreenSharing ? "Stop sharing" : "Share screen"}
-                title={isScreenSharing ? "Stop sharing" : "Share screen"}
-              >
-                <Monitor className="h-5 w-5" />
-              </button>
+                <button
+                  type="button"
+                  onClick={toggleScreenShare}
+                  className={cn(
+                    controlBtn,
+                    isScreenSharing ? "bg-white/20 hover:bg-white/25" : "bg-white/10 hover:bg-white/20"
+                  )}
+                  aria-label={isScreenSharing ? "Stop sharing" : "Share screen"}
+                  title={isScreenSharing ? "Stop sharing" : "Share screen"}
+                >
+                  <Monitor className="h-5 w-5" />
+                </button>
 
-              <button
-                type="button"
-                disabled
-                className={cn(
-                  controlBtn,
-                  "text-white/70 disabled:cursor-not-allowed disabled:opacity-70 hover:-translate-y-0 hover:shadow-none"
-                )}
-                aria-label="Participants"
-                title={`Participants: ${remoteTiles.length + 1}`}
-              >
-                <Users className="h-5 w-5" />
-              </button>
+                <button
+                  type="button"
+                  disabled
+                  className={cn(
+                    controlBtn,
+                    "text-white/70 disabled:cursor-not-allowed disabled:opacity-70 hover:-translate-y-0 hover:shadow-none"
+                  )}
+                  aria-label="Effects"
+                  title="Effects"
+                >
+                  <Sparkles className="h-5 w-5" />
+                </button>
 
-              <Link
-                href="/call"
-                className="flex h-11 w-[52px] items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/25 ring-1 ring-red-400/30 transition duration-150 ease-out hover:-translate-y-[1px] hover:bg-red-600 active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-                aria-label="Leave"
-                title="Leave"
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleLeave();
-                }}
-              >
-                <PhoneOff className="h-5 w-5" />
-              </Link>
+                <button
+                  type="button"
+                  disabled
+                  className={cn(
+                    controlBtn,
+                    "relative text-white/70 disabled:cursor-not-allowed disabled:opacity-70 hover:-translate-y-0 hover:shadow-none"
+                  )}
+                  aria-label="Participants"
+                  title={`Participants: ${callParticipantCount}`}
+                >
+                  <Users className="h-5 w-5" />
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-bold text-white shadow-sm">
+                    {callParticipantCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled
+                  className={cn(
+                    controlBtn,
+                    "text-white/70 disabled:cursor-not-allowed disabled:opacity-70 hover:-translate-y-0 hover:shadow-none"
+                  )}
+                  aria-label="More options"
+                  title="More"
+                >
+                  <MoreHorizontal className="h-5 w-5" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleLeave()}
+                  className="ml-1 inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl bg-red-500 px-4 text-sm font-semibold text-white shadow-lg shadow-red-500/30 ring-1 ring-red-400/35 transition duration-150 ease-out hover:-translate-y-[1px] hover:bg-red-600 active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0612]"
+                >
+                  <PhoneOff className="h-5 w-5" />
+                  End
+                </button>
+              </div>
             </div>
-          </div>
 
-          {error ? (
-            <p className="mx-auto mt-4 w-full max-w-[1200px] rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-              {error}
-            </p>
-          ) : null}
+            {error ? (
+              <p className="relative z-30 mx-auto mt-2 w-full max-w-xl rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-center text-xs text-red-200">
+                {error}
+              </p>
+            ) : null}
 
-          {needsUserGesture ? (
-            <div className="mx-auto mt-3 flex w-full max-w-[1200px] items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-              <p className="text-xs text-white/70">Browser blocked audio autoplay. Click to enable audio.</p>
-              <button
-                type="button"
-                className="rounded-full bg-gradient-to-r from-ui-grad-from to-ui-grad-to px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:brightness-110"
-                onClick={async () => {
-                  try {
-                    await (engineRef.current as unknown as { resumeAudioContext?: () => Promise<boolean> | boolean })?.resumeAudioContext?.();
+            {needsUserGesture ? (
+              <div className="relative z-30 mx-auto mt-2 flex w-full max-w-xl items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                <p className="text-xs text-white/70">Browser blocked audio autoplay. Click to enable audio.</p>
+                <button
+                  type="button"
+                  className="rounded-full bg-gradient-to-r from-ui-grad-from to-ui-grad-to px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:brightness-110"
+                  onClick={async () => {
                     try {
-                      const audios = Array.from(
-                        document.querySelectorAll('audio[id^="dlite-zego-audio-"]')
-                      ) as HTMLAudioElement[];
-                      audios.forEach((a) => {
-                        a.muted = false;
-                        a.volume = 1;
-                        Promise.resolve(a.play()).catch(() => undefined);
-                      });
+                      await (
+                        engineRef.current as unknown as { resumeAudioContext?: () => Promise<boolean> | boolean }
+                      )?.resumeAudioContext?.();
+                      try {
+                        const audios = Array.from(
+                          document.querySelectorAll('audio[id^="dlite-zego-audio-"]')
+                        ) as HTMLAudioElement[];
+                        audios.forEach((a) => {
+                          a.muted = false;
+                          a.volume = 1;
+                          Promise.resolve(a.play()).catch(() => undefined);
+                        });
+                      } catch {
+                        /* ignore */
+                      }
+                      setNeedsUserGesture(false);
                     } catch {
                       /* ignore */
                     }
-                    setNeedsUserGesture(false);
-                  } catch {
-                    /* ignore */
-                  }
-                }}
-              >
-                Enable
-              </button>
-            </div>
-          ) : null}
+                  }}
+                >
+                  Enable
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <div className="relative mx-auto flex w-full max-w-[1160px] flex-1 flex-col justify-center">
+          <div className="relative mx-auto flex w-full max-w-[1160px] flex-1 flex-col justify-center pb-6">
             <div className="absolute inset-0 overflow-hidden rounded-2xl">
-              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/15 via-black to-black" />
-              <div className="absolute -left-24 -top-24 h-[360px] w-[360px] rounded-full bg-orange-500/25 blur-[80px]" />
-              <div className="absolute -bottom-28 -right-24 h-[420px] w-[420px] rounded-full bg-pink-500/15 blur-[90px]" />
-              <div className="absolute inset-0 bg-black/35" />
+              <div className="absolute inset-0 bg-gradient-to-br from-violet-950/80 via-[#0a0612] to-black" />
+              <div className="absolute -left-24 -top-24 h-[380px] w-[380px] rounded-full bg-fuchsia-600/20 blur-[90px]" />
+              <div className="absolute -bottom-32 -right-20 h-[440px] w-[440px] rounded-full bg-violet-600/25 blur-[95px]" />
+              <div className="absolute inset-0 bg-black/40" />
             </div>
 
-            <div className="relative z-10 mx-auto flex w-full max-w-[760px] flex-col items-center px-4 py-10 text-center text-white">
-              <div className="flex w-full items-center justify-between">
-                <div className="rounded-full bg-black/35 px-3 py-1 text-xs font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur">
-                  {mm}:{ss}
-                </div>
-
-                <div className="rounded-full bg-black/35 px-3 py-1 text-xs font-semibold text-emerald-200 ring-1 ring-white/10 backdrop-blur">
-                  {status === "connected" ? "Excellent" : statusLabel}
-                </div>
-              </div>
-
-              <div className="mt-14">
-                <div className="relative">
-                  <div className="absolute inset-0 rounded-full bg-orange-500/20 blur-[28px]" />
-                  <div className="relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
-                    <span className="text-5xl font-extrabold">{getInitials(remoteAvatarLabel)}</span>
+            <div className="relative z-10 mx-auto flex w-full max-w-[820px] flex-col px-4 py-8 text-white sm:px-6">
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-2">
+                  <div className="inline-flex w-fit items-center gap-2.5 rounded-full border border-white/10 bg-black/45 px-3.5 py-2 text-xs font-semibold text-white/90 shadow-lg backdrop-blur-md">
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500/70 opacity-60" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                    </span>
+                    <span className="tabular-nums tracking-tight text-white">{mm}:{ss}</span>
+                    <span className="text-white/35" aria-hidden="true">
+                      |
+                    </span>
+                    <span className="text-white/80">Voice · HD</span>
+                    {isAdmin ? (
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/75">Host</span>
+                    ) : null}
+                  </div>
+                  <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-100/95 backdrop-blur">
+                    <Shield className="h-3.5 w-3.5 text-emerald-300" aria-hidden="true" />
+                    End-to-end encrypted
                   </div>
                 </div>
+
+                <div className="mt-1 inline-flex w-fit items-center gap-2 self-start rounded-full border border-white/10 bg-black/45 px-3 py-2 text-xs font-semibold text-white/90 shadow-md backdrop-blur-md sm:mt-0 sm:self-auto">
+                  <ConnectionSignalBars bars={connBars} tone={connTone} />
+                  <span className={cn(remotePlayQuality >= 3 ? "text-rose-200" : "text-emerald-100")}>{connLabel}</span>
+                </div>
               </div>
 
-              <div className="mt-5 text-2xl font-semibold tracking-tight">{remoteAvatarLabel}</div>
-              <div className="mt-1 flex items-center justify-center gap-2 text-sm text-white/70">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                {status === "connected" ? "Connected · HD audio" : statusLabel}
+              <div className="mx-auto mt-12 flex w-full max-w-lg flex-col items-center text-center sm:mt-16">
+                <div className="relative">
+                  <div
+                    className="pointer-events-none absolute -inset-3 rounded-full border border-dashed border-white/20"
+                    aria-hidden="true"
+                  />
+                  <div className="pointer-events-none absolute -inset-8 rounded-full bg-gradient-to-br from-fuchsia-500/15 to-violet-600/10 blur-2xl" />
+                  <div className="pointer-events-none absolute -inset-5 rounded-full ring-1 ring-white/10" />
+                  <div className="relative flex h-36 w-36 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-600 to-violet-700 text-5xl font-extrabold tracking-tight text-white shadow-[0_0_60px_-10px_rgba(192,132,252,0.55)] ring-2 ring-white/15 sm:h-40 sm:w-40 sm:text-6xl">
+                    {getInitials(voicePeerDisplayName)}
+                  </div>
+                </div>
+
+                <div className="mt-7 flex flex-wrap items-center justify-center gap-2">
+                  <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">{voicePeerDisplayName}</h2>
+                  {status === "connected" && primaryRemoteStreamId ? (
+                    <BadgeCheck className="h-7 w-7 shrink-0 text-sky-400" aria-label="Verified" />
+                  ) : null}
+                </div>
+                {voicePeerSubtitle ? (
+                  <p className="mt-2 max-w-md text-sm text-white/55">{voicePeerSubtitle}</p>
+                ) : (
+                  <p className="mt-2 text-sm text-white/55">{status === "connected" ? "Voice call" : statusLabel}</p>
+                )}
+
+                <div className="mt-8 w-full rounded-full border border-white/10 bg-black/50 px-2 py-3 shadow-inner backdrop-blur-md">
+                  <VoiceCallWaveform level={voiceWaveLevel} idle={status !== "connected"} />
+                </div>
               </div>
 
-              <div className="mt-7">
-                <AudioWaveform active={status === "connected"} />
-              </div>
-
-              <div className="mt-10 flex items-center justify-center">
-                <div className="flex items-center gap-2 rounded-full bg-[#2b2b2b]/80 px-3 py-2 ring-1 ring-white/10 backdrop-blur">
+              <div className="mx-auto mt-10 flex w-full max-w-[540px] justify-center px-1">
+                <div className="flex w-full flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#141018]/90 px-3 py-2.5 shadow-[0_20px_50px_-30px_rgba(0,0,0,0.9)] backdrop-blur-md">
                   <button
                     type="button"
                     onClick={toggleMic}
@@ -1288,15 +1632,22 @@ export default function ZegoCallRoomPage() {
 
                   <button
                     type="button"
-                    disabled
-                    className={cn(
-                      controlBtn,
-                      "text-white/70 disabled:cursor-not-allowed disabled:opacity-70 hover:-translate-y-0 hover:shadow-none"
-                    )}
-                    aria-label="Reactions"
-                    title="Reactions"
+                    onClick={() => setSpeakerOn((v) => !v)}
+                    className={cn(controlBtn, !speakerOn && "bg-white/5 opacity-90")}
+                    aria-label={speakerOn ? "Speaker on" : "Speaker off"}
+                    title={speakerOn ? "Speaker" : "Speaker muted"}
                   >
-                    <span className="text-base">♥</span>
+                    {speakerOn ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push(buildHostedCallUrl(roomId, "video"))}
+                    className={controlBtn}
+                    aria-label="Switch to video call"
+                    title="Video (camera off in voice mode)"
+                  >
+                    <VideoOff className="h-5 w-5" />
                   </button>
 
                   <button
@@ -1306,56 +1657,79 @@ export default function ZegoCallRoomPage() {
                       controlBtn,
                       "text-white/70 disabled:cursor-not-allowed disabled:opacity-70 hover:-translate-y-0 hover:shadow-none"
                     )}
-                    aria-label="More"
-                    title="More"
+                    aria-label="Effects"
+                    title="Effects"
                   >
-                    <span className="text-base">…</span>
+                    <Sparkles className="h-5 w-5" />
                   </button>
 
-                  <Link
-                    href="/call"
-                    className="flex h-11 w-[52px] items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/25 ring-1 ring-red-400/30 transition duration-150 ease-out hover:-translate-y-[1px] hover:bg-red-600 active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-                    aria-label="Leave"
-                    title="Leave"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleLeave();
-                    }}
+                  <button
+                    type="button"
+                    disabled
+                    className={cn(
+                      controlBtn,
+                      "text-white/70 disabled:cursor-not-allowed disabled:opacity-70 hover:-translate-y-0 hover:shadow-none"
+                    )}
+                    aria-label="More options"
+                    title="More"
+                  >
+                    <MoreHorizontal className="h-5 w-5" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleLeave()}
+                    className="ml-1 inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl bg-red-500 px-4 text-sm font-semibold text-white shadow-lg shadow-red-500/30 ring-1 ring-red-400/35 transition duration-150 ease-out hover:-translate-y-[1px] hover:bg-red-600 active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0612]"
                   >
                     <PhoneOff className="h-5 w-5" />
-                  </Link>
+                    End
+                  </button>
                 </div>
               </div>
+
+              {error ? (
+                <p className="mx-auto mt-6 w-full max-w-lg rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-center text-xs text-red-200">
+                  {error}
+                </p>
+              ) : null}
+
+              {needsUserGesture ? (
+                <div className="mx-auto mt-4 flex w-full max-w-lg items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                  <p className="text-xs text-white/70">Browser blocked audio autoplay. Click to enable audio.</p>
+                  <button
+                    type="button"
+                    className="rounded-full bg-gradient-to-r from-ui-grad-from to-ui-grad-to px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:brightness-110"
+                    onClick={async () => {
+                      try {
+                        await (
+                          engineRef.current as unknown as { resumeAudioContext?: () => Promise<boolean> | boolean }
+                        )?.resumeAudioContext?.();
+                        try {
+                          const audios = Array.from(
+                            document.querySelectorAll('audio[id^="dlite-zego-audio-"]')
+                          ) as HTMLAudioElement[];
+                          audios.forEach((a) => {
+                            a.muted = !speakerOn;
+                            a.volume = speakerOn ? 1 : 0;
+                            Promise.resolve(a.play()).catch(() => undefined);
+                          });
+                        } catch {
+                          /* ignore */
+                        }
+                        setNeedsUserGesture(false);
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                  >
+                    Enable
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
       )}
-
-      {/* Audio mode: floating status. Video mode uses the in-layout header (no duplicate pills). */}
-      {mode !== "video" ? (
-        <>
-          <div className="pointer-events-none absolute left-0 right-0 top-3 z-10 flex items-center justify-center px-4">
-            <div className="pointer-events-auto rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[11px] font-semibold text-white/70 backdrop-blur">
-              {statusLabel}
-            </div>
-          </div>
-          <div className="pointer-events-none absolute right-4 top-3 z-10 hidden md:block">
-            <div className="pointer-events-auto rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[11px] font-semibold backdrop-blur">
-              <span className={cn("text-white/70", statusTone)}>Status:</span>{" "}
-              <span className="text-white/75">{statusLabel}</span>
-            </div>
-          </div>
-
-          <div className="pointer-events-none absolute right-4 top-4 z-10 hidden md:block">
-            <div className="pointer-events-auto rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] font-semibold text-white/70 backdrop-blur">
-              Status: <span className={cn("font-semibold", statusTone)}>{statusLabel}</span>
-              {isAdmin ? (
-                <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/75">Admin</span>
-              ) : null}
-            </div>
-          </div>
-        </>
-      ) : null}
 
       {endedOverlayVisible ? (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 backdrop-blur-sm">

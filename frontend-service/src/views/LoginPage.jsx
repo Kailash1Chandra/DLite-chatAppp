@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../hooks/useAuth';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutDashboard, Lock, LogIn, Mail } from 'lucide-react';
+import { LayoutDashboard, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppHeaderMenu } from '@/components/AppHeaderMenu';
 import { AuthCardBranding } from '@/components/AuthCardBranding';
@@ -71,7 +71,7 @@ function Showcase() {
   }, [reduce]);
 
   return (
-    <div className="relative hidden h-full min-h-[680px] w-full overflow-hidden rounded-[2rem] border border-ui-border bg-ui-panel/30 p-6 lg:block">
+    <div className="relative hidden w-full overflow-hidden rounded-[2rem] border border-ui-border bg-ui-panel/30 p-6 lg:block lg:flex lg:h-full lg:min-h-[min(640px,calc(100dvh-4.5rem))] lg:flex-col">
       <div className="absolute inset-0">
         <div className="absolute -left-16 -top-20 h-72 w-72 rounded-full bg-orange-400/45 blur-[60px] motion-safe:animate-[floaty_6s_ease-in-out_infinite]" />
         <div className="absolute -right-24 top-16 h-80 w-80 rounded-full bg-pink-400/35 blur-[60px] motion-safe:animate-[floaty_8s_ease-in-out_infinite]" />
@@ -173,14 +173,11 @@ function Showcase() {
 }
 
 export default function LoginPage() {
-  const { login, loginWithGoogle, requestOtp, verifyOtp, isAuthenticated, user, loading: authLoading, logout } = useAuth();
+  const { login, loginWithGoogle, isAuthenticated, user, loading: authLoading, logout } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
-  const [otpSubmitting, setOtpSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const router = useRouter();
@@ -208,32 +205,6 @@ export default function LoginPage() {
       setError(toAuthErrorMessage(err, 'google'));
     } finally {
       setGoogleSubmitting(false);
-    }
-  };
-
-  const handleSendOtp = async () => {
-    setOtpSubmitting(true);
-    setError('');
-    try {
-      await requestOtp(email);
-      setOtpSent(true);
-    } catch (err) {
-      setError(toAuthErrorMessage(err, 'login'));
-    } finally {
-      setOtpSubmitting(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    setOtpSubmitting(true);
-    setError('');
-    try {
-      await verifyOtp(email, otpCode);
-      router.push('/dashboard');
-    } catch (err) {
-      setError(toAuthErrorMessage(err, 'login'));
-    } finally {
-      setOtpSubmitting(false);
     }
   };
 
@@ -298,8 +269,8 @@ export default function LoginPage() {
         <AppHeaderMenu showLogout={false} menuLinks={[]} collapseActionsInMenu showChatsInCollapsedMenu={false} />
       </div>
       <main className="flex flex-1 items-stretch justify-center p-4 sm:p-6">
-        <div className="grid w-full max-w-6xl grid-cols-1 gap-6 lg:grid-cols-[1.5fr_1fr]">
-          <div className="flex items-center justify-center">
+        <div className="grid w-full max-w-6xl grid-cols-1 gap-6 lg:min-h-[calc(100dvh-4.5rem)] lg:grid-cols-[1.5fr_1fr] lg:items-stretch">
+          <div className="flex min-h-0 items-center justify-center lg:min-h-full">
             <motion.div
               className={cardClass}
               initial={{ opacity: 0, y: 14 }}
@@ -354,43 +325,6 @@ export default function LoginPage() {
                 >
                   Sign in
                 </Button>
-
-                <div className="rounded-2xl border border-ui-border bg-ui-muted/60 p-3 dark:bg-ui-muted/40">
-                  <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Email code</p>
-                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="sm:flex-1"
-                      disabled={!email || otpSubmitting}
-                      loading={otpSubmitting && !otpCode}
-                      loadingText="Sending…"
-                      onClick={handleSendOtp}
-                      leftIcon={<Mail className="h-4 w-4" />}
-                    >
-                      {otpSent ? 'Resend' : 'Send code'}
-                    </Button>
-                    <FloatingLabelInput
-                      label="Code"
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value)}
-                      name="otp"
-                      inputMode="numeric"
-                      className="sm:flex-1"
-                    />
-                    <Button
-                      type="button"
-                      className="sm:flex-1"
-                      disabled={!otpCode || !email || otpSubmitting}
-                      loading={otpSubmitting && Boolean(otpCode)}
-                      loadingText="Verifying…"
-                      onClick={handleVerifyOtp}
-                      leftIcon={<Lock className="h-4 w-4" />}
-                    >
-                      Verify
-                    </Button>
-                  </div>
-                </div>
 
                 <div className="flex items-center gap-2 py-1">
                   <div className="h-px flex-1 bg-ui-border" />
