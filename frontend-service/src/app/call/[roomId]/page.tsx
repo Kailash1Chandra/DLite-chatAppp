@@ -10,6 +10,17 @@ import { buildHostedCallUrl, getInviteCodeFromRoomId } from "@/lib/callRoom";
 import { cn } from "@/lib/utils";
 import { endCall, listenForCallEnded } from "@/lib/call";
 
+// Ensure ZEGO remote logger is disabled as early as possible (before engine init).
+try {
+  (ZegoExpressEngine as unknown as { presetLogConfig?: (c: unknown) => unknown }).presetLogConfig?.({
+    logLevel: "disable",
+    remoteLogLevel: "disable",
+    logURL: "",
+  });
+} catch {
+  /* ignore */
+}
+
 type RemoteTile = { streamId: string };
 
 function getInitials(nameOrId: string) {

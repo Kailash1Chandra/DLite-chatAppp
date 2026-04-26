@@ -11,6 +11,15 @@ const players = new Map()
 let muted = false
 let vibrateTimer = null
 
+async function resumeAudioAfterGesture() {
+  try {
+    const mod = await import('@/lib/audioContext')
+    return await mod.resumeAudioContext()
+  } catch {
+    return false
+  }
+}
+
 function loadMuted() {
   if (typeof window === 'undefined') return false
   try {
@@ -43,7 +52,8 @@ function createBeeper() {
   let ac = null
   function beep() {
     try {
-      if (!ac) ac = new AudioContext()
+      // Do not create AudioContext until a user gesture allowed it.
+      if (!ac) return
       if (ac.state === 'suspended') return
       const osc = ac.createOscillator()
       const gain = ac.createGain()
@@ -70,9 +80,12 @@ function createBeeper() {
     },
     async resumeAfterGesture() {
       try {
+        const ok = await resumeAudioAfterGesture()
+        if (!ok) return false
+        // After resumeAudioContext succeeds, we can safely create and use AudioContext.
         if (!ac) ac = new AudioContext()
         if (ac.state === 'suspended') await ac.resume()
-        return true
+        return ac.state !== 'suspended'
       } catch {
         return false
       }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { getAudioContext } from "@/lib/audioContext"
+import { getAudioContext, isAudioGestureReady } from "@/lib/audioContext"
 
 export function useAudioLevel(stream: MediaStream | null) {
   const [level, setLevel] = useState(0)
@@ -19,7 +19,14 @@ export function useAudioLevel(stream: MediaStream | null) {
   }, [stream])
 
   useEffect(() => {
-    const ac = getAudioContext()
+    // Creating/resuming AudioContext before a user gesture causes Chrome autoplay warnings.
+    if (!isAudioGestureReady()) {
+      setLevel(0)
+      setIsSpeaking(false)
+      return
+    }
+
+    const ac = getAudioContext({ createIfNeeded: true })
     if (!ac || !stream) {
       setLevel(0)
       setIsSpeaking(false)
