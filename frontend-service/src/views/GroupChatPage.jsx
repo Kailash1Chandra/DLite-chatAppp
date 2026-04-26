@@ -56,6 +56,29 @@ function formatGroupMessageTime(ts) {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+function getInitials(name) {
+  const cleaned = String(name || '').trim();
+  if (!cleaned) return '?';
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  const first = (parts[0] || '')[0] || '';
+  const last = parts.length > 1 ? (parts[parts.length - 1] || '')[0] || '' : '';
+  return (first + last).toUpperCase() || cleaned.slice(0, 2).toUpperCase();
+}
+
+function avatarTone(seed) {
+  const tones = [
+    'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200',
+    'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200',
+    'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200',
+    'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200',
+    'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200'
+  ];
+  let sum = 0;
+  const s = String(seed || '');
+  for (let i = 0; i < s.length; i++) sum = (sum + s.charCodeAt(i)) % 997;
+  return tones[sum % tones.length];
+}
+
 function linkifyGroupMessage(text) {
   if (text == null || text === '') return null;
   const str = String(text);
@@ -1633,20 +1656,24 @@ export default function GroupChatPage() {
                         setGroupInput(group.id);
                       }}
                       className={cn(
-                        'w-full rounded-2xl border border-transparent px-2.5 py-2 text-left transition',
+                        'group relative w-full rounded-2xl border border-transparent px-3 py-2.5 text-left transition',
                         groupId.trim() === group.id
-                          ? 'bg-ui-chat-active text-ui-chat-active-fg shadow-md'
-                          : 'border-ui-border bg-ui-panel/70 text-slate-800 hover:bg-ui-muted dark:text-slate-100',
+                          ? 'bg-violet-50 text-slate-900 shadow-sm ring-1 ring-violet-200 dark:bg-violet-500/10 dark:text-slate-100 dark:ring-violet-500/25'
+                          : 'border-ui-border bg-ui-panel/70 text-slate-800 hover:bg-ui-panel dark:text-slate-100 dark:hover:bg-ui-muted',
                       )}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-ui-border bg-ui-muted">
-                          {group.photoUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={group.photoUrl} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <Users className="h-5 w-5 text-slate-500 dark:text-slate-300" />
+                        {groupId.trim() === group.id ? (
+                          <span className="absolute left-0 top-2.5 h-[calc(100%-20px)] w-1.5 rounded-r-full bg-violet-500" aria-hidden />
+                        ) : null}
+                        <div
+                          className={cn(
+                            'flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold ring-1 ring-black/5 dark:ring-white/10',
+                            avatarTone(group?.name || group.id),
                           )}
+                          aria-hidden
+                        >
+                          {getInitials(group?.name || 'Group')}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-semibold leading-5">
@@ -1655,13 +1682,22 @@ export default function GroupChatPage() {
                           <div
                             className={cn(
                               'truncate text-xs',
-                              groupId.trim() === group.id ? 'text-[var(--ui-chat-active-muted)]' : 'opacity-80',
+                              groupId.trim() === group.id
+                                ? 'text-violet-700/80 dark:text-violet-200/80'
+                                : 'text-slate-500 dark:text-slate-400',
                             )}
                           >
                             {group.memberCount} members
                           </div>
                         </div>
-                        <div className={cn('text-xs', groupId.trim() === group.id ? 'opacity-90' : 'opacity-60')}>
+                        <div
+                          className={cn(
+                            'text-xs tabular-nums',
+                            groupId.trim() === group.id
+                              ? 'text-violet-700/70 dark:text-violet-200/70'
+                              : 'text-slate-400 dark:text-slate-500',
+                          )}
+                        >
                           {group?.updatedAt ? formatGroupMessageTime(new Date(group.updatedAt).getTime()) : ''}
                         </div>
                       </div>

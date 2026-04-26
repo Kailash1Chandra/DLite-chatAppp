@@ -5,7 +5,7 @@ import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMem
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import Link from 'next/link';
-import Image from 'next/image';
+// Avatar in sidebar uses initials to match board styling.
 import { useRouter } from 'next/navigation';
 import { startHostedCallInvite } from '@/lib/call';
 import { buildDirectCallRoomId, buildHostedCallUrl } from '@/lib/callRoom';
@@ -158,6 +158,29 @@ function formatListTime(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function getInitials(name) {
+  const cleaned = String(name || '').trim();
+  if (!cleaned) return '?';
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  const first = (parts[0] || '')[0] || '';
+  const last = parts.length > 1 ? (parts[parts.length - 1] || '')[0] || '' : '';
+  return (first + last).toUpperCase() || cleaned.slice(0, 2).toUpperCase();
+}
+
+function avatarTone(seed) {
+  const tones = [
+    'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200',
+    'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200',
+    'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200',
+    'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200',
+    'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200',
+  ];
+  let sum = 0;
+  const s = String(seed || '');
+  for (let i = 0; i < s.length; i++) sum = (sum + s.charCodeAt(i)) % 997;
+  return tones[sum % tones.length];
 }
 
 const DM_POLL_PREFIX = '__DL_POLL__';
@@ -1582,6 +1605,8 @@ export default function ChatDashboardPage() {
                     displayedRecentChats.map((chat) => {
                       const selected = activeUserId.trim() === chat.peerId;
                       const unread = Number(chat.unreadCount || 0);
+                      const displayName = String(chat.peerUsername || '').trim() || 'User';
+                      const initials = getInitials(displayName);
                       return (
                         <div
                           key={chat.threadId}
@@ -1613,29 +1638,30 @@ export default function ChatDashboardPage() {
                             });
                           }}
                           className={cn(
-                            'flex w-full cursor-pointer gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus)]',
+                            'group relative flex w-full cursor-pointer gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus)]',
                             selected
-                              ? 'bg-ui-chat-active text-ui-chat-active-fg shadow-md'
-                              : 'text-slate-800 hover:border-ui-border hover:bg-ui-panel dark:text-slate-100 dark:hover:bg-ui-muted'
+                              ? 'bg-violet-50 text-slate-900 shadow-sm ring-1 ring-violet-200 dark:bg-violet-500/10 dark:text-slate-100 dark:ring-violet-500/25'
+                              : 'text-slate-800 hover:bg-ui-panel dark:text-slate-100 dark:hover:bg-ui-muted'
                           )}
                         >
-                          <Image
-                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(chat.peerUsername || chat.peerId)}`}
-                            alt=""
-                            width={44}
-                            height={44}
-                            unoptimized
+                          {selected ? (
+                            <span className="absolute left-0 top-2.5 h-[calc(100%-20px)] w-1.5 rounded-r-full bg-violet-500" aria-hidden />
+                          ) : null}
+                          <div
                             className={cn(
-                              'h-11 w-11 shrink-0 rounded-full border object-cover',
-                              selected ? 'border-white/35' : 'border-ui-border'
+                              'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-1 ring-black/5 dark:ring-white/10',
+                              avatarTone(displayName)
                             )}
-                          />
+                            aria-hidden
+                          >
+                            {initials}
+                          </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
                               <p
                                 className={cn(
                                   'flex min-w-0 items-center gap-1 truncate text-sm font-semibold',
-                                  selected ? 'text-ui-chat-active-fg' : 'text-slate-800 dark:text-slate-100'
+                                  selected ? 'text-slate-900 dark:text-slate-100' : 'text-slate-800 dark:text-slate-100'
                                 )}
                               >
                                 <span className="truncate">{chat.peerUsername}</span>
@@ -1645,7 +1671,7 @@ export default function ChatDashboardPage() {
                               <span
                                 className={cn(
                                   'shrink-0 text-[11px] tabular-nums',
-                                  selected ? 'text-[var(--ui-chat-active-muted)]' : 'text-slate-400 dark:text-slate-500'
+                                  selected ? 'text-violet-700/70 dark:text-violet-200/70' : 'text-slate-400 dark:text-slate-500'
                                 )}
                               >
                                 {formatListTime(chat.lastAt)}
@@ -1655,7 +1681,7 @@ export default function ChatDashboardPage() {
                               <p
                                 className={cn(
                                   'min-w-0 flex-1 truncate text-xs',
-                                  selected ? 'text-[var(--ui-chat-active-muted)]' : 'text-slate-500 dark:text-slate-400'
+                                  selected ? 'text-violet-700/80 dark:text-violet-200/80' : 'text-slate-500 dark:text-slate-400'
                                 )}
                               >
                                 {chat.lastMessage || 'Message'}
@@ -1665,7 +1691,7 @@ export default function ChatDashboardPage() {
                                   className={cn(
                                     'inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
                                     selected
-                                      ? 'bg-white/20 text-white'
+                                      ? 'bg-violet-600 text-white'
                                       : 'bg-gradient-to-r from-ui-grad-from to-ui-grad-to text-white shadow-sm'
                                   )}
                                 >

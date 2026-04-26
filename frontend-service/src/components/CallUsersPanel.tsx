@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
 import { Clock, Phone, PhoneIncoming, PhoneOutgoing, Plus, Search, Trash2, Users, Video } from "lucide-react";
 import { startHostedCallInvite } from "@/lib/call";
 import { buildDirectCallRoomId, buildHostedCallUrl } from "@/lib/callRoom";
@@ -12,6 +11,28 @@ import { cn } from "@/lib/utils";
 import { CALL_HISTORY_UPDATED_EVENT, CallHistoryItem, clearCallHistory, readCallHistory } from "@/lib/callHistory";
 
 type UserResult = { id: string; username: string };
+
+function getInitials(name: string) {
+  const cleaned = String(name || "").trim();
+  if (!cleaned) return "?";
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] || "";
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] || "" : "";
+  return (first + last).toUpperCase() || cleaned.slice(0, 2).toUpperCase();
+}
+
+function avatarTone(seed: string) {
+  const tones = [
+    "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200",
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200",
+    "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200",
+    "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
+    "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200",
+  ];
+  let sum = 0;
+  for (let i = 0; i < seed.length; i++) sum = (sum + seed.charCodeAt(i)) % 997;
+  return tones[sum % tones.length];
+}
 
 function buildCallUrl(params: URLSearchParams, patch: Record<string, string | null>) {
   const next = new URLSearchParams(params.toString());
@@ -248,16 +269,18 @@ export function CallUsersPanel({ className }: { className?: string }) {
             <div className="space-y-1">
               {userResults.map((u) => {
                 const selected = calleeId === u.id;
+                const displayName = String(u.username || "").trim() || "User";
+                const initials = getInitials(displayName);
                 return (
                   <div
                     key={u.id}
                     role="button"
                     tabIndex={0}
                     className={cn(
-                      "flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-transparent px-3 py-2 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus)]",
+                      "group relative flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus)]",
                       selected
-                        ? "bg-ui-chat-active text-ui-chat-active-fg shadow-md"
-                        : "text-slate-800 hover:border-ui-border hover:bg-ui-panel dark:text-slate-100 dark:hover:bg-ui-muted"
+                        ? "bg-violet-50 text-slate-900 shadow-sm ring-1 ring-violet-200 dark:bg-violet-500/10 dark:text-slate-100 dark:ring-violet-500/25"
+                        : "text-slate-800 hover:bg-ui-panel dark:text-slate-100 dark:hover:bg-ui-muted"
                     )}
                     onClick={() => setCallee(u.id)}
                     onKeyDown={(e) => {
@@ -267,19 +290,23 @@ export function CallUsersPanel({ className }: { className?: string }) {
                       }
                     }}
                   >
-                    <Image
-                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.username || u.id)}`}
-                      alt=""
-                      width={32}
-                      height={32}
-                      unoptimized
-                      className={cn("h-9 w-9 shrink-0 rounded-full border object-cover", selected ? "border-white/35" : "border-ui-border")}
-                    />
+                    {selected ? (
+                      <span className="absolute left-0 top-2.5 h-[calc(100%-20px)] w-1.5 rounded-r-full bg-violet-500" aria-hidden />
+                    ) : null}
+                    <div
+                      className={cn(
+                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-1 ring-black/5 dark:ring-white/10",
+                        avatarTone(displayName)
+                      )}
+                      aria-hidden
+                    >
+                      {initials}
+                    </div>
                     <span className="min-w-0 flex-1">
-                      <span className={cn("block truncate text-sm font-semibold", selected ? "text-ui-chat-active-fg" : "")}>
-                        {u.username}
+                      <span className="block truncate text-sm font-semibold">
+                        {displayName}
                       </span>
-                      <span className="block truncate font-mono text-[11px] opacity-60">{u.id.slice(0, 6)}…</span>
+                      <span className="block truncate text-xs text-slate-500 dark:text-slate-400">Tap to call</span>
                     </span>
 
                     <span className="ml-1 flex shrink-0 items-center gap-1.5">
