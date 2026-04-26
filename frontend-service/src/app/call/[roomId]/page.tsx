@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ZegoExpressEngine } from "zego-express-engine-webrtc";
-import { Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Users, Video, VideoOff } from "lucide-react";
+import { Mic, MicOff, Monitor, PhoneOff, Users, Video, VideoOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { buildHostedCallUrl, getInviteCodeFromRoomId } from "@/lib/callRoom";
 import { cn } from "@/lib/utils";
@@ -33,6 +33,16 @@ function sanitizeZegoIdPart(raw: string) {
 /** Stable main camera/audio publish id so peers can pull via roomUserUpdate even if roomStreamUpdate is delayed. */
 function buildMainPublishStreamId(roomId: string, uid: string) {
   return `${sanitizeZegoIdPart(roomId)}_${sanitizeZegoIdPart(uid)}`;
+}
+
+/** Best-effort label from deterministic main stream id (roomPeer suffix). */
+function peerLabelFromMainStreamId(roomId: string, streamId: string) {
+  const prefix = `${sanitizeZegoIdPart(roomId)}_`;
+  if (streamId.startsWith(prefix)) {
+    const tail = streamId.slice(prefix.length);
+    if (tail) return tail.length > 24 ? `${tail.slice(0, 10)}…` : tail;
+  }
+  return "Participant";
 }
 
 function getInitials(nameOrId: string) {
@@ -160,10 +170,6 @@ export default function ZegoCallRoomPage() {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const reconnectingRef = useRef(false);
   const engineDestroyTimerRef = useRef<number | null>(null);
-  const [videoLayout, setVideoLayout] = useState<"whatsapp" | "meet">(() => {
-    // For 1v1 (dm-...) calls, default to WhatsApp PiP. For groups, default to grid/meet.
-    return String(roomId || "").startsWith("dm-") ? "whatsapp" : "meet";
-  });
   const [endedOverlayVisible, setEndedOverlayVisible] = useState(false);
   const [remoteVideoState, setRemoteVideoState] = useState<Record<string, boolean>>({});
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
@@ -341,8 +347,6 @@ export default function ZegoCallRoomPage() {
 
       // Switch publishing from camera -> screen.
       setIsScreenSharing(true);
-      // Better view: auto-switch to WhatsApp-style PiP when screen sharing starts.
-      setVideoLayout("whatsapp");
 
       const camId = publishedStreamIdRef.current;
       const camStream = localStreamRef.current;
@@ -876,13 +880,13 @@ export default function ZegoCallRoomPage() {
     applyLocalTrackState(localStreamRef.current);
   }, [applyLocalTrackState]);
 
-  // Re-bind local renderer when layout switches (node can remount).
+  // Re-bind local preview after screen-share toggles (stream object / node timing).
   useEffect(() => {
     const s = localStreamRef.current || screenStreamRef.current;
     if (!s) return;
     tryPlayLocalVideo(s, localRef.current);
     window.setTimeout(() => tryPlayLocalVideo(s, localRef.current), 0);
-  }, [videoLayout]);
+  }, [isScreenSharing]);
 
   useEffect(() => {
     if (!engineRef.current) return;
@@ -997,11 +1001,8 @@ export default function ZegoCallRoomPage() {
   const primaryRemoteStreamId = remoteTiles[0]?.streamId || "";
   const totalTiles = remoteTiles.length + 1;
   const localHasVideo = mode === "video" && isCameraEnabled;
-  const primaryRemoteHasVideo = primaryRemoteStreamId ? remoteVideoState[primaryRemoteStreamId] !== false : false;
   const localAvatarLabel = String(user?.username || user?.email || userId || "Me");
-  const remoteAvatarLabel = primaryRemoteStreamId
-    ? String(primaryRemoteStreamId.split("-")[1] || "User")
-    : "User";
+  const remoteAvatarLabel = primaryRemoteStreamId ? peerLabelFromMainStreamId(roomId, primaryRemoteStreamId) : "User";
   const durationSec = callStartedAt ? Math.max(0, Math.floor((callNow - callStartedAt) / 1000)) : 0;
   const mm = String(Math.floor(durationSec / 60)).padStart(2, "0");
   const ss = String(durationSec % 60).padStart(2, "0");
@@ -1032,134 +1033,108 @@ export default function ZegoCallRoomPage() {
 
       {mode === "video" ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <div className="relative mx-auto w-full max-w-[1160px] flex-1">
-            {videoLayout === "whatsapp" ? (
-              <div className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-                {primaryRemoteStreamId ? (
-                  <>
-                    <div id={`dlite-zego-remote-${primaryRemoteStreamId}`} className="absolute inset-0" />
-                    {/* When remote camera is off (or voice call), show avatar overlay */}
-                    {mode !== "video" || !primaryRemoteHasVideo ? (
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                        <AvatarBadge label={remoteAvatarLabel} />
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
-                    {status === "connected" ? "Connected" : statusLabel}
-                  </div>
-                )}
-
-                <div className="absolute bottom-4 right-4 h-[140px] w-[210px] overflow-hidden rounded-xl bg-black/50 ring-1 ring-white/15 shadow-lg sm:h-[160px] sm:w-[240px]">
-                  <div id="dlite-zego-local" ref={localRef} className={cn("absolute inset-0", !localHasVideo && "opacity-0")} />
-                  {/* When my camera is off (or voice call), show my avatar in the tile */}
-                  {mode !== "video" || !localHasVideo ? (
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                      {user?.photoURL ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={String(user.photoURL)}
-                          alt="Me"
-                          className="h-20 w-20 rounded-full object-cover ring-1 ring-white/10"
-                        />
-                      ) : (
-                        <AvatarBadge label={localAvatarLabel} />
-                      )}
-                    </div>
+          <div className="relative mx-auto w-full max-w-[1200px] flex-1">
+            <div className="flex h-full min-h-[min(68vh,640px)] flex-col gap-3 md:gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 backdrop-blur-md">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold tracking-tight text-white">Video call</span>
+                  {isScreenSharing ? (
+                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-100 ring-1 ring-amber-400/35">
+                      Sharing screen
+                    </span>
+                  ) : null}
+                  {isAdmin ? (
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/80 ring-1 ring-white/10">
+                      Host
+                    </span>
                   ) : null}
                 </div>
-
-                {/* Keep extra remote mounts present (hidden) so playback can attach if needed */}
-                {remoteTiles.slice(1).map(({ streamId }) => (
-                  <div key={streamId} className="hidden">
-                    <div id={`dlite-zego-remote-${streamId}`} />
-                  </div>
-                ))}
+                <div className="flex items-center gap-3 text-xs text-white/65">
+                  <span className="tabular-nums font-medium text-white/90">{mm}:{ss}</span>
+                  <span className="hidden h-3 w-px bg-white/20 sm:block" aria-hidden="true" />
+                  <span className={cn("max-w-[200px] truncate sm:max-w-none", statusTone)}>{statusLabel}</span>
+                </div>
               </div>
-            ) : (
-              <div className="h-full w-full">
-                {/* When no remote yet, do NOT show a second empty window (avoids "blank screen" feeling). */}
+
+              <div className="relative min-h-0 flex-1">
                 {!primaryRemoteStreamId ? (
-                  <div className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                  <div className="relative h-full min-h-[300px] overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)]">
                     <div id="dlite-zego-local" ref={localRef} className={cn("absolute inset-0", !localHasVideo && "opacity-0")} />
-                    {mode !== "video" || !localHasVideo ? (
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    {!localHasVideo ? (
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30">
                         {user?.photoURL ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={String(user.photoURL)}
-                            alt="Me"
-                            className="h-24 w-24 rounded-full object-cover ring-1 ring-white/10"
+                            alt=""
+                            className="h-24 w-24 rounded-full object-cover ring-2 ring-white/10"
                           />
                         ) : (
                           <AvatarBadge label={localAvatarLabel} />
                         )}
                       </div>
                     ) : null}
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-white/70">
-                      {statusLabel}
+                    <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white/90 backdrop-blur">
+                      You
+                    </div>
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+                      <p className="max-w-sm rounded-2xl bg-black/55 px-4 py-3 text-center text-sm leading-relaxed text-white/80 backdrop-blur">
+                        {statusLabel}
+                      </p>
                     </div>
                   </div>
                 ) : (
                   <div
                     className={cn(
-                      "grid h-full w-full gap-4",
-                      totalTiles <= 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-[repeat(auto-fit,minmax(260px,1fr))]"
+                      "grid h-full min-h-[300px] gap-3 md:gap-4",
+                      totalTiles <= 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
                     )}
                   >
-                    <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-                      <div
-                        id="dlite-zego-local"
-                        ref={localRef}
-                        className={cn("absolute inset-0", !localHasVideo && "opacity-0")}
-                      />
-                      {mode !== "video" || !localHasVideo ? (
-                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <div className="relative min-h-[220px] overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)] md:min-h-0">
+                      <div id="dlite-zego-local" ref={localRef} className={cn("absolute inset-0", !localHasVideo && "opacity-0")} />
+                      {!localHasVideo ? (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30">
                           {user?.photoURL ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={String(user.photoURL)}
-                              alt="Me"
-                              className="h-24 w-24 rounded-full object-cover ring-1 ring-white/10"
+                              alt=""
+                              className="h-20 w-20 rounded-full object-cover ring-2 ring-white/10"
                             />
                           ) : (
                             <AvatarBadge label={localAvatarLabel} />
                           )}
                         </div>
                       ) : null}
+                      <div className="pointer-events-none absolute bottom-2 left-2 max-w-[85%] truncate rounded-md bg-black/55 px-2 py-1 text-[10px] font-semibold text-white/90 backdrop-blur">
+                        {isScreenSharing ? "Your screen" : "You"}
+                      </div>
                     </div>
 
                     {remoteTiles.map(({ streamId }) => (
                       <div
                         key={streamId}
-                        className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]"
+                        className="relative min-h-[220px] overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)] md:min-h-0"
                       >
                         <div id={`dlite-zego-remote-${streamId}`} className="absolute inset-0" />
-                        {mode !== "video" || remoteVideoState[streamId] === false ? (
-                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                            <AvatarBadge label={String(streamId.split("-")[1] || "User")} />
+                        {remoteVideoState[streamId] === false ? (
+                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30">
+                            <AvatarBadge label={peerLabelFromMainStreamId(roomId, streamId)} />
                           </div>
                         ) : null}
+                        <div className="pointer-events-none absolute bottom-2 left-2 max-w-[85%] truncate rounded-md bg-black/55 px-2 py-1 text-[10px] font-semibold text-white/90 backdrop-blur">
+                          {peerLabelFromMainStreamId(roomId, streamId)}
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-            )}
+            </div>
           </div>
 
-          <div className="mt-6 flex items-center justify-center">
-            <div className="flex items-center gap-2 rounded-full bg-[#2b2b2b]/80 px-3 py-2 ring-1 ring-white/10 backdrop-blur">
-              <button
-                type="button"
-                className={controlBtn}
-                aria-label="Call"
-                title="Call"
-              >
-                <Phone className="h-5 w-5" />
-              </button>
-
+          <div className="mt-5 flex justify-center px-1">
+            <div className="flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#141018]/95 px-3 py-2.5 shadow-lg backdrop-blur-md">
               <button
                 type="button"
                 onClick={toggleMic}
@@ -1170,17 +1145,15 @@ export default function ZegoCallRoomPage() {
                 {isMicEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
               </button>
 
-              {mode === "video" ? (
-                <button
-                  type="button"
-                  onClick={toggleCamera}
-                  className={controlBtn}
-                  aria-label={isCameraEnabled ? "Camera off" : "Camera on"}
-                  title={isCameraEnabled ? "Camera" : "Camera off"}
-                >
-                  {isCameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={toggleCamera}
+                className={controlBtn}
+                aria-label={isCameraEnabled ? "Camera off" : "Camera on"}
+                title={isCameraEnabled ? "Camera" : "Camera off"}
+              >
+                {isCameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+              </button>
 
               <button
                 type="button"
@@ -1192,7 +1165,7 @@ export default function ZegoCallRoomPage() {
                 aria-label={isScreenSharing ? "Stop sharing" : "Share screen"}
                 title={isScreenSharing ? "Stop sharing" : "Share screen"}
               >
-                {mode === "video" ? <Monitor className="h-5 w-5" /> : <MonitorOff className="h-5 w-5" />}
+                <Monitor className="h-5 w-5" />
               </button>
 
               <button
@@ -1224,13 +1197,13 @@ export default function ZegoCallRoomPage() {
           </div>
 
           {error ? (
-            <p className="mx-auto mt-4 w-full max-w-[1160px] rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+            <p className="mx-auto mt-4 w-full max-w-[1200px] rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
               {error}
             </p>
           ) : null}
 
           {needsUserGesture ? (
-            <div className="mx-auto mt-3 flex w-full max-w-[1160px] items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+            <div className="mx-auto mt-3 flex w-full max-w-[1200px] items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
               <p className="text-xs text-white/70">Browser blocked audio autoplay. Click to enable audio.</p>
               <button
                 type="button"
@@ -1358,25 +1331,31 @@ export default function ZegoCallRoomPage() {
         </div>
       )}
 
-      {/* Status UI like screenshot (top center + top right). No IDs shown. */}
-      <div className="pointer-events-none absolute left-0 right-0 top-3 flex items-center justify-center px-4">
-        <div className="pointer-events-auto rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[11px] font-semibold text-white/70 backdrop-blur">
-          {statusLabel}
-        </div>
-      </div>
-      <div className="pointer-events-none absolute right-4 top-3 hidden md:block">
-        <div className="pointer-events-auto rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[11px] font-semibold backdrop-blur">
-          <span className={cn("text-white/70", statusTone)}>Status:</span>{" "}
-          <span className="text-white/75">{statusLabel}</span>
-        </div>
-      </div>
+      {/* Audio mode: floating status. Video mode uses the in-layout header (no duplicate pills). */}
+      {mode !== "video" ? (
+        <>
+          <div className="pointer-events-none absolute left-0 right-0 top-3 z-10 flex items-center justify-center px-4">
+            <div className="pointer-events-auto rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[11px] font-semibold text-white/70 backdrop-blur">
+              {statusLabel}
+            </div>
+          </div>
+          <div className="pointer-events-none absolute right-4 top-3 z-10 hidden md:block">
+            <div className="pointer-events-auto rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[11px] font-semibold backdrop-blur">
+              <span className={cn("text-white/70", statusTone)}>Status:</span>{" "}
+              <span className="text-white/75">{statusLabel}</span>
+            </div>
+          </div>
 
-      <div className="pointer-events-none absolute right-4 top-4 hidden md:block">
-        <div className="pointer-events-auto rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] font-semibold text-white/70 backdrop-blur">
-          Status: <span className={cn("font-semibold", statusTone)}>{statusLabel}</span>
-          {isAdmin ? <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/75">Admin</span> : null}
-        </div>
-      </div>
+          <div className="pointer-events-none absolute right-4 top-4 z-10 hidden md:block">
+            <div className="pointer-events-auto rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] font-semibold text-white/70 backdrop-blur">
+              Status: <span className={cn("font-semibold", statusTone)}>{statusLabel}</span>
+              {isAdmin ? (
+                <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/75">Admin</span>
+              ) : null}
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {endedOverlayVisible ? (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 backdrop-blur-sm">
