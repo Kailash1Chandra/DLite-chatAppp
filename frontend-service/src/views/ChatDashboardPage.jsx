@@ -207,6 +207,9 @@ function safeMessagePreview(raw) {
 
 const DM_POLL_PREFIX = '__DL_POLL__';
 
+const MESSAGE_MENU_WIDTH = 210;
+const MESSAGE_MENU_MAX_HEIGHT = 260;
+
 function parseDmPoll(content) {
   if (!content || typeof content !== 'string' || !content.startsWith(DM_POLL_PREFIX)) return null;
   try {
@@ -243,6 +246,8 @@ const ChatMessageRow = memo(function ChatMessageRow({
   setOpenReactionPickerId,
   EMOJI_OPTIONS,
   handleToggleDmReaction,
+  messageMenuAnchor,
+  setMessageMenuAnchor,
 }) {
   const reactionEntries = Object.entries(m.reactions || {});
   const poll = parseDmPoll(m.content);
@@ -410,17 +415,47 @@ const ChatMessageRow = memo(function ChatMessageRow({
                       <button
                         type="button"
                         className={cn('rounded-md p-1.5 transition', mine ? iconBtnMine : iconBtnTheirs)}
-                        onClick={() => toggleMessageMenu(m._id)}
+                        onClick={(e) => {
+                          const rect = e.currentTarget?.getBoundingClientRect?.();
+                          if (rect) {
+                            setMessageMenuAnchor({
+                              messageId: m._id,
+                              left: rect.right,
+                              top: rect.bottom,
+                              bottom: rect.top,
+                            });
+                          }
+                          toggleMessageMenu(m._id);
+                        }}
                         aria-label="Message actions"
                       >
                         <MoreVertical className="h-4 w-4" />
                       </button>
 
                       {openMessageMenuId === m._id && (
-                        <div
-                          role="menu"
-                          className="anim-pop absolute right-0 top-full z-50 mt-1.5 min-w-[170px] overflow-hidden rounded-2xl border border-ui-border bg-ui-panel py-1.5 shadow-xl"
-                        >
+                        createPortal(
+                          <div
+                            role="menu"
+                            className="anim-pop fixed z-[220] min-w-[200px] overflow-hidden rounded-2xl border border-ui-border bg-ui-panel py-1.5 shadow-2xl"
+                            style={{
+                              width: MESSAGE_MENU_WIDTH,
+                              left: Math.max(
+                                12,
+                                Math.min(
+                                  (messageMenuAnchor?.left || 0) - MESSAGE_MENU_WIDTH,
+                                  (typeof window !== 'undefined' ? window.innerWidth : 1200) - MESSAGE_MENU_WIDTH - 12
+                                )
+                              ),
+                              top: (() => {
+                                const below = (messageMenuAnchor?.top || 0) + 10;
+                                const above = (messageMenuAnchor?.bottom || 0) - MESSAGE_MENU_MAX_HEIGHT - 10;
+                                const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+                                if (below + MESSAGE_MENU_MAX_HEIGHT <= vh - 12) return below;
+                                if (above >= 12) return above;
+                                return Math.max(12, Math.min(below, vh - MESSAGE_MENU_MAX_HEIGHT - 12));
+                              })(),
+                            }}
+                          >
                           <button
                             type="button"
                             role="menuitem"
@@ -493,7 +528,9 @@ const ChatMessageRow = memo(function ChatMessageRow({
                             <Trash2 className="h-4 w-4 shrink-0 opacity-80" />
                             Delete for me
                           </button>
-                        </div>
+                          </div>,
+                          document.body
+                        )
                       )}
                     </div>
                   </div>
@@ -654,6 +691,7 @@ export default function ChatDashboardPage() {
   const [peerPresenceLoading, setPeerPresenceLoading] = useState(false);
   const [peerAvatarFailed, setPeerAvatarFailed] = useState(false);
   const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
+  const [messageMenuAnchor, setMessageMenuAnchor] = useState(null);
   const [recentMenu, setRecentMenu] = useState(null);
   const EDIT_WINDOW_MS = 15 * 60 * 1000;
   const EMOJI_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '👏'];
@@ -814,6 +852,10 @@ export default function ChatDashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (!openMessageMenuId) setMessageMenuAnchor(null);
+  }, [openMessageMenuId]);
+
+  useEffect(() => {
     setChatMainTab('messages');
   }, [activeUserId]);
 
@@ -824,6 +866,7 @@ export default function ChatDashboardPage() {
       const target = e.target;
       if (target?.closest?.('[data-message-menu]')) return;
       setOpenMessageMenuId(null);
+      setMessageMenuAnchor(null);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -2170,6 +2213,8 @@ export default function ChatDashboardPage() {
                           setOpenReactionPickerId={setOpenReactionPickerId}
                           EMOJI_OPTIONS={EMOJI_OPTIONS}
                           handleToggleDmReaction={handleToggleDmReaction}
+                          messageMenuAnchor={messageMenuAnchor}
+                          setMessageMenuAnchor={setMessageMenuAnchor}
                         />
                       </div>
                     );
