@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ZegoExpressEngine } from "zego-express-engine-webrtc";
-import { Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Users, Video, VideoOff } from "lucide-react";
+import { Columns2, Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Users, Video, VideoOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { buildHostedCallUrl, getInviteCodeFromRoomId } from "@/lib/callRoom";
 import { cn } from "@/lib/utils";
@@ -50,6 +50,8 @@ export default function ZegoCallRoomPage() {
   const [isCameraEnabled, setIsCameraEnabled] = useState(mode === "video");
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const reconnectingRef = useRef(false);
+  const [videoLayout, setVideoLayout] = useState<"split" | "pip">("split");
+  const [endedOverlayVisible, setEndedOverlayVisible] = useState(false);
 
   const server = useMemo(() => "wss://webliveroom-api.zego.im/ws", []);
   const hostedCallPath = useMemo(() => buildHostedCallUrl(roomId, mode), [mode, roomId]);
@@ -164,6 +166,17 @@ export default function ZegoCallRoomPage() {
     }
   };
 
+  const safeStopPublishingById = (zg: ZegoExpressEngine | null, streamId: string) => {
+    if (!zg) return;
+    const id = String(streamId || "").trim();
+    if (!id) return;
+    try {
+      zg.stopPublishingStream(id);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const republishCameraStream = async (zg: ZegoExpressEngine) => {
     const nextStream =
       mode === "audio"
@@ -207,6 +220,8 @@ export default function ZegoCallRoomPage() {
 
       // Switch publishing from camera -> screen.
       setIsScreenSharing(true);
+      // Better view: auto-switch to PiP when screen sharing starts.
+      setVideoLayout("pip");
 
       const camId = publishedStreamIdRef.current;
       const camStream = localStreamRef.current;
@@ -280,7 +295,7 @@ export default function ZegoCallRoomPage() {
 
       try {
         if (zg && screenStreamRef.current && screenStreamIdRef.current) {
-          zg.stopPublishingStream(screenStreamIdRef.current);
+          safeStopPublishingById(zg, screenStreamIdRef.current);
         }
       } catch {
         /* ignore */
@@ -295,13 +310,9 @@ export default function ZegoCallRoomPage() {
         /* ignore */
       }
 
-      try {
-        if (zg) {
-          zg.stopPublishingStream(undefined as any);
-        }
-      } catch {
-        /* ignore */
-      }
+      // Stop camera publishing only if we have a valid stream id.
+      safeStopPublishingById(zg, publishedStreamIdRef.current);
+      publishedStreamIdRef.current = "";
 
       try {
         if (zg && localStreamRef.current) {
@@ -336,11 +347,15 @@ export default function ZegoCallRoomPage() {
         setRemoteTiles([]);
         setStatus("getting_token");
 
+        const tokenAbort = new AbortController();
+        const tokenTimeout = window.setTimeout(() => tokenAbort.abort(), 12_000);
         const tokenRes = await fetch("/api/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId, roomId }),
+          signal: tokenAbort.signal,
         });
+        window.clearTimeout(tokenTimeout);
         const tokenJson = await tokenRes.json().catch(() => ({}));
         if (!tokenRes.ok || tokenJson?.success === false) {
           throw new Error(tokenJson?.message || "Could not get ZEGO token");
@@ -353,6 +368,13 @@ export default function ZegoCallRoomPage() {
         setStatus("initializing");
         const zg = new ZegoExpressEngine(appId, server);
         engineRef.current = zg;
+
+        // Avoid remote logger websocket being a hard failure in some networks/adblock setups.
+        try {
+          (zg as any).setLogConfig?.({ logLevel: "error", remoteLogLevel: "disable" });
+        } catch {
+          /* ignore */
+        }
 
         try {
           const resumed = await (zg as unknown as { resumeAudioContext?: () => Promise<boolean> | boolean }).resumeAudioContext?.();
@@ -490,10 +512,16 @@ export default function ZegoCallRoomPage() {
         if (cancelled) return;
 
         setStatus("publishing");
-        const localStream =
-          mode === "audio"
-            ? await zg.createZegoStream({ camera: { audio: true, video: false } })
-            : await zg.createZegoStream({ camera: { audio: true, video: true } });
+        let localStream: any;
+        try {
+          localStream =
+            mode === "audio"
+              ? await zg.createZegoStream({ camera: { audio: true, video: false } })
+              : await zg.createZegoStream({ camera: { audio: true, video: true } });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(msg || "Could not access microphone/camera");
+        }
         localStreamRef.current = localStream;
         applyLocalTrackState(localStream);
 
@@ -505,6 +533,7 @@ export default function ZegoCallRoomPage() {
 
         const streamId = `${roomId}-${userId}-${Date.now()}`;
         publishedStreamIdRef.current = streamId;
+        if (!streamId.trim()) throw new Error("Invalid stream id");
         await zg.startPublishingStream(streamId, localStream);
 
         setStatus("waiting_remote");
@@ -530,7 +559,8 @@ export default function ZegoCallRoomPage() {
     return listenForCallEnded(
       userId,
       () => {
-        router.replace("/call");
+        setEndedOverlayVisible(true);
+        window.setTimeout(() => router.replace("/call"), 1600);
       },
       { fromUserId: peerUserId }
     );
@@ -541,7 +571,8 @@ export default function ZegoCallRoomPage() {
     if (userId && peerUserId) {
       endCall({ userId, peerUserId }).catch(() => undefined);
     }
-    router.replace("/call");
+    setEndedOverlayVisible(true);
+    window.setTimeout(() => router.replace("/call"), 1600);
   };
 
   useEffect(() => {
@@ -589,27 +620,52 @@ export default function ZegoCallRoomPage() {
     >
       {mode === "video" ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <div className="mx-auto grid w-full max-w-[1160px] flex-1 grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-              <div id="dlite-zego-local" ref={localRef} className="absolute inset-0" />
-            </div>
-
-            <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-              {primaryRemoteStreamId ? (
-                <div id={`dlite-zego-remote-${primaryRemoteStreamId}`} className="absolute inset-0" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm text-white/70">
-                  {status === "connected" ? "Connected" : statusLabel}
+          <div className="relative mx-auto w-full max-w-[1160px] flex-1">
+            {videoLayout === "split" ? (
+              <div className="grid h-full w-full grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                  <div id="dlite-zego-local" ref={localRef} className="absolute inset-0" />
                 </div>
-              )}
 
-              {/* Keep extra remote mounts present (hidden) so playback can attach if needed */}
-              {remoteTiles.slice(1).map(({ streamId }) => (
-                <div key={streamId} className="hidden">
-                  <div id={`dlite-zego-remote-${streamId}`} />
+                <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                  {primaryRemoteStreamId ? (
+                    <div id={`dlite-zego-remote-${primaryRemoteStreamId}`} className="absolute inset-0" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-sm text-white/70">
+                      {status === "connected" ? "Connected" : statusLabel}
+                    </div>
+                  )}
+
+                  {/* Keep extra remote mounts present (hidden) so playback can attach if needed */}
+                  {remoteTiles.slice(1).map(({ streamId }) => (
+                    <div key={streamId} className="hidden">
+                      <div id={`dlite-zego-remote-${streamId}`} />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                {primaryRemoteStreamId ? (
+                  <div id={`dlite-zego-remote-${primaryRemoteStreamId}`} className="absolute inset-0" />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
+                    {status === "connected" ? "Connected" : statusLabel}
+                  </div>
+                )}
+
+                <div className="absolute bottom-4 right-4 h-[140px] w-[210px] overflow-hidden rounded-xl bg-black/50 ring-1 ring-white/15 shadow-lg sm:h-[160px] sm:w-[240px]">
+                  <div id="dlite-zego-local" ref={localRef} className="absolute inset-0" />
+                </div>
+
+                {/* Keep extra remote mounts present (hidden) so playback can attach if needed */}
+                {remoteTiles.slice(1).map(({ streamId }) => (
+                  <div key={streamId} className="hidden">
+                    <div id={`dlite-zego-remote-${streamId}`} />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-6 flex items-center justify-center">
@@ -666,6 +722,16 @@ export default function ZegoCallRoomPage() {
                 title={`Participants: ${remoteTiles.length + 1}`}
               >
                 <Users className="h-5 w-5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setVideoLayout((v) => (v === "split" ? "pip" : "split"))}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                aria-label="Change layout"
+                title="Change layout"
+              >
+                <Columns2 className="h-5 w-5" />
               </button>
 
               <Link
@@ -743,6 +809,15 @@ export default function ZegoCallRoomPage() {
           Status: <span className={cn("font-semibold", statusTone)}>{statusLabel}</span>
         </div>
       </div>
+
+      {endedOverlayVisible ? (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="rounded-2xl border border-white/10 bg-black/50 px-5 py-4 text-center text-white shadow-xl">
+            <p className="text-sm font-semibold">Call ended</p>
+            <p className="mt-1 text-xs text-white/70">Returning to calls…</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

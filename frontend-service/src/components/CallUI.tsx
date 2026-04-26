@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
+  Columns2,
   Maximize2,
   Mic,
   MicOff,
@@ -180,6 +181,8 @@ export default function CallUI({
   const [cameraEnabled, setCameraEnabled] = useState(defaultMode === "video");
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+  const [videoLayout, setVideoLayout] = useState<"split" | "pip">("split");
+  const [endedOverlayVisible, setEndedOverlayVisible] = useState(false);
 
   useEffect(() => {
     setCalleeId(calleeParam);
@@ -692,9 +695,20 @@ export default function CallUI({
       await hardCleanup();
       setStatus("ended");
       persistCallHistory({ outcome: "ended", endedAt: Date.now() });
+      setEndedOverlayVisible(true);
       if (explicitReady) clearExplicitReady({ keepCallee: true });
     }
   }, [clearExplicitReady, currentUserId, explicitReady, hardCleanup, peerId, persistCallHistory]);
+
+  useEffect(() => {
+    if (status !== "ended") return;
+    setEndedOverlayVisible(true);
+    const t = window.setTimeout(() => {
+      setEndedOverlayVisible(false);
+      router.replace("/call");
+    }, 1600);
+    return () => window.clearTimeout(t);
+  }, [router, status]);
 
   const toggleMic = useCallback(() => {
     const stream = localStreamRef.current;
@@ -745,6 +759,8 @@ export default function CallUI({
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = new MediaStream([screenTrack]);
         }
+        // Better view: auto-switch to PiP when screen sharing starts.
+        setVideoLayout("pip");
         screenTrack.onended = () => {
           screenStreamRef.current = null;
           const camTrack2 = localStreamRef.current?.getVideoTracks()[0];
@@ -876,7 +892,8 @@ export default function CallUI({
       status === "calling" ||
       status === "connecting" ||
       status === "connected" ||
-      status === "ringing");
+      status === "ringing" ||
+      status === "ended");
 
   // When CallUI is embedded without the user panel (call dashboard right side),
   // keep it empty until a call is active/incoming (WhatsApp-like).
@@ -919,13 +936,24 @@ export default function CallUI({
         >
           {activeMode === "video" ? (
             <div className="absolute inset-0 flex flex-col p-4 sm:p-5">
-              <div className="mx-auto grid w-full max-w-[1160px] flex-1 grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-                  <video ref={overlayVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
-                </div>
-                <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
-                  <video ref={localVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
-                </div>
+              <div className="relative mx-auto w-full max-w-[1160px] flex-1">
+                {videoLayout === "split" ? (
+                  <div className="grid h-full w-full grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                      <video ref={overlayVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+                    </div>
+                    <div className="relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                      <video ref={localVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-white/10 shadow-[0_24px_80px_-60px_rgba(0,0,0,0.9)]">
+                    <video ref={overlayVideoRef} autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
+                    <div className="absolute bottom-4 right-4 h-[140px] w-[210px] overflow-hidden rounded-xl bg-black/50 ring-1 ring-white/15 shadow-lg sm:h-[160px] sm:w-[240px]">
+                      <video ref={localVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -1086,6 +1114,18 @@ export default function CallUI({
                     </button>
                   ) : null}
 
+                  {activeMode === "video" ? (
+                    <button
+                      type="button"
+                      onClick={() => setVideoLayout((v) => (v === "split" ? "pip" : "split"))}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                      aria-label="Change layout"
+                      title="Change layout"
+                    >
+                      <Columns2 className="h-5 w-5" />
+                    </button>
+                  ) : null}
+
                   <button
                     type="button"
                     className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
@@ -1110,6 +1150,15 @@ export default function CallUI({
 
             {/* Screen share moved into the bottom bar */}
           </div>
+
+          {endedOverlayVisible ? (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+              <div className="rounded-2xl border border-white/10 bg-black/50 px-5 py-4 text-center text-white shadow-xl">
+                <p className="text-sm font-semibold">Call ended</p>
+                <p className="mt-1 text-xs text-white/70">Returning to calls…</p>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <section className={cn("mx-auto flex w-full flex-col gap-6 p-4 sm:p-8", showUserPanel ? "max-w-5xl" : "max-w-4xl")}>
