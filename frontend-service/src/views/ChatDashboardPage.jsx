@@ -386,6 +386,17 @@ const ChatMessageRow = memo(function ChatMessageRow({
                   </span>
                   <span className={cn('shrink-0 font-medium tabular-nums', mine ? 'text-white/70' : 'text-slate-400 dark:text-slate-500')}>
                     {m.createdAt ? formatMessageMetaTime(m.createdAt) : ''}
+                    {mine && m?.status === 'sending' ? <span className="ml-1 text-[10px] opacity-80">⏳</span> : null}
+                    {mine && m?.status === 'sent' ? <span className="ml-1 text-[10px] opacity-80">✓</span> : null}
+                    {m?.status === 'failed' ? (
+                      <button
+                        type="button"
+                        onClick={() => retryMessage(m)}
+                        className="ml-1 text-[10px] font-semibold text-red-400 underline decoration-red-400/60 underline-offset-2 hover:text-red-300"
+                      >
+                        Tap to retry
+                      </button>
+                    ) : null}
                   </span>
                 </div>
                 <div className="flex items-start justify-between gap-2">
@@ -1110,7 +1121,22 @@ export default function ChatDashboardPage() {
 
           if (seen.has(msg._id)) return;
           seen.add(msg._id);
-          setMessages((prev) => [...prev, msg]);
+          setMessages((prev) => {
+            // If this message matches a recent optimistic message, replace it to avoid duplicates.
+            const optimisticIdx = prev.findIndex(
+              (m) =>
+                m?.isOptimistic &&
+                m.senderId === msg.senderId &&
+                m.content === msg.content &&
+                Math.abs(Number(m.createdAt || 0) - Number(msg.createdAt || Date.now())) < 10000
+            );
+            if (optimisticIdx !== -1) {
+              const next = [...prev];
+              next[optimisticIdx] = { ...msg, status: 'sent', isOptimistic: false };
+              return next;
+            }
+            return [...prev, msg];
+          });
           if (msg.senderId && msg.senderId !== user.id) {
             // FIX: If chat is open, mark as read immediately on receive.
             markDirectThreadRead({ userId: user.id, peerId }).catch(() => undefined);
@@ -1143,6 +1169,56 @@ export default function ChatDashboardPage() {
     ta.style.height = '40px';
   }, [input]);
 
+  const retryMessage = useCallback(
+    async (message) => {
+      if (!user?.id || !activeUserId?.trim()) return;
+      if (!message?._id || !String(message.content || '').trim()) return;
+      if (!isUuid(activeUserId.trim())) {
+        setActionError('Select a user from search (peerId must be a UUID).');
+        return;
+      }
+
+      const content = String(message.content || '').trim();
+      const tempId = String(message._id);
+
+      setMessages((prev) =>
+        prev.map((m) => (m._id === tempId ? { ...m, status: 'sending', error: '', isOptimistic: true } : m))
+      );
+      setActionError('');
+      try {
+        const serverMessage = await sendDirectMessage({
+          senderId: user.id,
+          receiverId: activeUserId.trim(),
+          content,
+        });
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m._id === tempId
+              ? {
+                  ...m,
+                  _id: serverMessage?._id ?? tempId,
+                  status: 'sent',
+                  isOptimistic: false,
+                  error: '',
+                }
+              : m
+          )
+        );
+      } catch (err) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m._id === tempId
+              ? { ...m, status: 'failed', error: err?.message || 'Failed to send', isOptimistic: true }
+              : m
+          )
+        );
+        setActionError('Message could not be sent. Tap to retry.');
+      }
+    },
+    [user?.id, activeUserId]
+  );
+
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!user?.id || !activeUserId || !input.trim()) return;
@@ -1150,19 +1226,43 @@ export default function ChatDashboardPage() {
       setActionError('Select a user from search (peerId must be a UUID).');
       return;
     }
-    setSendingMessage(true);
+    const content = input.trim();
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimisticMessage = {
+      _id: tempId,
+      senderId: user.id,
+      receiverId: activeUserId.trim(),
+      content,
+      createdAt: Date.now(),
+      status: 'sending',
+      isOptimistic: true,
+    };
+
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setInput('');
     setActionError('');
     try {
-      await sendDirectMessage({
+      const serverMessage = await sendDirectMessage({
         senderId: user.id,
         receiverId: activeUserId.trim(),
-        content: input.trim()
+        content,
       });
-      setInput('');
-    } catch {
-      setActionError('Could not send message. Please try again.');
-    } finally {
-      setSendingMessage(false);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === tempId
+            ? { ...msg, _id: serverMessage?._id ?? tempId, status: 'sent', isOptimistic: false }
+            : msg
+        )
+      );
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === tempId
+            ? { ...msg, status: 'failed', error: err?.message || 'Failed to send', isOptimistic: true }
+            : msg
+        )
+      );
+      setActionError('Message could not be sent. Tap to retry.');
     }
   };
 
@@ -1174,19 +1274,40 @@ export default function ChatDashboardPage() {
       setActionError('Select a user from search (peerId must be a UUID).');
       return;
     }
-    setSendingMessage(true);
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimisticMessage = {
+      _id: tempId,
+      senderId: user.id,
+      receiverId: activeUserId.trim(),
+      content: text,
+      createdAt: Date.now(),
+      status: 'sending',
+      isOptimistic: true,
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
     setActionError('');
     try {
-      await sendDirectMessage({
+      const serverMessage = await sendDirectMessage({
         senderId: user.id,
         receiverId: activeUserId.trim(),
-        content: text
+        content: text,
       });
-      setInput('');
-    } catch {
-      setActionError('Could not send message. Please try again.');
-    } finally {
-      setSendingMessage(false);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === tempId
+            ? { ...msg, _id: serverMessage?._id ?? tempId, status: 'sent', isOptimistic: false }
+            : msg
+        )
+      );
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === tempId
+            ? { ...msg, status: 'failed', error: err?.message || 'Failed to send', isOptimistic: true }
+            : msg
+        )
+      );
+      setActionError('Message could not be sent. Tap to retry.');
     }
   };
 
