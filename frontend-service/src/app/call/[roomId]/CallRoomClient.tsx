@@ -56,6 +56,13 @@ function sanitizeZegoIdPart(raw: string) {
   return s.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 200) || "user";
 }
 
+/** Next.js `useParams()` may return `string | string[]` for a dynamic segment. */
+function routeParamToString(value: string | string[] | undefined): string {
+  if (value == null) return "";
+  if (Array.isArray(value)) return String(value[0] ?? "").trim();
+  return String(value).trim();
+}
+
 /** Stable main camera/audio publish id so peers can pull via roomUserUpdate even if roomStreamUpdate is delayed. */
 function buildMainPublishStreamId(roomId: string, uid: string) {
   return `${sanitizeZegoIdPart(roomId)}_${sanitizeZegoIdPart(uid)}`;
@@ -230,11 +237,12 @@ function errorToUserMessage(e: unknown, fallback = "Something went wrong"): stri
 /**
  * DevTools: filter console by `[D-LITE call]` to see the real error (stack, cause, raw value).
  */
-function logCallRoomFailure(context: string, err: unknown) {
+function logCallRoomFailure(context: string, err: unknown, extra?: Record<string, unknown>) {
   const payload: Record<string, unknown> = {
     context,
     uiMessage: normalizeUiError(err) || errorToUserMessage(err, ""),
     raw: err,
+    ...extra,
   };
   if (err instanceof Error) {
     payload.name = err.name;
@@ -253,6 +261,16 @@ function logCallRoomFailure(context: string, err: unknown) {
     }
   }
   console.error("[D-LITE call]", payload);
+}
+
+/** Always-on trace for connectivity issues (filter DevTools by `[D-LITE call]`). */
+function callDiagInfo(message: string, detail?: Record<string, unknown>) {
+  try {
+    if (detail && Object.keys(detail).length) console.info("[D-LITE call]", message, detail);
+    else console.info("[D-LITE call]", message);
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Profile / peer display: never turn arbitrary objects into "[object Object]" names. */
@@ -481,7 +499,7 @@ export default function ZegoCallRoomPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const roomId = String((params as any)?.roomId || "").trim();
+  const roomId = routeParamToString((params as { roomId?: string | string[] })?.roomId);
   const mode = String(searchParams?.get("mode") || "video").toLowerCase() === "audio" ? "audio" : "video";
   const isAdmin = String(searchParams?.get("admin") || "").trim() === "1";
 
@@ -742,6 +760,7 @@ export default function ZegoCallRoomPage() {
 
     let cancelled = false;
     let peerPlayDebounceTimer: number | null = null;
+    let postPublishDiagTimer: number | null = null;
     const loggerTameTimers: number[] = [];
 
     const scheduleZegoLoggerTaming = (engine: InstanceType<typeof ZegoExpressEngine> | null) => {
@@ -777,6 +796,10 @@ export default function ZegoCallRoomPage() {
       if (peerPlayDebounceTimer !== null) {
         window.clearTimeout(peerPlayDebounceTimer);
         peerPlayDebounceTimer = null;
+      }
+      if (postPublishDiagTimer !== null) {
+        window.clearTimeout(postPublishDiagTimer);
+        postPublishDiagTimer = null;
       }
       clearPendingEngineDestroy();
       if (streamPollRef.current !== null) {
@@ -861,6 +884,7 @@ export default function ZegoCallRoomPage() {
         setNeedsUserGesture(false);
         setRemoteTiles([]);
         roomPeersRef.current = new Set();
+        const loggedQuietPeerPlayFail = new Set<string>();
         setStatus("getting_token");
 
         const tokenAbort = new AbortController();
@@ -981,6 +1005,13 @@ export default function ZegoCallRoomPage() {
               if (!quiet) {
                 const msg = normalizeUiError(e);
                 setError(msg ? `Could not play remote stream: ${msg}` : "Could not play remote stream");
+              } else if (!loggedQuietPeerPlayFail.has(sid)) {
+                loggedQuietPeerPlayFail.add(sid);
+                logCallRoomFailure(`startPlayingStream (peer main, quiet path) sid=${sid}`, e, {
+                  roomId,
+                  localUserId: userId,
+                  roomPeers: [...roomPeersRef.current],
+                });
               }
             }
           }
@@ -1010,6 +1041,12 @@ export default function ZegoCallRoomPage() {
           if (!Array.isArray(streamList) || streamList.length === 0) return;
 
           zegoLog("[zego] roomStreamUpdate", { updateType, count: streamList.length });
+          if (updateType === "ADD") {
+            const ids = streamList
+              .map((s) => String(s?.streamID || s?.streamId || "").trim())
+              .filter(Boolean);
+            if (ids.length) callDiagInfo("roomStreamUpdate ADD", { streamIDs: ids });
+          }
 
           if (updateType === "DELETE") {
             const deletedIds = streamList
@@ -1038,6 +1075,10 @@ export default function ZegoCallRoomPage() {
           if (cancelled) return;
           if (!Array.isArray(userList)) return;
           zegoLog("[zego] roomUserUpdate", { updateType, count: userList.length });
+          if (updateType === "ADD") {
+            const ids = userList.map((u) => String(u?.userID || u?.userId || "").trim()).filter(Boolean);
+            if (ids.length) callDiagInfo("roomUserUpdate ADD", { userIDs: ids });
+          }
           if (updateType === "DELETE") {
             const removedStreamIds: string[] = [];
             for (const u of userList) {
@@ -1207,11 +1248,39 @@ export default function ZegoCallRoomPage() {
             return;
           }
           tryPlayPeerMainStreams({ quiet: true }).catch(() => undefined);
-          if (tries >= 20) {
+          if (tries >= 40) {
             if (streamPollRef.current !== null) window.clearInterval(streamPollRef.current);
             streamPollRef.current = null;
+            if (!cancelled && remoteTilesRef.current.length === 0) {
+              const others = [...roomPeersRef.current].filter((id) => id && id !== userId);
+              if (others.length > 0) {
+                callDiagInfo("stream poll exhausted; final play attempt (non-quiet)", {
+                  roomId,
+                  localUserId: userId,
+                  peers: others,
+                  expectedMainSids: others.map((p) => buildMainPublishStreamId(roomId, p)),
+                });
+                void tryPlayPeerMainStreams({ quiet: false });
+              }
+            }
           }
-        }, 750);
+        }, 650);
+
+        if (postPublishDiagTimer !== null) window.clearTimeout(postPublishDiagTimer);
+        postPublishDiagTimer = window.setTimeout(() => {
+          postPublishDiagTimer = null;
+          if (cancelled) return;
+          if (remoteTilesRef.current.length > 0) return;
+          const others = [...roomPeersRef.current].filter((id) => id && id !== userId);
+          if (others.length === 0) return;
+          callDiagInfo("post-publish delayed play (non-quiet)", {
+            roomId,
+            localUserId: userId,
+            peers: others,
+            expectedMainSids: others.map((p) => buildMainPublishStreamId(roomId, p)),
+          });
+          void tryPlayPeerMainStreams({ quiet: false });
+        }, 6000);
 
         setStatus("waiting_remote");
       } catch (e) {
