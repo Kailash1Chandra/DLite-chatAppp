@@ -734,11 +734,23 @@ export default function ZegoCallRoomPage() {
           audio = document.createElement("audio");
           audio.id = audioId;
           audio.autoplay = true;
+          audio.muted = false;
+          audio.volume = 1;
           // `playsInline` is a video-only property; keep audio simple.
           audio.style.display = "none";
           document.body.appendChild(audio);
         }
-        (audio as any).srcObject = remoteStream;
+        // Prefer ZEGO's stream audio helper when available; fallback to srcObject binding.
+        try {
+          (remoteStream as any).playAudio?.(audio);
+        } catch {
+          /* ignore */
+        }
+        try {
+          (audio as any).srcObject = remoteStream;
+        } catch {
+          /* ignore */
+        }
         Promise.resolve(audio.play()).catch(() => undefined);
       } catch {
         /* ignore */
@@ -1004,6 +1016,18 @@ export default function ZegoCallRoomPage() {
                 onClick={async () => {
                   try {
                     await (engineRef.current as unknown as { resumeAudioContext?: () => Promise<boolean> | boolean })?.resumeAudioContext?.();
+                    try {
+                      const audios = Array.from(
+                        document.querySelectorAll('audio[id^="dlite-zego-audio-"]')
+                      ) as HTMLAudioElement[];
+                      audios.forEach((a) => {
+                        a.muted = false;
+                        a.volume = 1;
+                        Promise.resolve(a.play()).catch(() => undefined);
+                      });
+                    } catch {
+                      /* ignore */
+                    }
                     setNeedsUserGesture(false);
                   } catch {
                     /* ignore */
