@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ZegoExpressEngine } from "zego-express-engine-webrtc";
 import {
   BadgeCheck,
+  LayoutGrid,
   Maximize2,
   Mic,
   MicOff,
@@ -319,12 +320,19 @@ export default function ZegoCallRoomPage() {
   const [remotePeerDelayMs, setRemotePeerDelayMs] = useState<number | null>(null);
   const [remotePeerProfileName, setRemotePeerProfileName] = useState("");
   const [speakerOn, setSpeakerOn] = useState(true);
+  /** Video UI: spotlight + PiP vs two equal tiles. */
+  const [videoLayout, setVideoLayout] = useState<"focus" | "dual">("focus");
+  const primaryRemoteStreamIdForLayoutReset = remoteTiles[0]?.streamId ?? "";
   const streamPollRef = useRef<number | null>(null);
   const roomPeersRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     remoteTilesRef.current = remoteTiles;
   }, [remoteTiles]);
+
+  useEffect(() => {
+    if (!primaryRemoteStreamIdForLayoutReset) setVideoLayout("focus");
+  }, [primaryRemoteStreamIdForLayoutReset]);
 
   const server = useMemo(() => "wss://webliveroom-api.zego.im/ws", []);
   const hostedCallPath = useMemo(() => buildHostedCallUrl(roomId, mode), [mode, roomId]);
@@ -983,7 +991,9 @@ export default function ZegoCallRoomPage() {
       cancelled = true;
       cleanup();
     };
-  }, [applyLocalTrackState, mode, roomId, server, userId, userName]);
+    // Do not depend on applyLocalTrackState / isMicEnabled — toggling mic must not re-login or change publish stream id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: mic/camera only via applyLocalTrackState effect
+  }, [mode, roomId, server, userId, userName]);
 
   // Join call-service room channel (for cross-client "end call" sync).
   useEffect(() => {
@@ -1055,7 +1065,7 @@ export default function ZegoCallRoomPage() {
     if (!s) return;
     tryPlayLocalVideo(s, localRef.current);
     window.setTimeout(() => tryPlayLocalVideo(s, localRef.current), 0);
-  }, [isScreenSharing]);
+  }, [isScreenSharing, videoLayout]);
 
   // Re-bind local preview when PiP vs solo layout changes (video mode).
   useEffect(() => {
@@ -1065,7 +1075,7 @@ export default function ZegoCallRoomPage() {
     tryPlayLocalVideo(s, localRef.current);
     window.setTimeout(() => tryPlayLocalVideo(s, localRef.current), 0);
     window.setTimeout(() => tryPlayLocalVideo(s, localRef.current), 250);
-  }, [mode, remoteTiles]);
+  }, [mode, remoteTiles, videoLayout]);
 
   useEffect(() => {
     if (!engineRef.current) return;
@@ -1303,7 +1313,9 @@ export default function ZegoCallRoomPage() {
           background: #000;
         }
         [data-zego-view='remote-thumb'] video,
-        [data-zego-view='pip'] video {
+        [data-zego-view='pip'] video,
+        [data-zego-view='dual-remote'] video,
+        [data-zego-view='dual-local'] video {
           width: 100%;
           height: 100%;
           object-fit: cover !important;
@@ -1423,7 +1435,14 @@ export default function ZegoCallRoomPage() {
                   </div>
                 ) : null}
 
-                <div className="relative flex min-h-[min(52vh,520px)] flex-1 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)]">
+                <div
+                  className={cn(
+                    "relative flex min-h-[min(52vh,520px)] flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_24px_80px_-55px_rgba(0,0,0,0.92)]",
+                    primaryRemoteStreamId && videoLayout === "dual"
+                      ? "flex-col items-stretch justify-center"
+                      : "items-center justify-center"
+                  )}
+                >
                   {!primaryRemoteStreamId ? (
                     <>
                       <div
@@ -1456,6 +1475,54 @@ export default function ZegoCallRoomPage() {
                         </div>
                       ) : null}
                     </>
+                  ) : videoLayout === "dual" ? (
+                    <div className="grid min-h-0 w-full flex-1 grid-cols-1 place-content-center gap-3 p-2 sm:grid-cols-2 sm:gap-4 sm:p-3">
+                      <div className="relative aspect-square w-full max-w-[min(92vw,440px)] justify-self-center overflow-hidden rounded-2xl border border-white/10 bg-black/80 shadow-xl sm:max-w-none">
+                        <div
+                          id={`dlite-zego-remote-${primaryRemoteStreamId}`}
+                          data-zego-view="dual-remote"
+                          className="absolute inset-0"
+                        />
+                        {remoteVideoState[primaryRemoteStreamId] === false ? (
+                          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50 px-4 text-center">
+                            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-600 to-violet-700 text-3xl font-extrabold text-white ring-2 ring-white/15 sm:h-28 sm:w-28 sm:text-4xl">
+                              {getInitials(voicePeerDisplayName)}
+                            </div>
+                            <p className="text-sm font-semibold text-white">{voicePeerDisplayName}</p>
+                            <p className="flex items-center justify-center gap-1 text-xs text-white/60">
+                              <VideoOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                              Camera off
+                            </p>
+                          </div>
+                        ) : null}
+                        <div className="pointer-events-none absolute bottom-2 left-2 z-[1] max-w-[calc(100%-1rem)] truncate rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md">
+                          <span>{voicePeerDisplayName}</span>
+                          <Mic className="ml-1.5 inline-block h-3 w-3 align-text-bottom text-white/70" aria-hidden="true" />
+                        </div>
+                      </div>
+                      <div className="relative aspect-square w-full max-w-[min(92vw,440px)] justify-self-center overflow-hidden rounded-2xl border border-white/15 bg-black/80 shadow-xl ring-1 ring-white/10 backdrop-blur-sm sm:max-w-none">
+                        <div
+                          id="dlite-zego-local"
+                          ref={localRef}
+                          data-zego-view="dual-local"
+                          className={cn("absolute inset-0", !localHasVideo && !isScreenSharing && "opacity-0")}
+                        />
+                        {!localHasVideo && !isScreenSharing ? (
+                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-600 to-violet-700 text-lg font-bold text-white">
+                              {getInitials(localAvatarLabel)}
+                            </div>
+                          </div>
+                        ) : null}
+                        <div className="pointer-events-none absolute left-2 top-2 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-black/40" />
+                        <div className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white/90 backdrop-blur">
+                          You
+                        </div>
+                        <div className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-black/55 p-1 text-white/90 backdrop-blur">
+                          {isMicEnabled ? <Mic className="h-3.5 w-3.5" /> : <MicOff className="h-3.5 w-3.5" />}
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <>
                       <div
@@ -1549,6 +1616,23 @@ export default function ZegoCallRoomPage() {
                   title={isScreenSharing ? "Stop sharing" : "Share screen"}
                 >
                   <Monitor className="h-5 w-5" />
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!primaryRemoteStreamId}
+                  onClick={() => setVideoLayout((v) => (v === "focus" ? "dual" : "focus"))}
+                  className={cn(
+                    controlBtn,
+                    videoLayout === "dual" && primaryRemoteStreamId
+                      ? "bg-white/20 hover:bg-white/25"
+                      : "bg-white/10 hover:bg-white/20",
+                    !primaryRemoteStreamId && "cursor-not-allowed opacity-45 hover:-translate-y-0 hover:shadow-none"
+                  )}
+                  aria-label={videoLayout === "dual" ? "Spotlight layout" : "Equal square tiles"}
+                  title={videoLayout === "dual" ? "Spotlight (main + small You)" : "Grid: two equal squares"}
+                >
+                  <LayoutGrid className="h-5 w-5" />
                 </button>
 
                 <button

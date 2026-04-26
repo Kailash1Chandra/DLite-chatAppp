@@ -251,13 +251,13 @@ export default function IncomingCallUI({
           </div>
         </motion.div>
 
-        <div className="absolute bottom-[110px] left-1/2 z-20 -translate-x-1/2">
-          <div className="flex items-center gap-2">
+        <div className="pointer-events-none absolute bottom-[132px] left-0 right-0 z-20 flex justify-center px-4 sm:bottom-[124px] sm:px-6">
+          <div className="pointer-events-auto flex w-full max-w-lg flex-wrap items-center justify-center gap-2.5 sm:gap-3 md:gap-4">
             {quickReplies.map((text) => (
               <button
                 key={text}
                 type="button"
-                className="rounded-full border border-white/[0.10] bg-white/[0.08] px-4 py-2 text-xs font-semibold text-white/85 backdrop-blur-xl transition hover:bg-white/[0.12] active:scale-95"
+                className="min-h-[40px] shrink-0 rounded-full border border-white/[0.12] bg-white/[0.08] px-3.5 py-2.5 text-center text-[11px] font-semibold leading-snug text-white/88 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl transition hover:border-white/[0.18] hover:bg-white/[0.12] active:scale-[0.98] sm:min-h-0 sm:px-5 sm:py-2.5 sm:text-xs md:px-6"
                 onClick={() => {
                   stop();
                   onQuickReply?.(text);
@@ -319,7 +319,7 @@ export default function IncomingCallUI({
         </div>
 
         {autoplayBlocked ? (
-          <div className="pointer-events-none absolute bottom-[190px] left-1/2 z-30 -translate-x-1/2 rounded-full border border-white/10 bg-black/35 px-4 py-2 text-xs font-semibold text-white/80 backdrop-blur">
+          <div className="pointer-events-none absolute bottom-[210px] left-1/2 z-30 -translate-x-1/2 rounded-full border border-white/10 bg-black/35 px-4 py-2 text-xs font-semibold text-white/80 backdrop-blur sm:bottom-[200px]">
             Click anywhere to enable ringtone audio
           </div>
         ) : null}
