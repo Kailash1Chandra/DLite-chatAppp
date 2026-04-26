@@ -552,8 +552,9 @@ export default function ZegoCallRoomPage() {
             try {
               const remoteStream = await zg.startPlayingStream(remoteStreamId);
               upsertRemoteTile(remoteStreamId, remoteStream);
-            } catch {
-              /* ignore and continue */
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              setError(msg ? `Could not play remote stream: ${msg}` : "Could not play remote stream");
             }
           }
         };
@@ -714,20 +715,9 @@ export default function ZegoCallRoomPage() {
       const remoteStream = remoteStreamsRef.current[streamId];
       const mountId = `dlite-zego-remote-${streamId}`;
       const mountNode = document.getElementById(mountId);
-      if (!remoteStream || !mountNode) return;
+      if (!remoteStream) return;
       try {
-        // Re-bind on layout switch: clear previous child if it belonged to a different stream.
-        const prevBound = (mountNode as HTMLElement).dataset.boundStreamId || "";
-        if (prevBound !== streamId) {
-          mountNode.innerHTML = "";
-          (mountNode as HTMLElement).dataset.boundStreamId = streamId;
-        }
-
-        // Use ZEGO's renderer for video (most reliable across stream object shapes).
-        const remoteView = zg.createRemoteStreamView(remoteStream);
-        remoteView.play(mountId);
-
-        // Additionally attach audio via a hidden <audio> element to ensure voice plays.
+        // Always attach remote audio even in audio-only UI (no mount divs exist there).
         const audioId = `dlite-zego-audio-${streamId}`;
         let audio = document.getElementById(audioId) as HTMLAudioElement | null;
         if (!audio) {
@@ -736,11 +726,9 @@ export default function ZegoCallRoomPage() {
           audio.autoplay = true;
           audio.muted = false;
           audio.volume = 1;
-          // `playsInline` is a video-only property; keep audio simple.
           audio.style.display = "none";
           document.body.appendChild(audio);
         }
-        // Prefer ZEGO's stream audio helper when available; fallback to srcObject binding.
         try {
           (remoteStream as any).playAudio?.(audio);
         } catch {
@@ -752,6 +740,31 @@ export default function ZegoCallRoomPage() {
           /* ignore */
         }
         Promise.resolve(audio.play()).catch(() => undefined);
+
+        // Video binding only when we actually have a mount node (video UI).
+        if (!mountNode) return;
+        // Re-bind on layout switch: clear previous child if it belonged to a different stream.
+        const prevBound = (mountNode as HTMLElement).dataset.boundStreamId || "";
+        if (prevBound !== streamId) {
+          mountNode.innerHTML = "";
+          (mountNode as HTMLElement).dataset.boundStreamId = streamId;
+        }
+
+        // Use ZEGO's renderer for video (most reliable across stream object shapes).
+        const remoteView = zg.createRemoteStreamView(remoteStream);
+        remoteView.play(mountId);
+        // Some browsers/layouts mount the node a tick late; retry once to avoid black tiles.
+        window.setTimeout(() => {
+          try {
+            const n = document.getElementById(mountId);
+            if (!n) return;
+            const v = zg.createRemoteStreamView(remoteStream);
+            v.play(mountId);
+          } catch {
+            /* ignore */
+          }
+        }, 0);
+
       } catch {
         /* ignore */
       }
@@ -826,10 +839,21 @@ export default function ZegoCallRoomPage() {
   return (
     <div
       className={cn(
-        "relative flex min-h-[calc(100vh-56px)] w-full flex-col overflow-hidden rounded-[1.75rem] bg-black shadow-2xl shadow-black/35",
+        "relative flex min-h-[calc(100vh-56px)] w-full flex-col overflow-hidden rounded-[1.75rem] bg-[#0a0612] shadow-2xl shadow-black/35",
         "p-4 sm:p-5"
       )}
     >
+      {/* Hosted call premium styling for ZEGO-rendered <video> nodes */}
+      <style jsx global>{`
+        #dlite-zego-local video,
+        [id^='dlite-zego-remote-'] video {
+          width: 100%;
+          height: 100%;
+          object-fit: cover !important;
+          background: #000;
+        }
+      `}</style>
+
       {mode === "video" ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div className="relative mx-auto w-full max-w-[1160px] flex-1">
